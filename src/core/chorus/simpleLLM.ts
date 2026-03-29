@@ -1,26 +1,26 @@
 import { SettingsManager } from "@core/utilities/Settings";
-import { getSimpleCompletionProvider } from "./ModelProviders/simple/SimpleCompletionProviderFactory";
 import {
-    ISimpleCompletionProvider,
+    getSimpleCompletionProvider,
+    createProviderByPrefix,
+} from "./ModelProviders/simple/SimpleCompletionProviderFactory";
+import {
     SimpleCompletionParams,
     SimpleCompletionMode,
 } from "./ModelProviders/simple/ISimpleCompletionProvider";
-import { SimpleCompletionProviderAnthropic } from "./ModelProviders/simple/SimpleCompletionProviderAnthropic";
-import { SimpleCompletionProviderOpenAI } from "./ModelProviders/simple/SimpleCompletionProviderOpenAI";
-import { SimpleCompletionProviderGoogle } from "./ModelProviders/simple/SimpleCompletionProviderGoogle";
-import { SimpleCompletionProviderOpenRouter } from "./ModelProviders/simple/SimpleCompletionProviderOpenRouter";
 import { fetchModelConfigById } from "./api/ModelsAPI";
 import { ApiKeys } from "./Models";
 
 /**
- * Creates a SimpleCompletionProvider for a given model config.
- * Extracts the provider prefix from the model ID and returns the right provider.
- * Returns null if the required API key is missing.
+ * Resolves a model config ID to a provider + model name string.
+ * Returns null if the config is missing, the provider unknown, or the API key absent.
  */
-async function createProviderForModelConfig(
+async function resolveProviderForModelConfig(
     modelConfigId: string,
     apiKeys: ApiKeys,
-): Promise<{ provider: ISimpleCompletionProvider; modelName: string } | null> {
+): Promise<{
+    provider: NonNullable<ReturnType<typeof createProviderByPrefix>>;
+    modelName: string;
+} | null> {
     const modelConfig = await fetchModelConfigById(modelConfigId);
     if (!modelConfig) return null;
 
@@ -29,43 +29,10 @@ async function createProviderForModelConfig(
 
     const providerPrefix = modelConfig.modelId.slice(0, separatorIdx);
     const modelName = modelConfig.modelId.slice(separatorIdx + 2);
+    const provider = createProviderByPrefix(providerPrefix, apiKeys);
+    if (!provider) return null;
 
-    switch (providerPrefix) {
-        case "anthropic": {
-            if (!apiKeys.anthropic) return null;
-            return {
-                provider: new SimpleCompletionProviderAnthropic(
-                    apiKeys.anthropic,
-                ),
-                modelName,
-            };
-        }
-        case "openai": {
-            if (!apiKeys.openai) return null;
-            return {
-                provider: new SimpleCompletionProviderOpenAI(apiKeys.openai),
-                modelName,
-            };
-        }
-        case "google": {
-            if (!apiKeys.google) return null;
-            return {
-                provider: new SimpleCompletionProviderGoogle(apiKeys.google),
-                modelName,
-            };
-        }
-        case "openrouter": {
-            if (!apiKeys.openrouter) return null;
-            return {
-                provider: new SimpleCompletionProviderOpenRouter(
-                    apiKeys.openrouter,
-                ),
-                modelName,
-            };
-        }
-        default:
-            return null;
-    }
+    return { provider, modelName };
 }
 
 /**
@@ -86,7 +53,7 @@ export async function simpleLLM(
     const apiKeys = settings.apiKeys || {};
 
     if (modelConfigId) {
-        const resolved = await createProviderForModelConfig(
+        const resolved = await resolveProviderForModelConfig(
             modelConfigId,
             apiKeys,
         );

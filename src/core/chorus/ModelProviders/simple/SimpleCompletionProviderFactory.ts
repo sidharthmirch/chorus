@@ -36,6 +36,21 @@ const PROVIDER_PRECEDENCE: ProviderConfig[] = [
 ];
 
 /**
+ * Creates a provider for the given provider prefix (e.g. "anthropic", "openrouter") using
+ * the matching API key. Returns null if the prefix is unknown or the key is missing.
+ */
+export function createProviderByPrefix(
+    prefix: string,
+    apiKeys: ApiKeys,
+): ISimpleCompletionProvider | null {
+    const config = PROVIDER_PRECEDENCE.find((p) => p.name === prefix);
+    if (!config) return null;
+    const apiKey = apiKeys[config.key];
+    if (!apiKey) return null;
+    return config.create(apiKey);
+}
+
+/**
  * Factory function that selects and returns an appropriate simple completion provider
  * based on available API keys. Follows explicit precedence order.
  *

@@ -3125,9 +3125,31 @@ export function useGenerateChatTitle() {
             }
 
             const settings = await SettingsManager.getInstance().get();
-            const titleModelConfigId =
-                settings.titleGenerationModelConfigId ??
-                settings.quickChat?.modelConfigId;
+            let titleModelConfigId = settings.titleGenerationModelConfigId;
+
+            // If no explicit title-generation model is set, prefer the ambient/quick-chat model
+            // (stored in app_metadata, not settings)
+            if (!titleModelConfigId) {
+                try {
+                    const quickChatModelConfig =
+                        await queryClient.ensureQueryData(
+                            modelConfigQueries.quickChat(),
+                        );
+                    if (quickChatModelConfig?.id) {
+                        titleModelConfigId = quickChatModelConfig.id;
+                    }
+                } catch (e) {
+                    console.warn(
+                        "Failed to resolve quick chat model config for title generation",
+                        e,
+                    );
+                }
+            }
+
+            // As a last resort, fall back to the quickChat model ID from settings
+            if (!titleModelConfigId) {
+                titleModelConfigId = settings.quickChat?.modelConfigId;
+            }
 
             const fullResponse = await simpleLLM(
                 `Based on this first message, write a 1-5 word title for the conversation. Try to put the most important words first. Format your response as <title>YOUR TITLE HERE</title>.

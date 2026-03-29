@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Select,
     SelectContent,
@@ -1169,6 +1169,27 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
         useState<string | undefined>(undefined);
     const modelConfigsQuery = useModelConfigs();
+    const cheapOpenRouterModelOptions = useMemo(
+        () =>
+            (modelConfigsQuery.data ?? [])
+                .filter(
+                    (c) =>
+                        c.modelId.startsWith("openrouter::") &&
+                        c.isEnabled &&
+                        !c.isInternal &&
+                        !c.isDeprecated,
+                )
+                .sort((a, b) => {
+                    const priceA =
+                        (a.promptPricePerToken ?? Infinity) +
+                        (a.completionPricePerToken ?? Infinity);
+                    const priceB =
+                        (b.promptPricePerToken ?? Infinity) +
+                        (b.completionPricePerToken ?? Infinity);
+                    return priceA - priceB;
+                }),
+        [modelConfigsQuery.data],
+    );
     const [lmStudioBaseUrl, setLmStudioBaseUrl] = useState(
         "http://localhost:1234/v1",
     );
@@ -1238,6 +1259,14 @@ export default function Settings({ tab = "general" }: SettingsProps) {
 
         // Invalidate the API keys query so components using useApiKeys will refresh
         void queryClient.invalidateQueries({ queryKey: ["apiKeys"] });
+
+        // When the OpenRouter key changes, model configs need to be re-fetched
+        // (OpenRouter models are only downloaded when the key is present)
+        if (provider === "openrouter") {
+            void queryClient.invalidateQueries({
+                queryKey: ["modelConfigs"],
+            });
+        }
     };
 
     useEffect(() => {
@@ -1621,37 +1650,16 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                             <SelectItem value="__ambient__">
                                                 Ambient model (default)
                                             </SelectItem>
-                                            {(modelConfigsQuery.data ?? [])
-                                                .filter(
-                                                    (c) =>
-                                                        c.modelId.startsWith(
-                                                            "openrouter::",
-                                                        ) &&
-                                                        c.isEnabled &&
-                                                        !c.isInternal &&
-                                                        !c.isDeprecated,
-                                                )
-                                                .sort((a, b) => {
-                                                    const priceA =
-                                                        (a.promptPricePerToken ??
-                                                            Infinity) +
-                                                        (a.completionPricePerToken ??
-                                                            Infinity);
-                                                    const priceB =
-                                                        (b.promptPricePerToken ??
-                                                            Infinity) +
-                                                        (b.completionPricePerToken ??
-                                                            Infinity);
-                                                    return priceA - priceB;
-                                                })
-                                                .map((config) => (
+                                            {cheapOpenRouterModelOptions.map(
+                                                (config) => (
                                                     <SelectItem
                                                         key={config.id}
                                                         value={config.id}
                                                     >
                                                         {config.displayName}
                                                     </SelectItem>
-                                                ))}
+                                                ),
+                                            )}
                                         </SelectContent>
                                     </Select>
                                 </div>
