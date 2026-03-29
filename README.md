@@ -14,7 +14,7 @@
 
 - Added profiles for favorite models in the chat window
 - Dynamically fetch and select models from providers
-- Prompt profiles 
+- Prompt profiles
 
 # Getting Started
 
@@ -34,6 +34,10 @@ git lfs pull
 pnpm run setup  # This is also our Conductor setup script
 pnpm run dev    # This is also our Conductor run script
 ```
+
+# Building Chorus
+
+To build Chorus from source, please refer to the [BUILD.md](BUILD.md) file.
 
 # Nightly Build
 

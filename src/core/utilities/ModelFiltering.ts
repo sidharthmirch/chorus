@@ -1,4 +1,4 @@
-import { ModelConfig, ProviderVisibility, ModelProfile } from "@core/chorus/Models";
+import { ModelConfig, ModelProfile } from "@core/chorus/Models";
 
 /**
  * Centralized filtering utility that combines provider visibility and profile filtering.
