@@ -2612,5 +2612,56 @@ You have full access to bash commands on the user''''s computer. If you write a 
                     ('pp-creative-writer', 'Creative Writer', 'You are a skilled creative writing partner. Focus on vivid, engaging language, compelling narrative, and emotional resonance. Help with brainstorming ideas, developing characters, structuring plots, and refining prose. Offer specific suggestions rather than vague encouragement.', '✏️', 'system');
             "#,
         },
+        Migration {
+            version: 142,
+            description: "update ambient gemini to gemini 2.5 flash",
+            kind: MigrationKind::Up,
+            sql: r#"
+                -- Add Ambient Gemini Flash config using Gemini 2.5 Flash
+                INSERT OR REPLACE INTO model_configs (author, id, model_id, display_name, system_prompt, is_default) VALUES
+                    ('user', 'google::ambient-gemini-2.5-flash', 'google::gemini-2.5-flash-preview-04-17', 'Ambient Gemini Flash',
+                    'Respond concisely. Use one or two sentences if possible.
+
+If you see a screenshot, it means the system has automatically attached a screenshot showing the current user''''s computer screen. Use these screenshots as needed to help answer the user''''s questions. There''''s no need to describe the screenshot or comment on it unless it relates to the user''''s question.
+
+If you cannot see a screenshot, it means the user has disabled vision mode, and if they ask something that requires a screenshot, you should ask them to enable vision mode.
+
+You have full access to bash commands on the user''''s computer. If you write a bash command in a ```sh markdown block, the user will be able to click ''run'' to quickly execute the command. Use this to help answer questions or perform tasks if it''''s relevant. Assume a MacOS environment.',
+                    0);
+
+                -- Migrate users still on the deprecated ambient Gemini config
+                UPDATE app_metadata SET value = 'google::ambient-gemini-2.5-flash'
+                WHERE key = 'quick_chat_model_config_id'
+                AND value = 'google::ambient-gemini-2.5-pro-preview-03-25';
+
+                -- Mark old ambient config as deprecated
+                UPDATE model_configs SET display_name = 'Ambient Gemini (Deprecated)'
+                WHERE id = 'google::ambient-gemini-2.5-pro-preview-03-25';
+            "#,
+        },
+        Migration {
+            version: 143,
+            description: "add gemini 2.5 flash lite and update ambient to use it",
+            kind: MigrationKind::Up,
+            sql: r#"
+                -- Add Gemini 2.5 Flash Lite (stable)
+                INSERT OR REPLACE INTO models (id, display_name, is_enabled, supported_attachment_types) VALUES
+                    ('google::gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 1, '["text", "image", "webpage"]');
+
+                INSERT OR REPLACE INTO model_configs (author, id, model_id, display_name, system_prompt, is_default) VALUES
+                    ('system', 'google::gemini-2.5-flash-lite', 'google::gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', '', 0);
+
+                -- Deprecate old Gemini 2.0 Flash Lite preview
+                UPDATE models SET display_name = 'Gemini 2.0 Flash Lite (Deprecated)'
+                WHERE id = 'google::gemini-2.0-flash-lite-preview-02-05';
+
+                UPDATE model_configs SET display_name = 'Gemini 2.0 Flash Lite (Deprecated)'
+                WHERE id = 'google::gemini-2.0-flash-lite-preview-02-05';
+
+                -- Update ambient config to use the stable flash-lite model
+                UPDATE model_configs SET model_id = 'google::gemini-2.5-flash-lite'
+                WHERE id = 'google::ambient-gemini-2.5-flash';
+            "#,
+        },
     ];
 }
