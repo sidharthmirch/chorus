@@ -14,7 +14,7 @@
 
 -   Added profiles for favorite models in the chat window
 -   Dynamically fetch and select models from providers
--   Prompt profiles
+-   Prompt profiles: Choose your preferred chat persona
 
 # Getting Started
 
