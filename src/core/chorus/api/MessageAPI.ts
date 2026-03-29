@@ -2501,6 +2501,7 @@ function useStreamToolsMessage() {
     const stopMessageStreaming = useStopMessageStreaming();
     const getToolsets = useGetToolsets();
     const getProjectContext = useGetProjectContextLLMMessage();
+    const { isQuickChatWindow } = useAppContext();
 
     return useMutation({
         mutationKey: ["streamToolsMessage"] as const,
@@ -2579,7 +2580,7 @@ function useStreamToolsMessage() {
                     streamingToken,
                 });
 
-                const toolsets = await getToolsets();
+                const toolsets = isQuickChatWindow ? [] : await getToolsets();
                 const tools = toolsets.flatMap((toolset) => {
                     return toolset.listTools();
                 });
