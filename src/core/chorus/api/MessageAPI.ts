@@ -57,6 +57,7 @@ import {
     useModelConfigsPromise,
     fetchModelConfigById,
 } from "./ModelsAPI";
+import { SettingsManager } from "@core/utilities/Settings";
 import { Attachment, AttachmentDBRow, readAttachment } from "./AttachmentsAPI";
 import { fetchChatPromptProfileSystemPrompt } from "./PromptProfilesAPI";
 
@@ -3123,6 +3124,33 @@ export function useGenerateChatTitle() {
                 return { skipped: true };
             }
 
+            const settings = await SettingsManager.getInstance().get();
+            let titleModelConfigId = settings.titleGenerationModelConfigId;
+
+            // If no explicit title-generation model is set, prefer the ambient/quick-chat model
+            // (stored in app_metadata, not settings)
+            if (!titleModelConfigId) {
+                try {
+                    const quickChatModelConfig =
+                        await queryClient.ensureQueryData(
+                            modelConfigQueries.quickChat(),
+                        );
+                    if (quickChatModelConfig?.id) {
+                        titleModelConfigId = quickChatModelConfig.id;
+                    }
+                } catch (e) {
+                    console.warn(
+                        "Failed to resolve quick chat model config for title generation",
+                        e,
+                    );
+                }
+            }
+
+            // As a last resort, fall back to the quickChat model ID from settings
+            if (!titleModelConfigId) {
+                titleModelConfigId = settings.quickChat?.modelConfigId;
+            }
+
             const fullResponse = await simpleLLM(
                 `Based on this first message, write a 1-5 word title for the conversation. Try to put the most important words first. Format your response as <title>YOUR TITLE HERE</title>.
 If there's no information in the message, just return "Untitled Chat".
@@ -3132,6 +3160,7 @@ ${userMessageText}
                 {
                     maxTokens: 100,
                 },
+                titleModelConfigId,
             );
             // Extract title from XML tags and clean it up
             const match = fullResponse.match(/<title>(.*?)<\/title>/s);
