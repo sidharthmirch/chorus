@@ -34,7 +34,7 @@ function readPromptProfile(row: PromptProfileDBRow): PromptProfile {
 
 export async function fetchPromptProfiles(): Promise<PromptProfile[]> {
     const rows = await db.select<PromptProfileDBRow[]>(
-        "SELECT id, name, system_prompt, icon, author, created_at, updated_at FROM prompt_profiles ORDER BY created_at ASC"
+        "SELECT id, name, system_prompt, icon, author, created_at, updated_at FROM prompt_profiles ORDER BY created_at ASC",
     );
     return rows.map(readPromptProfile);
 }
@@ -45,14 +45,14 @@ export async function fetchPromptProfiles(): Promise<PromptProfile[]> {
  * Intended for use inside mutations (not a hook).
  */
 export async function fetchChatPromptProfileSystemPrompt(
-    chatId: string
+    chatId: string,
 ): Promise<string | undefined> {
     const rows = await db.select<{ system_prompt: string }[]>(
         `SELECT pp.system_prompt
          FROM prompt_profile_chats ppc
          JOIN prompt_profiles pp ON pp.id = ppc.prompt_profile_id
          WHERE ppc.chat_id = ?`,
-        [chatId]
+        [chatId],
     );
     return rows.length > 0 ? rows[0].system_prompt : undefined;
 }
@@ -61,11 +61,11 @@ export async function fetchChatPromptProfileSystemPrompt(
  * Fetch the prompt profile ID associated with a chat.
  */
 async function fetchChatPromptProfileId(
-    chatId: string
+    chatId: string,
 ): Promise<string | undefined> {
     const rows = await db.select<{ prompt_profile_id: string }[]>(
         "SELECT prompt_profile_id FROM prompt_profile_chats WHERE chat_id = ?",
-        [chatId]
+        [chatId],
     );
     return rows.length > 0 ? rows[0].prompt_profile_id : undefined;
 }
@@ -87,7 +87,9 @@ export function useChatPromptProfileId(chatId: string) {
 /**
  * Returns the full PromptProfile for a chat, or undefined if none is set.
  */
-export function useChatPromptProfile(chatId: string): PromptProfile | undefined {
+export function useChatPromptProfile(
+    chatId: string,
+): PromptProfile | undefined {
     const { data: profiles } = usePromptProfiles();
     const { data: profileId } = useChatPromptProfileId(chatId);
     if (!profiles || !profileId) return undefined;
@@ -111,12 +113,12 @@ export function useSetChatPromptProfile() {
             if (profileId) {
                 await db.execute(
                     "INSERT OR REPLACE INTO prompt_profile_chats (id, chat_id, prompt_profile_id) VALUES (?, ?, ?)",
-                    [uuidv4(), chatId, profileId]
+                    [uuidv4(), chatId, profileId],
                 );
             } else {
                 await db.execute(
                     "DELETE FROM prompt_profile_chats WHERE chat_id = ?",
-                    [chatId]
+                    [chatId],
                 );
             }
         },
@@ -142,7 +144,7 @@ export function useCreatePromptProfile() {
         }) => {
             await db.execute(
                 "INSERT INTO prompt_profiles (id, name, system_prompt, icon, author) VALUES (?, ?, ?, ?, 'user')",
-                [uuidv4(), name, systemPrompt, icon ?? null]
+                [uuidv4(), name, systemPrompt, icon ?? null],
             );
         },
         onSuccess: async () => {
@@ -169,7 +171,7 @@ export function useUpdatePromptProfile() {
         }) => {
             await db.execute(
                 "UPDATE prompt_profiles SET name = ?, system_prompt = ?, icon = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                [name, systemPrompt, icon ?? null, id]
+                [name, systemPrompt, icon ?? null, id],
             );
         },
         onSuccess: async () => {
@@ -186,7 +188,7 @@ export function useDeletePromptProfile() {
         mutationFn: async ({ id }: { id: string }) => {
             await db.execute(
                 "DELETE FROM prompt_profile_chats WHERE prompt_profile_id = ?",
-                [id]
+                [id],
             );
             await db.execute("DELETE FROM prompt_profiles WHERE id = ?", [id]);
         },

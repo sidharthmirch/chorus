@@ -87,7 +87,7 @@ export function QuickChatModelSelector({
             getFilteredModelConfigs(
                 modelConfigsQuery?.data ?? [],
                 providerVisibilityMap,
-                null // Active profile not applied to ambient chat
+                null, // Active profile not applied to ambient chat
             ).filter(
                 (config) =>
                     config.isEnabled &&

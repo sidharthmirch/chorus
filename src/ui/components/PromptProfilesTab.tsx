@@ -101,9 +101,14 @@ export function PromptProfilesTab() {
         id: string,
         name: string,
         systemPrompt: string,
-        icon: string
+        icon: string,
     ) => {
-        updateProfile.mutate({ id, name, systemPrompt, icon: icon || undefined });
+        updateProfile.mutate({
+            id,
+            name,
+            systemPrompt,
+            icon: icon || undefined,
+        });
         setEditingId(null);
     };
 
@@ -112,8 +117,8 @@ export function PromptProfilesTab() {
             <div>
                 <h2 className="text-2xl font-semibold mb-2">Prompt Profiles</h2>
                 <p className="text-sm text-muted-foreground">
-                    Prompt profiles inject a persona or role into your chats. Select
-                    a profile from the chat input toolbar to activate it.
+                    Prompt profiles inject a persona or role into your chats.
+                    Select a profile from the chat input toolbar to activate it.
                 </p>
             </div>
 
@@ -154,7 +159,9 @@ export function PromptProfilesTab() {
                     <div className="flex gap-2">
                         <Button
                             onClick={handleCreate}
-                            disabled={!newName.trim() || !newSystemPrompt.trim()}
+                            disabled={
+                                !newName.trim() || !newSystemPrompt.trim()
+                            }
                         >
                             Save
                         </Button>
@@ -192,7 +199,9 @@ export function PromptProfilesTab() {
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 mb-1">
                                     {p.icon && (
-                                        <span className="text-base">{p.icon}</span>
+                                        <span className="text-base">
+                                            {p.icon}
+                                        </span>
                                     )}
                                     <h3 className="font-semibold">{p.name}</h3>
                                     {p.author === "system" && (
@@ -227,7 +236,7 @@ export function PromptProfilesTab() {
                                 </Button>
                             </div>
                         </div>
-                    )
+                    ),
                 )}
             </div>
         </div>

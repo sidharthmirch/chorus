@@ -13,7 +13,9 @@ type ProviderVisibilityDBRow = {
     is_visible: number;
 };
 
-function readProviderVisibility(row: ProviderVisibilityDBRow): ProviderVisibility {
+function readProviderVisibility(
+    row: ProviderVisibilityDBRow,
+): ProviderVisibility {
     return {
         providerName: row.provider_name,
         modelId: row.model_id,
@@ -24,9 +26,11 @@ function readProviderVisibility(row: ProviderVisibilityDBRow): ProviderVisibilit
 /**
  * Fetch all provider visibility records from the database.
  */
-export async function fetchProviderVisibleModels(): Promise<ProviderVisibility[]> {
+export async function fetchProviderVisibleModels(): Promise<
+    ProviderVisibility[]
+> {
     const rows = await db.select<ProviderVisibilityDBRow[]>(
-        "SELECT provider_name, model_id, is_visible FROM provider_visible_models"
+        "SELECT provider_name, model_id, is_visible FROM provider_visible_models",
     );
     return rows.map(readProviderVisibility);
 }
@@ -59,7 +63,7 @@ export function useSetModelVisibility() {
         }) => {
             await db.execute(
                 "INSERT OR REPLACE INTO provider_visible_models (provider_name, model_id, is_visible) VALUES (?, ?, ?)",
-                [providerName, modelId, isVisible ? 1 : 0]
+                [providerName, modelId, isVisible ? 1 : 0],
             );
         },
         onSuccess: async () => {
@@ -90,7 +94,7 @@ export function useSetAllProviderModelsVisible() {
             for (const modelId of modelIds) {
                 await db.execute(
                     "INSERT OR REPLACE INTO provider_visible_models (provider_name, model_id, is_visible) VALUES (?, ?, ?)",
-                    [providerName, modelId, value]
+                    [providerName, modelId, value],
                 );
             }
         },
