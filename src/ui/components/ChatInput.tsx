@@ -694,7 +694,8 @@ export function ChatInput({
                             onToggleModelConfig: (id) =>
                                 void toggleCompareModelConfig(id),
                             onClearModelConfigs: clearCompareModelConfigs,
-                            onSelectAllModelConfigs: selectAllCompareModelConfigs,
+                            onSelectAllModelConfigs:
+                                selectAllCompareModelConfigs,
                         }}
                     />
                 )}
