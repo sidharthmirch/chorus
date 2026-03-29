@@ -3,7 +3,7 @@ import React from "react";
 import { useAppContext } from "@ui/hooks/useAppContext";
 import AutoExpandingTextarea from "./AutoExpandingTextarea";
 import { AttachmentAddPill, AttachmentDropArea } from "./AttachmentsViews";
-import { AttachmentType } from "@core/chorus/Models";
+import { AttachmentType, ModelConfig } from "@core/chorus/Models";
 import {
     MANAGE_MODELS_COMPARE_DIALOG_ID,
     ManageModelsBox,
@@ -440,6 +440,20 @@ export function ChatInput({
         })();
     }, [posthog, updateSelectedModelConfigsCompare]);
 
+    const selectAllCompareModelConfigs = useCallback(
+        (modelConfigs: ModelConfig[]) => {
+            void (async () => {
+                await updateSelectedModelConfigsCompare.mutateAsync({
+                    modelConfigs,
+                });
+                void posthog.capture("selected_model_configs_updated", {
+                    selectedModelConfigs: modelConfigs.map((m) => m.id),
+                });
+            })();
+        },
+        [posthog, updateSelectedModelConfigsCompare],
+    );
+
     // Update focus when dialog closes or chat id changes
     useEffect(() => {
         if (isDialogClosed) {
@@ -680,6 +694,8 @@ export function ChatInput({
                             onToggleModelConfig: (id) =>
                                 void toggleCompareModelConfig(id),
                             onClearModelConfigs: clearCompareModelConfigs,
+                            onSelectAllModelConfigs:
+                                selectAllCompareModelConfigs,
                         }}
                     />
                 )}

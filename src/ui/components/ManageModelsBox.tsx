@@ -47,6 +47,7 @@ import { hasApiKey } from "@core/utilities/ProxyUtils";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import { useSettings } from "./hooks/useSettings";
+import { useShortcut } from "@ui/hooks/useShortcut";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import {
     useActiveModelProfile,
@@ -114,6 +115,7 @@ type ModelPickerMode =
           type: "default"; // multiselect for updating selectedModelConfigs (deprecated)
           onToggleModelConfig: (id: string) => void;
           onClearModelConfigs: () => void;
+          onSelectAllModelConfigs: (modelConfigs: ModelConfig[]) => void;
       }
     | {
           type: "add"; // used for adding to an existing set
@@ -585,6 +587,28 @@ export function ManageModelsBox({
         });
     }, [searchQuery]);
 
+    useShortcut(
+        ["meta", "shift", "a"],
+        () => {
+            if (mode.type === "default") {
+                const allVisible = [
+                    ...modelGroups.directByProvider.anthropic,
+                    ...modelGroups.directByProvider.openai,
+                    ...modelGroups.directByProvider.google,
+                    ...modelGroups.directByProvider.grok,
+                    ...modelGroups.directByProvider.perplexity,
+                    ...modelGroups.custom,
+                    ...modelGroups.local,
+                    ...modelGroups.openrouter,
+                ];
+                mode.onSelectAllModelConfigs(allVisible);
+            }
+        },
+        {
+            enableOnDialogIds: [id],
+        },
+    );
+
     return (
         <>
             <CommandDialog
@@ -676,8 +700,37 @@ export function ManageModelsBox({
                         }}
                         autoFocus
                     />
-                    <div className="px-3 py-2 border-b border-border">
+                    <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
                         <ProfileSelector />
+                        {mode.type === "default" && (
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    const allVisible = [
+                                        ...modelGroups.directByProvider
+                                            .anthropic,
+                                        ...modelGroups.directByProvider.openai,
+                                        ...modelGroups.directByProvider.google,
+                                        ...modelGroups.directByProvider.grok,
+                                        ...modelGroups.directByProvider
+                                            .perplexity,
+                                        ...modelGroups.custom,
+                                        ...modelGroups.local,
+                                        ...modelGroups.openrouter,
+                                    ];
+                                    mode.onSelectAllModelConfigs(allVisible);
+                                }}
+                                className="text-sm text-muted-foreground hover:text-foreground flex-shrink-0 flex items-center gap-1"
+                                title="Select all visible models"
+                            >
+                                Select All{" "}
+                                <span className="text-[10px] inline-flex items-center gap-0.5 bg-muted-foreground/10 rounded px-1 py-0.5">
+                                    <span>⌘</span>
+                                    <span>⇧</span>
+                                    <span>A</span>
+                                </span>
+                            </button>
+                        )}
                     </div>
                 </div>
                 <CommandList ref={listRef}>
