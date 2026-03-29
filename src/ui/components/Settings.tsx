@@ -40,6 +40,8 @@ import {
     Import,
     BookOpen,
     Globe,
+    Eye,
+    Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { config } from "@core/config";
@@ -87,6 +89,9 @@ import { dialogActions } from "@core/infra/DialogStore";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { PermissionsTab } from "./PermissionsTab";
 import { cn } from "@ui/lib/utils";
+
+import { VisibleModelsTab } from "./VisibleModelsTab";
+import { ModelProfilesTab } from "./ModelProfilesTab";
 
 type ToolsetFormProps = {
     toolset: CustomToolsetConfig;
@@ -1095,6 +1100,8 @@ export type SettingsTabId =
     | "import"
     | "system-prompt"
     | "api-keys"
+    | "visible-models"
+    | "model-profiles"
     | "quick-chat"
     | "connections"
     | "permissions"
@@ -1111,6 +1118,8 @@ const TABS: Record<SettingsTabId, TabConfig> = {
     import: { label: "Import", icon: Import },
     "system-prompt": { label: "System Prompt", icon: FileText },
     "api-keys": { label: "API Keys", icon: Key },
+    "visible-models": { label: "Visible Models", icon: Eye },
+    "model-profiles": { label: "Model Profiles", icon: Layers },
     "quick-chat": { label: "Ambient Chat", icon: Fullscreen },
     connections: { label: "Connections", icon: PlugIcon },
     permissions: { label: "Tool Permissions", icon: ShieldCheckIcon },
@@ -1775,6 +1784,10 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === "visible-models" && <VisibleModelsTab />}
+
+                    {activeTab === "model-profiles" && <ModelProfilesTab />}
 
                     {activeTab === "quick-chat" && (
                         <div className="space-y-6 max-w-2xl">

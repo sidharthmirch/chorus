@@ -20,6 +20,8 @@ import { useMemo } from "react";
 import { ALLOWED_MODEL_IDS_FOR_QUICK_CHAT } from "@ui/lib/models";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
+import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
+import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 
 interface ModelSelectorProps {
     onModelSelect: (modelId: string) => void;
@@ -78,9 +80,15 @@ export function QuickChatModelSelector({
         [apiKeys],
     );
 
+    const providerVisibilityMap = useProviderVisibilityMap();
+
     const quickChatSelectableModelConfigs = useMemo(
         () =>
-            modelConfigsQuery?.data?.filter(
+            getFilteredModelConfigs(
+                modelConfigsQuery?.data ?? [],
+                providerVisibilityMap,
+                null // Active profile not applied to ambient chat
+            ).filter(
                 (config) =>
                     config.isEnabled &&
                     !config.id.includes("chorus") &&
@@ -88,7 +96,7 @@ export function QuickChatModelSelector({
                     ALLOWED_MODEL_IDS_FOR_QUICK_CHAT.includes(config.id) &&
                     isModelAllowed(config),
             ) ?? [],
-        [modelConfigsQuery, isModelAllowed],
+        [modelConfigsQuery, isModelAllowed, providerVisibilityMap],
     );
 
     const handleModelSelect = useCallback(
