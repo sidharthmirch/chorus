@@ -10,6 +10,12 @@
   <img src="https://github.com/user-attachments/assets/771262eb-5a0e-40cb-b1a5-9df6b903c626" alt="Chorus screenshot" />
 </p>
 
+# Fork changes
+
+- Added profiles for favorite models in the chat window
+- Dynamically fetch and select models from providers
+- Prompt profiles 
+
 # Getting Started
 
 You will need:
