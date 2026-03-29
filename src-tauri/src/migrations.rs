@@ -2554,5 +2554,32 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 UPDATE projects SET total_cost_usd = 0.0 WHERE total_cost_usd IS NULL;
             "#,
         },
+        Migration {
+            version: 139,
+            description: "add provider_visible_models table",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE provider_visible_models (
+                    provider_name TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    is_visible BOOLEAN DEFAULT 1,
+                    PRIMARY KEY (provider_name, model_id)
+                );
+            "#,
+        },
+        Migration {
+            version: 140,
+            description: "add model_profiles table",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE model_profiles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    model_config_ids TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            "#,
+        },
     ];
 }

@@ -47,6 +47,20 @@ import { hasApiKey } from "@core/utilities/ProxyUtils";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import { useSettings } from "./hooks/useSettings";
+import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
+import {
+    useActiveModelProfile,
+    useModelProfiles,
+    useSetActiveModelProfile,
+} from "@core/chorus/api/ModelProfilesAPI";
+import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "./ui/select";
 
 // Helper function to filter models by search terms
 const filterBySearch = (models: ModelConfig[], searchTerms: string[]) => {
@@ -295,6 +309,35 @@ export const MANAGE_MODELS_COMPARE_DIALOG_ID = "manage-models-compare";
 export const MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID =
     "manage-models-compare-inline"; // dialog for the inline add model button
 
+function ProfileSelector() {
+    const { data: profiles } = useModelProfiles();
+    const activeProfile = useActiveModelProfile();
+    const setActiveProfile = useSetActiveModelProfile();
+
+    if (!profiles || profiles.length === 0) return null;
+
+    return (
+        <Select
+            value={activeProfile?.id ?? "none"}
+            onValueChange={(value) =>
+                setActiveProfile.mutate(value === "none" ? null : value)
+            }
+        >
+            <SelectTrigger className="h-7 text-xs px-2.5 py-1">
+                <SelectValue placeholder="No Profile" />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="none">No Profile</SelectItem>
+                {profiles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+}
+
 /** Main component that handles all model grouping and UI. */
 export function ManageModelsBox({
     mode,
@@ -474,18 +517,24 @@ export function ManageModelsBox({
     }, [navigate]);
 
     // Compute filtered model groups based on search
+    const providerVisibilityMap = useProviderVisibilityMap();
+    const activeProfile = useActiveModelProfile();
     const modelGroups = useMemo(() => {
         const searchTerms = searchQuery
             .toLowerCase()
             .split(" ")
             .filter(Boolean);
 
-        const nonInternalModelConfigs =
-            modelConfigs.data?.filter((m) => !m.isInternal) ?? [];
-        const systemModels = nonInternalModelConfigs.filter(
+        const filtered = getFilteredModelConfigs(
+            modelConfigs.data ?? [],
+            providerVisibilityMap,
+            activeProfile
+        );
+
+        const systemModels = filtered.filter(
             (m) => m.author === "system",
         );
-        const userModels = nonInternalModelConfigs.filter(
+        const userModels = filtered.filter(
             (m) => m.author === "user",
         );
 
@@ -525,7 +574,7 @@ export function ManageModelsBox({
             openrouter: filterBySearch(openrouterModels, searchTerms),
             directByProvider,
         };
-    }, [modelConfigs.data, searchQuery]);
+    }, [modelConfigs.data, searchQuery, providerVisibilityMap, activeProfile]);
 
     useLayoutEffect(() => {
         if (!listRef.current) return;
@@ -631,6 +680,9 @@ export function ManageModelsBox({
                         }}
                         autoFocus
                     />
+                    <div className="px-3 py-2 border-b border-border">
+                        <ProfileSelector />
+                    </div>
                 </div>
                 <CommandList ref={listRef}>
                     <CommandEmpty>No models found</CommandEmpty>
