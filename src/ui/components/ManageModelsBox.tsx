@@ -587,25 +587,37 @@ export function ManageModelsBox({
         });
     }, [searchQuery]);
 
+    // All visible, selectable models — used by "Select All" button and shortcut.
+    // Excludes models hidden behind an API key wall, and OpenRouter models when
+    // that section is collapsed.
+    const selectableVisibleModels = useMemo(() => {
+        const all = [
+            ...Object.values(modelGroups.directByProvider).flat(),
+            ...modelGroups.custom,
+            ...modelGroups.local,
+            ...(showOpenRouter ? modelGroups.openrouter : []),
+        ];
+        return all.filter((m) => {
+            const provider = getProviderName(m.modelId);
+            if (provider === "ollama" || provider === "lmstudio") return true;
+            if (!apiKeys || !provider) return false;
+            return hasApiKey(
+                provider.toLowerCase() as keyof typeof apiKeys,
+                apiKeys,
+            );
+        });
+    }, [modelGroups, showOpenRouter, apiKeys]);
+
     useShortcut(
         ["meta", "shift", "a"],
         () => {
             if (mode.type === "default") {
-                const allVisible = [
-                    ...modelGroups.directByProvider.anthropic,
-                    ...modelGroups.directByProvider.openai,
-                    ...modelGroups.directByProvider.google,
-                    ...modelGroups.directByProvider.grok,
-                    ...modelGroups.directByProvider.perplexity,
-                    ...modelGroups.custom,
-                    ...modelGroups.local,
-                    ...modelGroups.openrouter,
-                ];
-                mode.onSelectAllModelConfigs(allVisible);
+                mode.onSelectAllModelConfigs(selectableVisibleModels);
             }
         },
         {
             enableOnDialogIds: [id],
+            enabled: mode.type === "default",
         },
     );
 
@@ -706,19 +718,9 @@ export function ManageModelsBox({
                             <button
                                 onClick={(e) => {
                                     e.preventDefault();
-                                    const allVisible = [
-                                        ...modelGroups.directByProvider
-                                            .anthropic,
-                                        ...modelGroups.directByProvider.openai,
-                                        ...modelGroups.directByProvider.google,
-                                        ...modelGroups.directByProvider.grok,
-                                        ...modelGroups.directByProvider
-                                            .perplexity,
-                                        ...modelGroups.custom,
-                                        ...modelGroups.local,
-                                        ...modelGroups.openrouter,
-                                    ];
-                                    mode.onSelectAllModelConfigs(allVisible);
+                                    mode.onSelectAllModelConfigs(
+                                        selectableVisibleModels,
+                                    );
                                 }}
                                 className="text-sm text-muted-foreground hover:text-foreground flex-shrink-0 flex items-center gap-1"
                                 title="Select all visible models"
