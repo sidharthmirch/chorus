@@ -42,6 +42,7 @@ import {
     Globe,
     Eye,
     Layers,
+    UserCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { config } from "@core/config";
@@ -92,6 +93,7 @@ import { cn } from "@ui/lib/utils";
 
 import { VisibleModelsTab } from "./VisibleModelsTab";
 import { ModelProfilesTab } from "./ModelProfilesTab";
+import { PromptProfilesTab } from "./PromptProfilesTab";
 
 type ToolsetFormProps = {
     toolset: CustomToolsetConfig;
@@ -1102,6 +1104,7 @@ export type SettingsTabId =
     | "api-keys"
     | "visible-models"
     | "model-profiles"
+    | "prompt-profiles"
     | "quick-chat"
     | "connections"
     | "permissions"
@@ -1120,6 +1123,7 @@ const TABS: Record<SettingsTabId, TabConfig> = {
     "api-keys": { label: "API Keys", icon: Key },
     "visible-models": { label: "Visible Models", icon: Eye },
     "model-profiles": { label: "Model Profiles", icon: Layers },
+    "prompt-profiles": { label: "Prompt Profiles", icon: UserCircle },
     "quick-chat": { label: "Ambient Chat", icon: Fullscreen },
     connections: { label: "Connections", icon: PlugIcon },
     permissions: { label: "Tool Permissions", icon: ShieldCheckIcon },
@@ -1788,6 +1792,8 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                     {activeTab === "visible-models" && <VisibleModelsTab />}
 
                     {activeTab === "model-profiles" && <ModelProfilesTab />}
+
+                    {activeTab === "prompt-profiles" && <PromptProfilesTab />}
 
                     {activeTab === "quick-chat" && (
                         <div className="space-y-6 max-w-2xl">
