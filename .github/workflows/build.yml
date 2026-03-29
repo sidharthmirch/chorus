@@ -4,10 +4,24 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (e.g. v0.14.5). Leave empty to skip release creation."
+        required: false
+        default: ""
 
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,12 +41,61 @@ jobs:
           version: 9
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Build for ${{ matrix.target }}
+        run: |
+          rustup target add ${{ matrix.target }}
+          pnpm tauri build --target ${{ matrix.target }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Zip .app bundle
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/macos
+          zip -r Chorus.app.zip Chorus.app
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle
-          path: src-tauri/target/release/bundle/macos/*.app
+          name: bundle-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Chorus.app.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+  release:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Rename artifacts for clarity
+        run: |
+          mkdir -p release-assets
+          # aarch64 (Apple Silicon)
+          cp artifacts/bundle-aarch64-apple-darwin/macos/Chorus.app.zip release-assets/Chorus-aarch64.app.zip
+          cp artifacts/bundle-aarch64-apple-darwin/dmg/*.dmg release-assets/ 2>/dev/null && \
+            mv release-assets/Chorus_*.dmg release-assets/Chorus-aarch64.dmg || true
+          # x86_64 (Intel)
+          cp artifacts/bundle-x86_64-apple-darwin/macos/Chorus.app.zip release-assets/Chorus-x86_64.app.zip
+          cp artifacts/bundle-x86_64-apple-darwin/dmg/*.dmg release-assets/ 2>/dev/null && \
+            mv release-assets/Chorus_*.dmg release-assets/Chorus-x86_64.dmg || true
+          ls -la release-assets/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: ${{ github.event.inputs.release_tag }}
+          body: |
+            ## Chorus ${{ github.event.inputs.release_tag }}
+
+            ### Downloads
+            - **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
+            - **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
+
+            > **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
+          files: release-assets/*
+          draft: false
+          prerelease: false
