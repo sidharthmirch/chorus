@@ -186,7 +186,7 @@ export function VisibleModelsTab() {
                                         size="sm"
                                         onClick={() =>
                                             setAllVisibility.mutate({
-                                                providerName: provider as any,
+                                                providerName: provider,
                                                 modelIds:
                                                     visibleProviderModels.map(
                                                         (m) => m.modelId,
