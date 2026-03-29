@@ -42,6 +42,7 @@ import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
+import { PromptProfilePill } from "./PromptProfilePill";
 
 const DEFAULT_CHAT_INPUT_ID = "default-chat-input";
 const REPLY_CHAT_INPUT_ID = "reply-chat-input";
@@ -625,6 +626,7 @@ export function ChatInput({
                             />
                         )}
                         {!isReply && <ToolsBox />}
+                        {!isReply && <PromptProfilePill chatId={chatId} />}
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 h-7">

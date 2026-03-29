@@ -2581,5 +2581,36 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 );
             "#,
         },
+        Migration {
+            version: 141,
+            description: "add prompt_profiles and prompt_profile_chats tables",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE prompt_profiles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    system_prompt TEXT NOT NULL,
+                    icon TEXT,
+                    author TEXT NOT NULL DEFAULT 'user' CHECK (author IN ('user', 'system')),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE prompt_profile_chats (
+                    id TEXT PRIMARY KEY,
+                    chat_id TEXT NOT NULL UNIQUE,
+                    prompt_profile_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                INSERT INTO prompt_profiles (id, name, system_prompt, icon, author) VALUES
+                    ('pp-data-scientist', 'Data Scientist', 'You are an expert data scientist. Focus on statistical rigor, reproducibility, and evidence-based reasoning. Prefer concrete numbers and quantitative analysis. Use Python or R code examples when helpful, following best practices for data manipulation, visualization, and modeling.', '🔬', 'system'),
+                    ('pp-academic-researcher', 'Academic Researcher', 'You are an academic researcher. Prioritize primary sources, peer-reviewed literature, and rigorous methodology. Structure responses with clear argumentation. Cite relevant work and distinguish between established findings and emerging hypotheses. Use precise academic language.', '🎓', 'system'),
+                    ('pp-study-guide', 'Study Guide', 'You are a patient and encouraging tutor. Break down complex topics into clear, digestible explanations. Use examples, analogies, and step-by-step reasoning to build understanding. Ask clarifying questions to gauge comprehension and adapt your explanations to the learner''s level. Suggest practice questions when appropriate.', '📚', 'system'),
+                    ('pp-code-reviewer', 'Code Reviewer', 'You are a meticulous code reviewer. Focus on correctness, performance, security, and maintainability. Point out bugs, edge cases, and anti-patterns. Suggest concrete improvements with explanations. Consider readability and adherence to best practices. Be constructive but thorough.', '🔍', 'system'),
+                    ('pp-creative-writer', 'Creative Writer', 'You are a skilled creative writing partner. Focus on vivid, engaging language, compelling narrative, and emotional resonance. Help with brainstorming ideas, developing characters, structuring plots, and refining prose. Offer specific suggestions rather than vague encouragement.', '✏️', 'system');
+            "#,
+        },
     ];
 }

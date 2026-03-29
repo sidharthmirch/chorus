@@ -232,6 +232,19 @@ export type ModelProfile = {
     updatedAt?: string;
 };
 
+/**
+ * A named persona/role preset with a system prompt injected into chats.
+ */
+export type PromptProfile = {
+    id: string;
+    name: string;
+    systemPrompt: string;
+    icon?: string;
+    author: "user" | "system";
+    createdAt?: string;
+    updatedAt?: string;
+};
+
 export type UsageData = {
     prompt_tokens?: number;
     completion_tokens?: number;
