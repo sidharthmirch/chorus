@@ -17,7 +17,6 @@ import { useCallback, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import { hasApiKey } from "@core/utilities/ProxyUtils";
 import { useMemo } from "react";
-import { ALLOWED_MODEL_IDS_FOR_QUICK_CHAT } from "@ui/lib/models";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
@@ -93,7 +92,6 @@ export function QuickChatModelSelector({
                     config.isEnabled &&
                     !config.id.includes("chorus") &&
                     !config.displayName.includes("Deprecated") &&
-                    ALLOWED_MODEL_IDS_FOR_QUICK_CHAT.includes(config.id) &&
                     isModelAllowed(config),
             ) ?? [],
         [modelConfigsQuery, isModelAllowed, providerVisibilityMap],
