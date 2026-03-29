@@ -72,9 +72,11 @@ export function VisibleModelsTab() {
     const handleFetchModels = async (provider: FetchableProvider) => {
         setFetchingProviders((prev) => ({ ...prev, [provider]: true }));
         try {
-            if (provider === "openrouter") await refreshOpenRouter.mutateAsync();
+            if (provider === "openrouter")
+                await refreshOpenRouter.mutateAsync();
             else if (provider === "ollama") await refreshOllama.mutateAsync();
-            else if (provider === "lmstudio") await refreshLMStudio.mutateAsync();
+            else if (provider === "lmstudio")
+                await refreshLMStudio.mutateAsync();
         } finally {
             setFetchingProviders((prev) => ({ ...prev, [provider]: false }));
         }
@@ -82,17 +84,17 @@ export function VisibleModelsTab() {
 
     // Group models by provider
     const allProviders = Array.from(
-        new Set(allModels.map((m) => getProviderName(m.modelId)))
+        new Set(allModels.map((m) => getProviderName(m.modelId))),
     );
 
     const fetchableWithModels = FETCHABLE_PROVIDERS.filter((p) =>
-        allProviders.includes(p)
+        allProviders.includes(p),
     );
     const fetchableWithoutModels = FETCHABLE_PROVIDERS.filter(
-        (p) => !allProviders.includes(p)
+        (p) => !allProviders.includes(p),
     );
     const otherProviders = allProviders.filter(
-        (p) => !FETCHABLE_PROVIDERS.includes(p as FetchableProvider)
+        (p) => !FETCHABLE_PROVIDERS.includes(p as FetchableProvider),
     );
 
     const orderedProviders = [
@@ -106,17 +108,17 @@ export function VisibleModelsTab() {
             <div>
                 <h2 className="text-2xl font-semibold mb-2">Visible Models</h2>
                 <p className="text-sm text-muted-foreground">
-                    Fetch and choose which models appear in the chat model picker and
-                    in your model profiles.
+                    Fetch and choose which models appear in the chat model
+                    picker and in your model profiles.
                 </p>
             </div>
 
             {orderedProviders.map((provider) => {
                 const providerModels = allModels.filter(
-                    (m) => getProviderName(m.modelId) === provider
+                    (m) => getProviderName(m.modelId) === provider,
                 );
                 const isFetchable = FETCHABLE_PROVIDERS.includes(
-                    provider as FetchableProvider
+                    provider as FetchableProvider,
                 );
                 const isFetching =
                     isFetchable &&
@@ -127,8 +129,8 @@ export function VisibleModelsTab() {
                     new Set(
                         providerModels
                             .map((m) => getSubProvider(m.modelId))
-                            .filter((s): s is string => s !== null)
-                    )
+                            .filter((s): s is string => s !== null),
+                    ),
                 ).sort();
 
                 const activeSubFilter = subProviderFilter[provider] ?? null;
@@ -137,17 +139,23 @@ export function VisibleModelsTab() {
                 const visibleProviderModels: ModelConfig[] =
                     activeSubFilter !== null
                         ? providerModels.filter(
-                              (m) => getSubProvider(m.modelId) === activeSubFilter
+                              (m) =>
+                                  getSubProvider(m.modelId) === activeSubFilter,
                           )
                         : providerModels;
 
                 const isAllVisible = visibleProviderModels.every((m) => {
-                    const v = visibleModels?.find((vm) => vm.modelId === m.modelId);
+                    const v = visibleModels?.find(
+                        (vm) => vm.modelId === m.modelId,
+                    );
                     return v ? v.isVisible : true;
                 });
 
                 return (
-                    <div key={provider} className="space-y-4 border rounded-lg p-4">
+                    <div
+                        key={provider}
+                        className="space-y-4 border rounded-lg p-4"
+                    >
                         <div className="flex items-center justify-between">
                             <h3 className="font-semibold">
                                 {PROVIDER_LABELS[provider] ?? provider}
@@ -160,14 +168,16 @@ export function VisibleModelsTab() {
                                         disabled={isFetching}
                                         onClick={() =>
                                             void handleFetchModels(
-                                                provider as FetchableProvider
+                                                provider as FetchableProvider,
                                             )
                                         }
                                     >
                                         <RefreshCcw
                                             className={`w-3 h-3 mr-1 ${isFetching ? "animate-spin" : ""}`}
                                         />
-                                        {isFetching ? "Fetching..." : "Fetch Models"}
+                                        {isFetching
+                                            ? "Fetching..."
+                                            : "Fetch Models"}
                                     </Button>
                                 )}
                                 {visibleProviderModels.length > 0 && (
@@ -177,9 +187,10 @@ export function VisibleModelsTab() {
                                         onClick={() =>
                                             setAllVisibility.mutate({
                                                 providerName: provider as any,
-                                                modelIds: visibleProviderModels.map(
-                                                    (m) => m.modelId
-                                                ),
+                                                modelIds:
+                                                    visibleProviderModels.map(
+                                                        (m) => m.modelId,
+                                                    ),
                                                 isVisible: !isAllVisible,
                                             })
                                         }
@@ -242,7 +253,7 @@ export function VisibleModelsTab() {
                             <div className="space-y-2">
                                 {visibleProviderModels.map((m) => {
                                     const visibility = visibleModels?.find(
-                                        (vm) => vm.modelId === m.modelId
+                                        (vm) => vm.modelId === m.modelId,
                                     );
                                     const isVisible = visibility
                                         ? visibility.isVisible

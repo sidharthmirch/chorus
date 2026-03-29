@@ -9,7 +9,11 @@ import {
 import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
-import { ModelConfig, getProviderName, ModelProfile } from "@core/chorus/Models";
+import {
+    ModelConfig,
+    getProviderName,
+    ModelProfile,
+} from "@core/chorus/Models";
 import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Input } from "./ui/input";
@@ -68,7 +72,9 @@ function ModelChecklist({
 
     const toggleOne = (id: string, checked: boolean) => {
         onChange(
-            checked ? [...selectedIds, id] : selectedIds.filter((x) => x !== id)
+            checked
+                ? [...selectedIds, id]
+                : selectedIds.filter((x) => x !== id),
         );
     };
 
@@ -85,8 +91,8 @@ function ModelChecklist({
     if (visibleModels.length === 0) {
         return (
             <p className="text-sm text-muted-foreground">
-                No visible models available. Go to "Visible Models" to enable models
-                first.
+                No visible models available. Go to "Visible Models" to enable
+                models first.
             </p>
         );
     }
@@ -94,8 +100,12 @@ function ModelChecklist({
     return (
         <div className="max-h-72 overflow-y-auto space-y-4">
             {providerGroups.map(([provider, models]) => {
-                const allSelected = models.every((m) => selectedIds.includes(m.id));
-                const someSelected = models.some((m) => selectedIds.includes(m.id));
+                const allSelected = models.every((m) =>
+                    selectedIds.includes(m.id),
+                );
+                const someSelected = models.some((m) =>
+                    selectedIds.includes(m.id),
+                );
                 const label = PROVIDER_LABELS[provider] ?? provider;
 
                 return (
@@ -152,7 +162,7 @@ function EditProfileForm({
 }) {
     const [name, setName] = useState(profile.name);
     const [selectedIds, setSelectedIds] = useState<string[]>(
-        profile.modelConfigIds
+        profile.modelConfigIds,
     );
 
     return (
@@ -209,7 +219,7 @@ export function ModelProfilesTab() {
     const visibleModels = getFilteredModelConfigs(
         allModels,
         providerVisibilityMap,
-        null
+        null,
     );
 
     const handleCreate = () => {
@@ -226,7 +236,7 @@ export function ModelProfilesTab() {
     const handleUpdate = (
         id: string,
         name: string,
-        modelConfigIds: string[]
+        modelConfigIds: string[],
     ) => {
         updateProfile.mutate({ id, name, modelConfigIds });
         setEditingId(null);
@@ -237,9 +247,9 @@ export function ModelProfilesTab() {
             <div>
                 <h2 className="text-2xl font-semibold mb-2">Model Profiles</h2>
                 <p className="text-sm text-muted-foreground">
-                    Create named sets of models to quickly switch between them in chat.
-                    Profiles draw from your visible models — configure which models are
-                    visible in the "Visible Models" tab.
+                    Create named sets of models to quickly switch between them
+                    in chat. Profiles draw from your visible models — configure
+                    which models are visible in the "Visible Models" tab.
                 </p>
             </div>
 
@@ -269,7 +279,9 @@ export function ModelProfilesTab() {
                     <div className="flex gap-2">
                         <Button
                             onClick={handleCreate}
-                            disabled={!newName || newSelectedModels.length === 0}
+                            disabled={
+                                !newName || newSelectedModels.length === 0
+                            }
                         >
                             Save
                         </Button>
@@ -294,7 +306,9 @@ export function ModelProfilesTab() {
                             key={p.id}
                             profile={p}
                             visibleModels={visibleModels}
-                            onSave={(name, ids) => handleUpdate(p.id, name, ids)}
+                            onSave={(name, ids) =>
+                                handleUpdate(p.id, name, ids)
+                            }
                             onCancel={() => setEditingId(null)}
                         />
                     ) : (
@@ -322,13 +336,15 @@ export function ModelProfilesTab() {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => deleteProfile.mutate({ id: p.id })}
+                                    onClick={() =>
+                                        deleteProfile.mutate({ id: p.id })
+                                    }
                                 >
                                     <Trash2 className="w-4 h-4 text-destructive" />
                                 </Button>
                             </div>
                         </div>
-                    )
+                    ),
                 )}
             </div>
         </div>

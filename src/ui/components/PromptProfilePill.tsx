@@ -32,7 +32,9 @@ export function PromptProfilePill({ chatId }: { chatId: string }) {
             aria-label={`Prompt profile: ${activeProfile.name}`}
         >
             {activeProfile.icon ? (
-                <span className="text-xs leading-none">{activeProfile.icon}</span>
+                <span className="text-xs leading-none">
+                    {activeProfile.icon}
+                </span>
             ) : (
                 <UserCircle className="w-3 h-3" />
             )}

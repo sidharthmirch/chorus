@@ -18,11 +18,12 @@ import { ModelConfig, ModelProfile } from "@core/chorus/Models";
 export function getFilteredModelConfigs(
     allModelConfigs: ModelConfig[],
     providerVisibilityMap: Map<string, boolean> | undefined,
-    activeProfile: ModelProfile | null
+    activeProfile: ModelProfile | null,
 ): ModelConfig[] {
     // Step 1: Always filter out internal and deprecated models
     let filtered = allModelConfigs.filter(
-        (config) => !config.isInternal && !config.isDeprecated && config.isEnabled
+        (config) =>
+            !config.isInternal && !config.isDeprecated && config.isEnabled,
     );
 
     // Step 2: Filter by provider visibility
@@ -63,7 +64,7 @@ export function getProvidersWithModels(modelConfigs: ModelConfig[]): string[] {
  * Group model configs by provider.
  */
 export function groupModelsByProvider(
-    modelConfigs: ModelConfig[]
+    modelConfigs: ModelConfig[],
 ): Map<string, ModelConfig[]> {
     const groups = new Map<string, ModelConfig[]>();
     for (const config of modelConfigs) {

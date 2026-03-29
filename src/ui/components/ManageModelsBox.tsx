@@ -528,15 +528,11 @@ export function ManageModelsBox({
         const filtered = getFilteredModelConfigs(
             modelConfigs.data ?? [],
             providerVisibilityMap,
-            activeProfile
+            activeProfile,
         );
 
-        const systemModels = filtered.filter(
-            (m) => m.author === "system",
-        );
-        const userModels = filtered.filter(
-            (m) => m.author === "user",
-        );
+        const systemModels = filtered.filter((m) => m.author === "system");
+        const userModels = filtered.filter((m) => m.author === "user");
 
         const localModels = systemModels.filter((m) => {
             const provider = getProviderName(m.modelId);

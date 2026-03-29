@@ -31,7 +31,7 @@ function readModelProfile(row: ModelProfileDBRow): ModelProfile {
  */
 export async function fetchModelProfiles(): Promise<ModelProfile[]> {
     const rows = await db.select<ModelProfileDBRow[]>(
-        "SELECT id, name, model_config_ids, created_at, updated_at FROM model_profiles ORDER BY created_at ASC"
+        "SELECT id, name, model_config_ids, created_at, updated_at FROM model_profiles ORDER BY created_at ASC",
     );
     return rows.map(readModelProfile);
 }
@@ -41,7 +41,7 @@ export async function fetchModelProfiles(): Promise<ModelProfile[]> {
  */
 export async function fetchActiveModelProfileId(): Promise<string | null> {
     const rows = await db.select<{ value: string }[]>(
-        "SELECT value FROM app_metadata WHERE key = 'active_model_profile_id'"
+        "SELECT value FROM app_metadata WHERE key = 'active_model_profile_id'",
     );
     return rows.length > 0 ? rows[0].value : null;
 }
@@ -90,11 +90,11 @@ export function useSetActiveModelProfile() {
             if (profileId) {
                 await db.execute(
                     "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('active_model_profile_id', ?)",
-                    [profileId]
+                    [profileId],
                 );
             } else {
                 await db.execute(
-                    "DELETE FROM app_metadata WHERE key = 'active_model_profile_id'"
+                    "DELETE FROM app_metadata WHERE key = 'active_model_profile_id'",
                 );
             }
         },
@@ -124,7 +124,7 @@ export function useCreateModelProfile() {
         }) => {
             await db.execute(
                 "INSERT INTO model_profiles (id, name, model_config_ids) VALUES (?, ?, ?)",
-                [id, name, JSON.stringify(modelConfigIds)]
+                [id, name, JSON.stringify(modelConfigIds)],
             );
         },
         onSuccess: async () => {
@@ -153,7 +153,7 @@ export function useUpdateModelProfile() {
         }) => {
             await db.execute(
                 "UPDATE model_profiles SET name = ?, model_config_ids = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                [name, JSON.stringify(modelConfigIds), id]
+                [name, JSON.stringify(modelConfigIds), id],
             );
         },
         onSuccess: async () => {

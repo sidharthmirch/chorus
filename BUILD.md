@@ -4,26 +4,26 @@ Chorus is built using Tauri, React, TypeScript, and Rust. To build the applicati
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (version >= 22.0.0)
-- [pnpm](https://pnpm.io/)
-- [Rust](https://www.rust-lang.org/) and Cargo
-- [Git LFS](https://git-lfs.com/)
+-   [Node.js](https://nodejs.org/) (version >= 22.0.0)
+-   [pnpm](https://pnpm.io/)
+-   [Rust](https://www.rust-lang.org/) and Cargo
+-   [Git LFS](https://git-lfs.com/)
 
 ## Installation
 
 1. Clone the repository and navigate to the directory.
 2. Initialize Git LFS:
 
-   ```bash
-   git lfs install --force
-   git lfs pull
-   ```
+    ```bash
+    git lfs install --force
+    git lfs pull
+    ```
 
 3. Install dependencies:
 
-   ```bash
-   pnpm install
-   ```
+    ```bash
+    pnpm install
+    ```
 
 ## Building the App
 

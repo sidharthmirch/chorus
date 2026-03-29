@@ -12,9 +12,9 @@
 
 # Fork changes
 
-- Added profiles for favorite models in the chat window
-- Dynamically fetch and select models from providers
-- Prompt profiles
+-   Added profiles for favorite models in the chat window
+-   Dynamically fetch and select models from providers
+-   Prompt profiles
 
 # Getting Started
 
