@@ -23,6 +23,7 @@ export interface Settings {
     };
     lmStudioBaseUrl?: string;
     cautiousEnter?: boolean;
+    titleGenerationModelConfigId?: string;
 }
 
 export class SettingsManager {

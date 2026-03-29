@@ -89,6 +89,7 @@ import ImportChatDialog from "./ImportChatDialog";
 import { dialogActions } from "@core/infra/DialogStore";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { PermissionsTab } from "./PermissionsTab";
+import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
 import { cn } from "@ui/lib/utils";
 
 import { VisibleModelsTab } from "./VisibleModelsTab";
@@ -1148,6 +1149,7 @@ interface Settings {
     autoScrapeUrls: boolean;
     cautiousEnter?: boolean;
     customToolsets?: CustomToolsetConfig[];
+    titleGenerationModelConfigId?: string;
 }
 
 export default function Settings({ tab = "general" }: SettingsProps) {
@@ -1164,6 +1166,9 @@ export default function Settings({ tab = "general" }: SettingsProps) {
         tab || (searchParams.get("tab") as SettingsTabId) || "general";
     const [quickChatEnabled, setQuickChatEnabled] = useState(true);
     const [quickChatShortcut, setQuickChatShortcut] = useState("Alt+Space");
+    const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
+        useState<string | undefined>(undefined);
+    const modelConfigsQuery = useModelConfigs();
     const [lmStudioBaseUrl, setLmStudioBaseUrl] = useState(
         "http://localhost:1234/v1",
     );
@@ -1250,6 +1255,9 @@ export default function Settings({ tab = "general" }: SettingsProps) {
             setLmStudioBaseUrl(
                 settings.lmStudioBaseUrl ?? "http://localhost:1234/v1",
             );
+            setTitleGenerationModelConfigId(
+                settings.titleGenerationModelConfigId,
+            );
         };
 
         void loadSettings();
@@ -1276,6 +1284,17 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                 ...currentSettings.quickChat,
                 enabled,
             },
+        });
+    };
+
+    const handleTitleGenerationModelChange = async (
+        value: string | undefined,
+    ) => {
+        setTitleGenerationModelConfigId(value);
+        const currentSettings = await settingsManager.get();
+        void settingsManager.set({
+            ...currentSettings,
+            titleGenerationModelConfigId: value,
         });
     };
 
@@ -1564,6 +1583,75 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                                     </span>
                                                 </SelectItem>
                                             ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div>
+                                    <label
+                                        htmlFor="title-model-selector"
+                                        className="block font-semibold mb-1"
+                                    >
+                                        Chat title model
+                                    </label>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                        Model used to auto-generate chat titles.
+                                        Defaults to the ambient chat model.
+                                    </p>
+                                    <Select
+                                        value={
+                                            titleGenerationModelConfigId ??
+                                            "__ambient__"
+                                        }
+                                        onValueChange={(value) =>
+                                            void handleTitleGenerationModelChange(
+                                                value === "__ambient__"
+                                                    ? undefined
+                                                    : value,
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger
+                                            id="title-model-selector"
+                                            className="w-full"
+                                        >
+                                            <SelectValue placeholder="Ambient model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__ambient__">
+                                                Ambient model (default)
+                                            </SelectItem>
+                                            {(modelConfigsQuery.data ?? [])
+                                                .filter(
+                                                    (c) =>
+                                                        c.modelId.startsWith(
+                                                            "openrouter::",
+                                                        ) &&
+                                                        c.isEnabled &&
+                                                        !c.isInternal &&
+                                                        !c.isDeprecated,
+                                                )
+                                                .sort((a, b) => {
+                                                    const priceA =
+                                                        (a.promptPricePerToken ??
+                                                            Infinity) +
+                                                        (a.completionPricePerToken ??
+                                                            Infinity);
+                                                    const priceB =
+                                                        (b.promptPricePerToken ??
+                                                            Infinity) +
+                                                        (b.completionPricePerToken ??
+                                                            Infinity);
+                                                    return priceA - priceB;
+                                                })
+                                                .map((config) => (
+                                                    <SelectItem
+                                                        key={config.id}
+                                                        value={config.id}
+                                                    >
+                                                        {config.displayName}
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
