@@ -25,6 +25,9 @@ export function useShortcut(
         // "global" here means the scope the shortcut is declared in
         // if its parent component is torn down, the shortcut will be removed
         isGlobal?: boolean;
+        // defaults to true
+        // set to false to disable the shortcut without unmounting the hook
+        enabled?: boolean;
     },
 ) {
     const keys = combo.map((key) => key.toLowerCase());
@@ -32,6 +35,8 @@ export function useShortcut(
     const activeDialogId = useDialogStore((state) => state.activeDialogId);
     const handler: ShortcutHandler = useCallback(
         (event) => {
+            const enabled = options?.enabled ?? true;
+            if (!enabled) return;
             const enableOnChatFocus = options?.enableOnChatFocus ?? true;
             const enableOnDialogIds = options?.enableOnDialogIds ?? [];
             const isGlobal = options?.isGlobal ?? false;
