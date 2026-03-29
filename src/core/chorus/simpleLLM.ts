@@ -33,19 +33,35 @@ async function createProviderForModelConfig(
     switch (providerPrefix) {
         case "anthropic": {
             if (!apiKeys.anthropic) return null;
-            return { provider: new SimpleCompletionProviderAnthropic(apiKeys.anthropic), modelName };
+            return {
+                provider: new SimpleCompletionProviderAnthropic(
+                    apiKeys.anthropic,
+                ),
+                modelName,
+            };
         }
         case "openai": {
             if (!apiKeys.openai) return null;
-            return { provider: new SimpleCompletionProviderOpenAI(apiKeys.openai), modelName };
+            return {
+                provider: new SimpleCompletionProviderOpenAI(apiKeys.openai),
+                modelName,
+            };
         }
         case "google": {
             if (!apiKeys.google) return null;
-            return { provider: new SimpleCompletionProviderGoogle(apiKeys.google), modelName };
+            return {
+                provider: new SimpleCompletionProviderGoogle(apiKeys.google),
+                modelName,
+            };
         }
         case "openrouter": {
             if (!apiKeys.openrouter) return null;
-            return { provider: new SimpleCompletionProviderOpenRouter(apiKeys.openrouter), modelName };
+            return {
+                provider: new SimpleCompletionProviderOpenRouter(
+                    apiKeys.openrouter,
+                ),
+                modelName,
+            };
         }
         default:
             return null;
@@ -70,9 +86,15 @@ export async function simpleLLM(
     const apiKeys = settings.apiKeys || {};
 
     if (modelConfigId) {
-        const resolved = await createProviderForModelConfig(modelConfigId, apiKeys);
+        const resolved = await createProviderForModelConfig(
+            modelConfigId,
+            apiKeys,
+        );
         if (resolved) {
-            return resolved.provider.complete(prompt, { ...params, model: resolved.modelName });
+            return resolved.provider.complete(prompt, {
+                ...params,
+                model: resolved.modelName,
+            });
         }
         // Fall through to default behavior if resolution fails
     }
