@@ -2639,5 +2639,29 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 WHERE id = 'google::ambient-gemini-2.5-pro-preview-03-25';
             "#,
         },
+        Migration {
+            version: 143,
+            description: "add gemini 2.5 flash lite and update ambient to use it",
+            kind: MigrationKind::Up,
+            sql: r#"
+                -- Add Gemini 2.5 Flash Lite (stable)
+                INSERT OR REPLACE INTO models (id, display_name, is_enabled, supported_attachment_types) VALUES
+                    ('google::gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 1, '["text", "image", "webpage"]');
+
+                INSERT OR REPLACE INTO model_configs (author, id, model_id, display_name, system_prompt, is_default) VALUES
+                    ('system', 'google::gemini-2.5-flash-lite', 'google::gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', '', 0);
+
+                -- Deprecate old Gemini 2.0 Flash Lite preview
+                UPDATE models SET display_name = 'Gemini 2.0 Flash Lite (Deprecated)'
+                WHERE id = 'google::gemini-2.0-flash-lite-preview-02-05';
+
+                UPDATE model_configs SET display_name = 'Gemini 2.0 Flash Lite (Deprecated)'
+                WHERE id = 'google::gemini-2.0-flash-lite-preview-02-05';
+
+                -- Update ambient config to use the stable flash-lite model
+                UPDATE model_configs SET model_id = 'google::gemini-2.5-flash-lite'
+                WHERE id = 'google::ambient-gemini-2.5-flash';
+            "#,
+        },
     ];
 }
