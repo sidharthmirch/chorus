@@ -62,12 +62,12 @@ export async function fetchChatPromptProfileSystemPrompt(
  */
 async function fetchChatPromptProfileId(
     chatId: string,
-): Promise<string | undefined> {
+): Promise<string | null> {
     const rows = await db.select<{ prompt_profile_id: string }[]>(
         "SELECT prompt_profile_id FROM prompt_profile_chats WHERE chat_id = ?",
         [chatId],
     );
-    return rows.length > 0 ? rows[0].prompt_profile_id : undefined;
+    return rows.length > 0 ? rows[0].prompt_profile_id : null;
 }
 
 export function usePromptProfiles() {
