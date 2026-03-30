@@ -1594,94 +1594,100 @@ function ToolsBlockView({
 
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
-        <div
-            ref={elementRef}
-            className={`flex w-full h-fit pb-2 pr-5 gap-2 ${
-                // get horizontal scroll bars, plus hackily disable y scrolling
-                // because we're seeing scroll bars when we shouldn't
-                "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
-            }
+            <div
+                ref={elementRef}
+                className={`flex w-full h-fit pb-2 pr-5 gap-2 ${
+                    // get horizontal scroll bars, plus hackily disable y scrolling
+                    // because we're seeing scroll bars when we shouldn't
+                    "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
+                }
             ${shouldShowScrollbar ? "is-scrolling" : ""}
             ${!isQuickChatWindow ? "px-10" : ""}`}
-        >
-            {sortedMessages.map((message) => {
-                const isMinimized = minimizedModels.has(message.model);
+            >
+                {sortedMessages.map((message) => {
+                    const isMinimized = minimizedModels.has(message.model);
 
-                if (isMinimized) {
+                    if (isMinimized) {
+                        return (
+                            <motion.div
+                                key={message.id}
+                                layout
+                                layoutId={`tools-col-${message.model}-${messageSetId}`}
+                                transition={{
+                                    duration: 0.3,
+                                    ease: "easeInOut",
+                                }}
+                                className="flex-none pt-2"
+                            >
+                                <MinimizedToolsColumnView
+                                    message={message}
+                                    onExpand={() =>
+                                        onToggleMinimize(message.model)
+                                    }
+                                />
+                            </motion.div>
+                        );
+                    }
+
                     return (
                         <motion.div
                             key={message.id}
                             layout
                             layoutId={`tools-col-${message.model}-${messageSetId}`}
                             transition={{ duration: 0.3, ease: "easeInOut" }}
-                            className="flex-none pt-2"
+                            className={
+                                isQuickChatWindow
+                                    ? "w-full max-w-prose"
+                                    : `w-full flex-1 min-w-[450px] max-w-[550px]`
+                            }
                         >
-                            <MinimizedToolsColumnView
+                            <ToolsMessageView
                                 message={message}
-                                onExpand={() => onToggleMinimize(message.model)}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                isOnlyMessage={
+                                    toolsBlock.chatMessages.length === 1
+                                }
+                                onMinimize={
+                                    toolsBlock.chatMessages.length > 1
+                                        ? () => onToggleMinimize(message.model)
+                                        : undefined
+                                }
+                                onStop={() => onModelStopped(message.model)}
                             />
                         </motion.div>
                     );
-                }
+                })}
+                {isLastRow && !isQuickChatWindow && (
+                    <div>
+                        <button
+                            // brighten border in dark mode bc it's hard to see
+                            className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
+                            onClick={() => {
+                                dialogActions.openDialog(
+                                    MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
+                                );
+                            }}
+                        >
+                            <div className="flex flex-col items-center gap-1 py-1">
+                                <PlusIcon className="font-medium w-3 h-3" />
+                                Add
+                            </div>
+                        </button>
 
-                return (
-                    <motion.div
-                        key={message.id}
-                        layout
-                        layoutId={`tools-col-${message.model}-${messageSetId}`}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                        className={
-                            isQuickChatWindow
-                                ? "w-full max-w-prose"
-                                : `w-full flex-1 min-w-[450px] max-w-[550px]`
-                        }
-                    >
-                        <ToolsMessageView
-                            message={message}
-                            isLastRow={isLastRow}
-                            isQuickChatWindow={isQuickChatWindow}
-                            isOnlyMessage={toolsBlock.chatMessages.length === 1}
-                            onMinimize={
-                                toolsBlock.chatMessages.length > 1
-                                    ? () => onToggleMinimize(message.model)
-                                    : undefined
-                            }
-                            onStop={() => onModelStopped(message.model)}
+                        {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
+                        <ManageModelsBox
+                            id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
+                            mode={{
+                                type: "add",
+                                checkedModelConfigIds:
+                                    toolsBlock.chatMessages.map((m) => m.model),
+                                onAddModel: handleAddModel,
+                            }}
                         />
-                    </motion.div>
-                );
-            })}
-            {isLastRow && !isQuickChatWindow && (
-                <div>
-                    <button
-                        // brighten border in dark mode bc it's hard to see
-                        className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
-                        onClick={() => {
-                            dialogActions.openDialog(
-                                MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
-                            );
-                        }}
-                    >
-                        <div className="flex flex-col items-center gap-1 py-1">
-                            <PlusIcon className="font-medium w-3 h-3" />
-                            Add
-                        </div>
-                    </button>
-
-                    {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
-                    <ManageModelsBox
-                        id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
-                        mode={{
-                            type: "add",
-                            checkedModelConfigIds: toolsBlock.chatMessages.map(
-                                (m) => m.model,
-                            ),
-                            onAddModel: handleAddModel,
-                        }}
-                    />
-                </div>
-            )}
-        </div>
+                    </div>
+                )}
+            </div>
         </LayoutGroup>
     );
 }

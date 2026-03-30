@@ -705,21 +705,15 @@ function MinimizedColumnView({
     const modelId = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     )?.modelId;
-    const providerName = modelId
-        ? Models.getProviderName(modelId)
-        : undefined;
+    const providerName = modelId ? Models.getProviderName(modelId) : undefined;
 
     return (
         <button
             onClick={onExpand}
             className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
         >
-            {providerName && (
-                <ProviderLogo size="sm" provider={providerName} />
-            )}
-            {message.state === "streaming" && (
-                <RetroSpinner />
-            )}
+            {providerName && <ProviderLogo size="sm" provider={providerName} />}
+            {message.state === "streaming" && <RetroSpinner />}
             {message.errorMessage && (
                 <CircleAlertIcon className="w-3 h-3 text-destructive" />
             )}
@@ -802,8 +796,7 @@ function CompareBlockView({
 
     function renderMessage(message: Message, index: number) {
         const isSynthesis = message.model === "chorus::synthesize";
-        const isMinimized =
-            !isSynthesis && minimizedModels.has(message.model);
+        const isMinimized = !isSynthesis && minimizedModels.has(message.model);
         const shortcutNumber = isLastRow ? index + 1 : undefined;
 
         if (isMinimized) {
@@ -859,85 +852,84 @@ function CompareBlockView({
 
     return (
         <LayoutGroup id={`compare-${messageSetId}`}>
-        <div
-            className={`flex w-full h-fit pb-2 ${
-                // get horizontal scroll bars, plus hackily disable y scrolling
-                // because we're seeing scroll bars when we shouldn't
-                "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
-            }`}
-        >
-            <div className="flex-none w-10 mt-1">
-                {isLastRow && aiMessagesToDisplay.length > 1 && (
-                    <Tooltip>
-                        {/* synthesis button */}
-                        <TooltipTrigger asChild>
-                            {isSynthesisSelected ? (
-                                <button
-                                    className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                    onClick={() => {
-                                        deselectSynthesis.mutate({
-                                            chatId: chatId!,
-                                            messageSetId,
-                                        });
-                                    }}
-                                >
-                                    <SplitIcon className="w-3 h-3" />
-                                </button>
-                            ) : (
-                                <button
-                                    className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                    onClick={() => {
-                                        selectSynthesis.mutate({
-                                            chatId: chatId!,
-                                            messageSetId,
-                                        });
-                                    }}
-                                >
-                                    <MergeIcon className="w-3 h-3" />
-                                </button>
-                            )}
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="start">
-                            {isSynthesisSelected
-                                ? "Revert to original responses"
-                                : "Synthesize replies into a single message (⌘S)"}
-                        </TooltipContent>
-                    </Tooltip>
+            <div
+                className={`flex w-full h-fit pb-2 ${
+                    // get horizontal scroll bars, plus hackily disable y scrolling
+                    // because we're seeing scroll bars when we shouldn't
+                    "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
+                }`}
+            >
+                <div className="flex-none w-10 mt-1">
+                    {isLastRow && aiMessagesToDisplay.length > 1 && (
+                        <Tooltip>
+                            {/* synthesis button */}
+                            <TooltipTrigger asChild>
+                                {isSynthesisSelected ? (
+                                    <button
+                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                        onClick={() => {
+                                            deselectSynthesis.mutate({
+                                                chatId: chatId!,
+                                                messageSetId,
+                                            });
+                                        }}
+                                    >
+                                        <SplitIcon className="w-3 h-3" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                        onClick={() => {
+                                            selectSynthesis.mutate({
+                                                chatId: chatId!,
+                                                messageSetId,
+                                            });
+                                        }}
+                                    >
+                                        <MergeIcon className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start">
+                                {isSynthesisSelected
+                                    ? "Revert to original responses"
+                                    : "Synthesize replies into a single message (⌘S)"}
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
+                </div>
+                {aiMessagesToDisplay.map((message, index) => {
+                    return renderMessage(message, index);
+                })}
+                {isLastRow && (
+                    <>
+                        <button
+                            className="w-14 flex-none text-sm text-muted-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit hover:bg-accent"
+                            onClick={() => {
+                                dialogActions.openDialog(
+                                    MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID,
+                                );
+                            }}
+                        >
+                            <div className="flex flex-col items-center gap-1">
+                                <PlusIcon className="w-3 h-3" />
+                                Add
+                            </div>
+                        </button>
+
+                        {/* Add Model box (can go basically anywhere, but shouldn't be inside the button) */}
+                        <ManageModelsBox
+                            id={MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID}
+                            mode={{
+                                type: "add",
+                                checkedModelConfigIds:
+                                    compareBlock.messages.map((m) => m.model),
+                                onAddModel: handleAddModel,
+                            }}
+                        />
+                    </>
                 )}
             </div>
-            {aiMessagesToDisplay.map((message, index) => {
-                return renderMessage(message, index);
-            })}
-            {isLastRow && (
-                <>
-                    <button
-                        className="w-14 flex-none text-sm text-muted-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit hover:bg-accent"
-                        onClick={() => {
-                            dialogActions.openDialog(
-                                MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID,
-                            );
-                        }}
-                    >
-                        <div className="flex flex-col items-center gap-1">
-                            <PlusIcon className="w-3 h-3" />
-                            Add
-                        </div>
-                    </button>
-
-                    {/* Add Model box (can go basically anywhere, but shouldn't be inside the button) */}
-                    <ManageModelsBox
-                        id={MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID}
-                        mode={{
-                            type: "add",
-                            checkedModelConfigIds: compareBlock.messages.map(
-                                (m) => m.model,
-                            ),
-                            onAddModel: handleAddModel,
-                        }}
-                    />
-                </>
-            )}
-        </div>
         </LayoutGroup>
     );
 }
