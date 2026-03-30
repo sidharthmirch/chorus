@@ -3433,7 +3433,10 @@ ${userMessageText}
                         (chats: Chat[] | undefined) =>
                             chats?.map((chat) =>
                                 chat.id === variables.chatId
-                                    ? { ...chat, title: data.title ?? chat.title }
+                                    ? {
+                                          ...chat,
+                                          title: data.title ?? chat.title,
+                                      }
                                     : chat,
                             ),
                     );
