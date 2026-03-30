@@ -2698,11 +2698,13 @@ function usePopulateToolsBlock(chatId: string) {
             messageSetId,
             isQuickChatWindow,
             replyToModelId,
+            excludedModelIds,
         }: {
             messageSetId: string;
             previousMessageSets: MessageSetDetail[];
             isQuickChatWindow: boolean;
             replyToModelId?: string;
+            excludedModelIds?: Set<string>;
         }) => {
             // BTBL: do we need to protect against double-population here by ensuring
             // it's empty before we populate?
@@ -2722,6 +2724,12 @@ function usePopulateToolsBlock(chatId: string) {
             } else {
                 // Normal flow: use selected model configs
                 modelConfigs = await getSelectedModelConfigs(isQuickChatWindow);
+                // Skip minimized models
+                if (excludedModelIds && excludedModelIds.size > 0) {
+                    modelConfigs = modelConfigs.filter(
+                        (m) => !excludedModelIds.has(m.id),
+                    );
+                }
             }
 
             if (modelConfigs.length === 0) {
@@ -2813,10 +2821,12 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
             messageSetId,
             blockType,
             replyToModelId,
+            excludedModelIds,
         }: {
             messageSetId: string;
             blockType: BlockType;
             replyToModelId?: string;
+            excludedModelIds?: Set<string>;
         }) => {
             const messageSets = await getMessageSets(chatId);
             const messageSet = messageSets.find((m) => m.id === messageSetId);
@@ -2842,6 +2852,7 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
                         previousMessageSets,
                         isQuickChatWindow,
                         replyToModelId,
+                        excludedModelIds,
                     });
                 }
                 default: {

@@ -76,6 +76,7 @@ export function ChatInput({
     defaultReplyToModel,
     showScrollButton,
     handleScrollToBottom,
+    minimizedModels,
 }: {
     chatId: string;
     isNewChat: boolean | undefined;
@@ -88,6 +89,7 @@ export function ChatInput({
     defaultReplyToModel?: string;
     showScrollButton?: boolean;
     handleScrollToBottom?: () => void;
+    minimizedModels?: Set<string>;
 }) {
     const selectedModelConfigsCompare =
         ModelsAPI.useSelectedModelConfigsCompare();
@@ -339,6 +341,7 @@ export function ChatInput({
                 messageSetId: aiMessageSetId,
                 blockType: BLOCK_TYPE,
                 replyToModelId: replyToModelConfig?.modelId,
+                excludedModelIds: minimizedModels,
             });
         },
     });

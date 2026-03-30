@@ -1417,25 +1417,6 @@ export function ToolsMessageView({
                                         </TooltipContent>
                                     </Tooltip>
 
-                                    {!isQuickChatWindow && !isReply && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    className="hover:text-foreground"
-                                                    onClick={onReplyClick}
-                                                >
-                                                    <ReplyIcon
-                                                        strokeWidth={1.5}
-                                                        className="w-3.5 h-3.5"
-                                                    />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                Reply to this message
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-
                                     {onMinimize && (
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -1454,6 +1435,25 @@ export function ToolsMessageView({
                                             </TooltipTrigger>
                                             <TooltipContent>
                                                 Minimize
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
+
+                                    {!isQuickChatWindow && !isReply && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    className="hover:text-foreground"
+                                                    onClick={onReplyClick}
+                                                >
+                                                    <ReplyIcon
+                                                        strokeWidth={1.5}
+                                                        className="w-3.5 h-3.5"
+                                                    />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                Reply to this message
                                             </TooltipContent>
                                         </Tooltip>
                                     )}
@@ -1517,22 +1517,22 @@ function MinimizedToolsColumnView({
     return (
         <button
             onClick={onExpand}
-            className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
+            className="group/minimized flex items-center gap-2 w-full px-2 py-1.5 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer text-left"
         >
             {modelConfig && (
                 <ProviderLogo size="sm" modelId={modelConfig.modelId} />
             )}
-            {message.state === "streaming" && <RetroSpinner />}
-            {message.errorMessage && (
-                <CircleAlertIcon className="w-3 h-3 text-destructive" />
-            )}
-            <span
-                className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
-                style={{ writingMode: "vertical-rl" }}
-            >
+            <span className="text-xs text-muted-foreground flex-1 truncate">
                 {modelConfig?.displayName ?? message.model}
             </span>
-            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
+            {message.state === "streaming" && <RetroSpinner />}
+            {(message.errorMessage ||
+                (message.state === "idle" &&
+                    (message.parts.length === 0 ||
+                        _.every(message.parts.map((p) => !p.content))))) && (
+                <CircleAlertIcon className="w-3 h-3 text-destructive" />
+            )}
+            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity flex-none" />
         </button>
     );
 }
@@ -1543,18 +1543,16 @@ function ToolsBlockView({
     isLastRow = false,
     isQuickChatWindow,
     minimizedModels,
-    onToggleMinimize,
-    movedRightModels,
-    onModelStopped,
+    onMinimize,
+    onExpand,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
     minimizedModels: Set<string>;
-    onToggleMinimize: (modelId: string) => void;
-    movedRightModels: Set<string>;
-    onModelStopped: (modelId: string) => void;
+    onMinimize: (modelId: string) => void;
+    onExpand: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
@@ -1580,56 +1578,59 @@ function ToolsBlockView({
         modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
         modelId;
 
-    // Sort: streaming first, then non-moved-right, then explicitly stopped, all alphabetical by display name within groups
-    const sortedMessages = [...toolsBlock.chatMessages].sort((a, b) => {
-        const aActive = a.state === "streaming";
-        const bActive = b.state === "streaming";
-        const aMoved = movedRightModels.has(a.model);
-        const bMoved = movedRightModels.has(b.model);
+    // Auto-minimize models that returned no response
+    useEffect(() => {
+        for (const message of toolsBlock.chatMessages) {
+            if (
+                message.state === "idle" &&
+                !minimizedModels.has(message.model) &&
+                (message.parts.length === 0 ||
+                    _.every(message.parts.map((p) => !p.content)))
+            ) {
+                onMinimize(message.model);
+            }
+        }
+    }, [toolsBlock.chatMessages, minimizedModels, onMinimize]);
 
-        if (aActive !== bActive) return aActive ? -1 : 1;
-        if (aMoved !== bMoved) return aMoved ? 1 : -1;
-        return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
-    });
+    const minimizedMessages = toolsBlock.chatMessages.filter((m) =>
+        minimizedModels.has(m.model),
+    );
+    const activeMessages = [...toolsBlock.chatMessages]
+        .filter((m) => !minimizedModels.has(m.model))
+        .sort((a, b) =>
+            getDisplayName(a.model).localeCompare(getDisplayName(b.model)),
+        );
 
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
-            <div
-                ref={elementRef}
-                className={`flex w-full h-fit pb-2 pr-5 gap-2 ${
-                    // get horizontal scroll bars, plus hackily disable y scrolling
-                    // because we're seeing scroll bars when we shouldn't
-                    "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
-                }
-            ${shouldShowScrollbar ? "is-scrolling" : ""}
-            ${!isQuickChatWindow ? "px-10" : ""}`}
-            >
-                {sortedMessages.map((message) => {
-                    const isMinimized = minimizedModels.has(message.model);
-
-                    if (isMinimized) {
-                        return (
-                            <motion.div
+            <div className="flex w-full h-fit">
+                {/* Left panel: minimized models */}
+                {minimizedMessages.length > 0 && !isQuickChatWindow && (
+                    <div className="flex-none flex flex-col gap-1 border-r px-2 pt-6 pb-2 min-w-[160px] max-w-[200px]">
+                        <div className="text-xs text-muted-foreground/60 uppercase tracking-wider font-geist-mono mb-1 px-1">
+                            Minimized
+                        </div>
+                        {minimizedMessages.map((message) => (
+                            <MinimizedToolsColumnView
                                 key={message.id}
-                                layout
-                                layoutId={`tools-col-${message.model}-${messageSetId}`}
-                                transition={{
-                                    duration: 0.3,
-                                    ease: "easeInOut",
-                                }}
-                                className="flex-none pt-2"
-                            >
-                                <MinimizedToolsColumnView
-                                    message={message}
-                                    onExpand={() =>
-                                        onToggleMinimize(message.model)
-                                    }
-                                />
-                            </motion.div>
-                        );
+                                message={message}
+                                onExpand={() => onExpand(message.model)}
+                            />
+                        ))}
+                    </div>
+                )}
+                {/* Main scrollable area: active models */}
+                <div
+                    ref={elementRef}
+                    className={`flex flex-1 h-fit pb-2 pr-5 gap-2 ${
+                        // get horizontal scroll bars, plus hackily disable y scrolling
+                        // because we're seeing scroll bars when we shouldn't
+                        "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
                     }
-
-                    return (
+                ${shouldShowScrollbar ? "is-scrolling" : ""}
+                ${!isQuickChatWindow ? "px-10" : ""}`}
+                >
+                    {activeMessages.map((message) => (
                         <motion.div
                             key={message.id}
                             layout
@@ -1650,43 +1651,45 @@ function ToolsBlockView({
                                 }
                                 onMinimize={
                                     toolsBlock.chatMessages.length > 1
-                                        ? () => onToggleMinimize(message.model)
+                                        ? () => onMinimize(message.model)
                                         : undefined
                                 }
-                                onStop={() => onModelStopped(message.model)}
+                                onStop={() => onMinimize(message.model)}
                             />
                         </motion.div>
-                    );
-                })}
-                {isLastRow && !isQuickChatWindow && (
-                    <div>
-                        <button
-                            // brighten border in dark mode bc it's hard to see
-                            className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
-                            onClick={() => {
-                                dialogActions.openDialog(
-                                    MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
-                                );
-                            }}
-                        >
-                            <div className="flex flex-col items-center gap-1 py-1">
-                                <PlusIcon className="font-medium w-3 h-3" />
-                                Add
-                            </div>
-                        </button>
+                    ))}
+                    {isLastRow && !isQuickChatWindow && (
+                        <div>
+                            <button
+                                // brighten border in dark mode bc it's hard to see
+                                className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
+                                onClick={() => {
+                                    dialogActions.openDialog(
+                                        MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
+                                    );
+                                }}
+                            >
+                                <div className="flex flex-col items-center gap-1 py-1">
+                                    <PlusIcon className="font-medium w-3 h-3" />
+                                    Add
+                                </div>
+                            </button>
 
-                        {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
-                        <ManageModelsBox
-                            id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
-                            mode={{
-                                type: "add",
-                                checkedModelConfigIds:
-                                    toolsBlock.chatMessages.map((m) => m.model),
-                                onAddModel: handleAddModel,
-                            }}
-                        />
-                    </div>
-                )}
+                            {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
+                            <ManageModelsBox
+                                id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
+                                mode={{
+                                    type: "add",
+                                    checkedModelConfigIds:
+                                        toolsBlock.chatMessages.map(
+                                            (m) => m.model,
+                                        ),
+                                    onAddModel: handleAddModel,
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
         </LayoutGroup>
     );
@@ -1723,9 +1726,11 @@ type MessageSetViewProps = {
     userMessageRef: React.RefObject<HTMLDivElement> | undefined;
     messageSetRef: React.RefObject<HTMLDivElement> | undefined;
     minimizedModels: Set<string>;
-    onToggleMinimize: (modelId: string) => void;
-    movedRightModels: Set<string>;
-    onModelStopped: (modelId: string) => void;
+    onToggleMinimize: (modelId: string) => void; // for CompareBlockView (deprecated path)
+    movedRightModels: Set<string>; // for CompareBlockView (deprecated path)
+    onModelStopped: (modelId: string) => void; // for CompareBlockView (deprecated path)
+    onMinimize: (modelId: string) => void; // for ToolsBlockView
+    onExpand: (modelId: string) => void; // for ToolsBlockView
 };
 
 const MessageSetView = memo(
@@ -1739,6 +1744,8 @@ const MessageSetView = memo(
         onToggleMinimize,
         movedRightModels,
         onModelStopped,
+        onMinimize,
+        onExpand,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
 
@@ -1811,9 +1818,8 @@ const MessageSetView = memo(
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
                             minimizedModels={minimizedModels}
-                            onToggleMinimize={onToggleMinimize}
-                            movedRightModels={movedRightModels}
-                            onModelStopped={onModelStopped}
+                            onMinimize={onMinimize}
+                            onExpand={onExpand}
                         />
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
@@ -1898,6 +1904,65 @@ export default function MultiChat() {
 
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    // Minimized model state (lifted here so ChatInput can skip minimized models)
+    const [minimizedModels, setMinimizedModels] = useState<Set<string>>(
+        new Set(),
+    );
+    const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
+        new Set(),
+    );
+
+    // Reset per-chat model layout state when navigating between chats
+    useEffect(() => {
+        setMinimizedModels(new Set());
+        setMovedRightModels(new Set());
+    }, [chatId]);
+
+    const handleMinimize = useCallback((modelId: string) => {
+        setMinimizedModels((prev) => {
+            if (prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.add(modelId);
+            return next;
+        });
+    }, []);
+
+    const handleExpand = useCallback((modelId: string) => {
+        setMinimizedModels((prev) => {
+            if (!prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.delete(modelId);
+            return next;
+        });
+        setMovedRightModels((prev) => {
+            if (!prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.delete(modelId);
+            return next;
+        });
+    }, []);
+
+    const handleToggleMinimize = useCallback((modelId: string) => {
+        setMinimizedModels((prev) => {
+            const next = new Set(prev);
+            if (next.has(modelId)) {
+                next.delete(modelId);
+            } else {
+                next.add(modelId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleModelStopped = useCallback((modelId: string) => {
+        setMovedRightModels((prev) => {
+            if (prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.add(modelId);
+            return next;
+        });
+    }, []);
 
     // Scroll-to-bottom handling
     const [showScrollButton, setShowScrollButton] = useState(false);
@@ -2609,6 +2674,12 @@ export default function MultiChat() {
                                     inputRef={inputRef}
                                     setShowScrollButton={setShowScrollButton}
                                     handleScrollToBottom={handleScrollToBottom}
+                                    minimizedModels={minimizedModels}
+                                    onMinimize={handleMinimize}
+                                    onExpand={handleExpand}
+                                    onToggleMinimize={handleToggleMinimize}
+                                    movedRightModels={movedRightModels}
+                                    onModelStopped={handleModelStopped}
                                 />
                                 <ChatInput
                                     isNewChat={chatQuery.data?.isNewChat}
@@ -2622,6 +2693,7 @@ export default function MultiChat() {
                                     sentAttachmentTypes={sentAttachmentTypes}
                                     showScrollButton={showScrollButton}
                                     handleScrollToBottom={handleScrollToBottom}
+                                    minimizedModels={minimizedModels}
                                 />
                             </div>
                         </ResizablePanel>
@@ -2777,12 +2849,24 @@ function MainScrollableContentView({
     inputRef, // used for spacing
     setShowScrollButton,
     handleScrollToBottom,
+    minimizedModels,
+    onMinimize,
+    onExpand,
+    onToggleMinimize,
+    movedRightModels,
+    onModelStopped,
 }: {
     chatContainerRef: React.RefObject<HTMLDivElement>;
     lastMessageSetRef: React.RefObject<HTMLDivElement>;
     inputRef: React.RefObject<HTMLTextAreaElement>;
     setShowScrollButton: (show: boolean) => void;
     handleScrollToBottom: (smooth?: boolean) => void;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    onExpand: (modelId: string) => void;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 }) {
     const appMetadata = useWaitForAppMetadata();
     const { chatId } = useParams();
@@ -2890,39 +2974,7 @@ function MainScrollableContentView({
         setShowScrollbar(false);
     };
 
-    const [minimizedModels, setMinimizedModels] = useState<Set<string>>(
-        new Set(),
-    );
-    const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
-        new Set(),
-    );
-
-    // Reset per-chat model layout state when navigating between chats
-    useEffect(() => {
-        setMinimizedModels(new Set());
-        setMovedRightModels(new Set());
-    }, [chatId]);
-
-    const handleToggleMinimize = useCallback((modelId: string) => {
-        setMinimizedModels((prev) => {
-            const next = new Set(prev);
-            if (next.has(modelId)) {
-                next.delete(modelId);
-            } else {
-                next.add(modelId);
-            }
-            return next;
-        });
-    }, []);
-
-    const handleModelStopped = useCallback((modelId: string) => {
-        setMovedRightModels((prev) => {
-            if (prev.has(modelId)) return prev;
-            const next = new Set(prev);
-            next.add(modelId);
-            return next;
-        });
-    }, []);
+    // minimizedModels and related state are lifted to MultiChat and passed as props
 
     // early stopping
     if (messageSetsQuery.isPending) {
@@ -2948,9 +3000,11 @@ function MainScrollableContentView({
                 isLastRow={isLastRow}
                 isQuickChatWindow={isQuickChatWindow}
                 minimizedModels={minimizedModels}
-                onToggleMinimize={handleToggleMinimize}
+                onToggleMinimize={onToggleMinimize}
                 movedRightModels={movedRightModels}
-                onModelStopped={handleModelStopped}
+                onModelStopped={onModelStopped}
+                onMinimize={onMinimize}
+                onExpand={onExpand}
             />
         );
     }
