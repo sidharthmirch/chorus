@@ -88,6 +88,7 @@ import {
     minimizedModelsActions,
     useMinimizedModelsStore,
 } from "@core/infra/MinimizedModelsStore";
+import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 import {
     getToolsetIcon,
     UserToolCall,
@@ -1176,6 +1177,9 @@ export function ToolsMessageView({
         replyToId: message.id,
     });
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const toolsDisabledByChatId = useToolsDisabledStore(
+        (s) => s.toolsDisabledByChatId,
+    );
     // // Set stream start time when streaming begins
     // useEffect(() => {
     //     if (message.state === "streaming" && !streamStartTime) {
@@ -1191,6 +1195,8 @@ export function ToolsMessageView({
     const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     );
+    const toolsDisabledForModel =
+        toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
     const messageClasses = [
         "relative",
@@ -1268,7 +1274,14 @@ export function ToolsMessageView({
                                                 className="-mt-[1px]"
                                             />
                                             <div className="text-sm">
-                                                {modelConfig?.displayName}
+                                                <span>
+                                                    {modelConfig?.displayName}
+                                                </span>
+                                                {toolsDisabledForModel && (
+                                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
+                                                        tools off
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -1890,8 +1903,10 @@ export default function MultiChat() {
     const minimizedModelsByChatId = useMinimizedModelsStore(
         (s) => s.minimizedModelsByChatId,
     );
-    const minimizedModels =
-        minimizedModelsByChatId.get(chatId ?? "") ?? new Set<string>();
+    const minimizedModels = useMemo(
+        () => minimizedModelsByChatId.get(chatId ?? "") ?? new Set<string>(),
+        [chatId, minimizedModelsByChatId],
+    );
 
     const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
         new Set(),
@@ -1901,7 +1916,6 @@ export default function MultiChat() {
     useEffect(() => {
         if (chatId) minimizedModelsActions.clearChat(chatId);
         setMovedRightModels(new Set());
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatId]);
 
     const handleMinimize = useCallback(

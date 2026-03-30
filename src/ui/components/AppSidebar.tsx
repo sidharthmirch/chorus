@@ -9,6 +9,7 @@ import {
     SquarePlusIcon,
     ArrowBigUpIcon,
     EllipsisIcon,
+    CircleAlertIcon,
 } from "lucide-react";
 import {
     Sidebar,
@@ -82,7 +83,11 @@ import {
     useMinimizedModelsStore,
 } from "@core/infra/MinimizedModelsStore";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
+import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import { ProviderLogo } from "@ui/components/ui/provider-logo";
+import { Message } from "@core/chorus/ChatState";
+import * as Models from "@core/chorus/Models";
+import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 
 function isToday(date: Date) {
     const today = new Date();
@@ -437,6 +442,135 @@ function filterChatsForDisplay(chats: Chat[], currentChatId: string) {
 const NUM_DEFAULT_CHATS_TO_SHOW_BY_DEFAULT = 25;
 const NUM_PROJECT_CHATS_TO_SHOW_BY_DEFAULT = 10;
 
+function MinimizedModelEntry({
+    chatId,
+    modelId,
+    displayName,
+    modelConfig,
+    message,
+}: {
+    chatId: string;
+    modelId: string;
+    displayName: string;
+    modelConfig: Models.ModelConfig | undefined;
+    message: Message | undefined;
+}) {
+    const [retryRequested, setRetryRequested] = useState(false);
+    const dialogId = `minimized-sidebar-failure-${chatId}-${modelId}`;
+    const restartMessage = MessageAPI.useRestartMessage(
+        chatId,
+        message?.messageSetId ?? "",
+        message?.id ?? "",
+    );
+    const toolsDisabledByChatId = useToolsDisabledStore(
+        (s) => s.toolsDisabledByChatId,
+    );
+
+    const hasEmptyIdleResponse =
+        message?.state === "idle" &&
+        !message.errorMessage &&
+        !message.text.trim() &&
+        (message.parts.length === 0 ||
+            message.parts.every((part) => !part.content));
+    const hasFailed = Boolean(message?.errorMessage) || hasEmptyIdleResponse;
+    const isRetrying =
+        retryRequested || restartMessage.isPending || message?.state === "streaming";
+    const toolsDisabledForModel =
+        toolsDisabledByChatId.get(chatId)?.has(modelId) ?? false;
+
+    useEffect(() => {
+        if (
+            retryRequested &&
+            message &&
+            (message.state === "streaming" || message.text.trim().length > 0)
+        ) {
+            setRetryRequested(false);
+            minimizedModelsActions.expandModel(chatId, modelId);
+        }
+    }, [chatId, message, modelId, retryRequested]);
+
+    useEffect(() => {
+        if (retryRequested && restartMessage.isError) {
+            setRetryRequested(false);
+        }
+    }, [restartMessage.isError, retryRequested]);
+
+    return (
+        <div className="px-1">
+            <button
+                onClick={() => {
+                    if (hasFailed && !isRetrying) {
+                        dialogActions.openDialog(dialogId);
+                        return;
+                    }
+                    minimizedModelsActions.expandModel(chatId, modelId);
+                }}
+                className="group/minimized flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors cursor-pointer text-left"
+            >
+                {modelConfig && (
+                    <ProviderLogo size="sm" modelId={modelConfig.modelId} />
+                )}
+                <span className="text-xs text-muted-foreground flex-1 truncate">
+                    {displayName}
+                    {toolsDisabledForModel && (
+                        <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
+                            tools off
+                        </span>
+                    )}
+                </span>
+                {isRetrying && <RetroSpinner />}
+                {!isRetrying && hasFailed && (
+                    <CircleAlertIcon className="w-3 h-3 text-destructive" />
+                )}
+            </button>
+
+            <Dialog id={dialogId}>
+                <DialogContent className="max-w-md p-4">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg">Model failed</DialogTitle>
+                        <DialogDescription className="text-sm whitespace-pre-wrap">
+                            {message?.errorMessage ??
+                                "Model did not return a response."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => dialogActions.closeDialog(dialogId)}
+                        >
+                            Close
+                        </Button>
+                        <Button
+                            disabled={!modelConfig || !message || restartMessage.isPending}
+                            onClick={() => {
+                                if (!modelConfig || !message) return;
+                                restartMessage.reset();
+                                setRetryRequested(true);
+                                dialogActions.closeDialog(dialogId);
+                                restartMessage.mutate(
+                                    { modelConfig },
+                                    {
+                                        onSuccess: (streamingToken) => {
+                                            if (!streamingToken) {
+                                                setRetryRequested(false);
+                                            }
+                                        },
+                                        onError: () => {
+                                            setRetryRequested(false);
+                                        },
+                                    },
+                                );
+                            }}
+                        >
+                            {restartMessage.isPending ? "Regenerating..." : "Regenerate response"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
 export function AppSidebarInner() {
     const projectsQuery = useQuery(ProjectAPI.projectQueries.list());
     const chatsQuery = useQuery(ChatAPI.chatQueries.list());
@@ -450,19 +584,67 @@ export function AppSidebarInner() {
     const minimizedModelsByChatId = useMinimizedModelsStore(
         (s) => s.minimizedModelsByChatId,
     );
-    const minimizedModelIds =
-        minimizedModelsByChatId.get(currentChatId) ?? new Set<string>();
+    const minimizedModelIds = useMemo(
+        () => minimizedModelsByChatId.get(currentChatId) ?? new Set<string>(),
+        [currentChatId, minimizedModelsByChatId],
+    );
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const messageSetsQuery = MessageAPI.useMessageSets(currentChatId);
 
     // Build list of minimized model entries for the sidebar panel
+    const latestMessageByModel = useMemo(() => {
+        const result = new Map<string, Message>();
+        for (const messageSet of messageSetsQuery.data ?? []) {
+            if (messageSet.selectedBlockType === "tools") {
+                for (const message of messageSet.toolsBlock.chatMessages) {
+                    result.set(message.model, message);
+                }
+                continue;
+            }
+            if (messageSet.selectedBlockType === "compare") {
+                for (const message of messageSet.compareBlock.messages) {
+                    result.set(message.model, message);
+                }
+                continue;
+            }
+            if (messageSet.selectedBlockType === "chat") {
+                const message = messageSet.chatBlock.message;
+                if (message) result.set(message.model, message);
+            }
+        }
+        return result;
+    }, [messageSetsQuery.data]);
+
     const minimizedEntries = useMemo(() => {
-        return [...minimizedModelIds].map((modelId) => {
-            const config = modelConfigsQuery.data?.find(
-                (m) => m.id === modelId,
-            );
-            return { modelId, displayName: config?.displayName ?? modelId };
-        });
-    }, [minimizedModelIds, modelConfigsQuery.data]);
+        return [...minimizedModelIds]
+            .map((modelId) => {
+                const config = modelConfigsQuery.data?.find(
+                    (m) => m.id === modelId,
+                );
+                const message = latestMessageByModel.get(modelId);
+                const hasEmptyIdleResponse =
+                    message?.state === "idle" &&
+                    !message.errorMessage &&
+                    !message.text.trim() &&
+                    (message.parts.length === 0 ||
+                        message.parts.every((part) => !part.content));
+                const hasFailed =
+                    Boolean(message?.errorMessage) || hasEmptyIdleResponse;
+                return {
+                    modelId,
+                    displayName: config?.displayName ?? modelId,
+                    modelConfig: config,
+                    message,
+                    hasFailed,
+                };
+            })
+            .sort((a, b) => {
+                if (a.hasFailed !== b.hasFailed) {
+                    return a.hasFailed ? 1 : -1;
+                }
+                return a.displayName.localeCompare(b.displayName);
+            });
+    }, [minimizedModelIds, modelConfigsQuery.data, latestMessageByModel]);
 
     const [showAllChats, setShowAllChats] = useState(false);
 
@@ -600,52 +782,27 @@ export function AppSidebarInner() {
                                         </div>
                                         <div className="flex flex-col gap-0.5">
                                             {minimizedEntries.map(
-                                                ({ modelId }) => {
-                                                    // Find the latest message for this model from cached query data
-                                                    // We pass a placeholder message object since MinimizedToolsColumnView
-                                                    // uses modelConfigsQuery internally for display
+                                                ({
+                                                    modelId,
+                                                    displayName,
+                                                    modelConfig,
+                                                    message,
+                                                }) => {
                                                     return (
-                                                        <div
+                                                        <MinimizedModelEntry
                                                             key={modelId}
-                                                            className="px-1"
-                                                        >
-                                                            <button
-                                                                onClick={() =>
-                                                                    minimizedModelsActions.expandModel(
-                                                                        currentChatId,
-                                                                        modelId,
-                                                                    )
-                                                                }
-                                                                className="group/minimized flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors cursor-pointer text-left"
-                                                            >
-                                                                {(() => {
-                                                                    const config =
-                                                                        modelConfigsQuery.data?.find(
-                                                                            (
-                                                                                m,
-                                                                            ) =>
-                                                                                m.id ===
-                                                                                modelId,
-                                                                        );
-                                                                    return (
-                                                                        <>
-                                                                            {config && (
-                                                                                <ProviderLogo
-                                                                                    size="sm"
-                                                                                    modelId={
-                                                                                        config.modelId
-                                                                                    }
-                                                                                />
-                                                                            )}
-                                                                            <span className="text-xs text-muted-foreground flex-1 truncate">
-                                                                                {config?.displayName ??
-                                                                                    modelId}
-                                                                            </span>
-                                                                        </>
-                                                                    );
-                                                                })()}
-                                                            </button>
-                                                        </div>
+                                                            chatId={
+                                                                currentChatId
+                                                            }
+                                                            modelId={modelId}
+                                                            displayName={
+                                                                displayName
+                                                            }
+                                                            modelConfig={
+                                                                modelConfig
+                                                            }
+                                                            message={message}
+                                                        />
                                                     );
                                                 },
                                             )}
