@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+    useCallback,
+    memo,
+    useMemo,
+    useLayoutEffect,
+} from "react";
 import React from "react";
 import {
     useParams,
@@ -1530,6 +1538,12 @@ export function MinimizedToolsColumnView({
     const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     );
+    const hasEmptyIdleResponse =
+        message.state === "idle" &&
+        !message.errorMessage &&
+        !message.text.trim() &&
+        (message.parts.length === 0 ||
+            message.parts.every((part) => part.content.trim().length === 0));
 
     return (
         <button
@@ -1543,10 +1557,7 @@ export function MinimizedToolsColumnView({
                 {modelConfig?.displayName ?? message.model}
             </span>
             {message.state === "streaming" && <RetroSpinner />}
-            {(message.errorMessage ||
-                (message.state === "idle" &&
-                    (message.parts.length === 0 ||
-                        _.every(message.parts.map((p) => !p.content))))) && (
+            {(message.errorMessage || hasEmptyIdleResponse) && (
                 <CircleAlertIcon className="w-3 h-3 text-destructive" />
             )}
             <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity flex-none" />
@@ -1572,9 +1583,8 @@ function ToolsBlockView({
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
-    const recentlyExpandedModelsByChatId = useMinimizedModelsStore(
-        (s) => s.recentlyExpandedModelsByChatId,
-    );
+    const selectedModelConfigsCompare =
+        ModelsAPI.useSelectedModelConfigsCompare();
 
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
@@ -1598,34 +1608,37 @@ function ToolsBlockView({
                 ?.displayName ?? modelId,
         [modelConfigsQuery.data],
     );
-    const recentlyExpandedModels = useMemo(
-        () =>
-            recentlyExpandedModelsByChatId.get(chatId ?? "") ??
-            new Set<string>(),
-        [chatId, recentlyExpandedModelsByChatId],
+    const selectedModelConfigs = useMemo(
+        () => selectedModelConfigsCompare.data ?? [],
+        [selectedModelConfigsCompare.data],
     );
-    const recentlyExpandedModelNames = useMemo(() => {
-        if (recentlyExpandedModels.size === 0) return [];
-        return [...recentlyExpandedModels].map((modelId) =>
-            getDisplayName(modelId),
+    const currentModelIds = useMemo(
+        () => new Set(toolsBlock.chatMessages.map((m) => m.model)),
+        [toolsBlock.chatMessages],
+    );
+    const pendingModelConfigs = useMemo(() => {
+        if (selectedModelConfigs.length === 0) return [];
+        return selectedModelConfigs.filter(
+            (modelConfig) =>
+                !currentModelIds.has(modelConfig.id) &&
+                !minimizedModels.has(modelConfig.id),
         );
-    }, [recentlyExpandedModels, getDisplayName]);
-    const recentlyExpandedIndicator = useMemo(() => {
-        if (recentlyExpandedModelNames.length === 0) return null;
-        if (recentlyExpandedModelNames.length > 2) {
-            return `${recentlyExpandedModelNames.length} re-added models will receive your next message`;
-        }
-        return `Next message will include ${recentlyExpandedModelNames.join(", ")}`;
-    }, [recentlyExpandedModelNames]);
+    }, [selectedModelConfigs, currentModelIds, minimizedModels]);
 
-    // Auto-minimize models that returned no response
+    // Auto-minimize models that returned no response or errored
     useEffect(() => {
         for (const message of toolsBlock.chatMessages) {
-            if (
+            const hasEmptyIdleResponse =
                 message.state === "idle" &&
-                !minimizedModels.has(message.model) &&
+                !message.errorMessage &&
+                !message.text.trim() &&
                 (message.parts.length === 0 ||
-                    _.every(message.parts.map((p) => !p.content)))
+                    message.parts.every(
+                        (part) => part.content.trim().length === 0,
+                    ));
+            if (
+                !minimizedModels.has(message.model) &&
+                (message.errorMessage || hasEmptyIdleResponse)
             ) {
                 onMinimize(message.model);
             }
@@ -1681,39 +1694,54 @@ function ToolsBlockView({
                         </motion.div>
                     ))}
                     {isLastRow && !isQuickChatWindow && (
-                        <div>
-                            <button
-                                // brighten border in dark mode bc it's hard to see
-                                className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
-                                onClick={() => {
-                                    dialogActions.openDialog(
-                                        MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
-                                    );
-                                }}
-                            >
-                                <div className="flex flex-col items-center gap-1 py-1">
-                                    <PlusIcon className="font-medium w-3 h-3" />
-                                    Add
-                                </div>
-                            </button>
-                            {recentlyExpandedIndicator && (
-                                <div className="mt-1 text-[10px] text-muted-foreground text-center leading-snug max-w-[72px]">
-                                    {recentlyExpandedIndicator}
+                        <div className="flex items-end gap-2 self-end">
+                            {pendingModelConfigs.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                        Included in next response
+                                    </div>
+                                    {pendingModelConfigs.map((modelConfig) => (
+                                        <button
+                                            key={modelConfig.id}
+                                            className="px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground border rounded-md bg-muted/30 max-w-[140px] truncate text-left hover:bg-muted/50"
+                                            onClick={() =>
+                                                onMinimize(modelConfig.id)
+                                            }
+                                        >
+                                            {modelConfig.displayName}
+                                        </button>
+                                    ))}
                                 </div>
                             )}
+                            <div className="flex flex-col items-center">
+                                <button
+                                    // brighten border in dark mode bc it's hard to see
+                                    className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 h-fit border-dashed"
+                                    onClick={() => {
+                                        dialogActions.openDialog(
+                                            MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
+                                        );
+                                    }}
+                                >
+                                    <div className="flex flex-col items-center gap-1 py-1">
+                                        <PlusIcon className="font-medium w-3 h-3" />
+                                        Add
+                                    </div>
+                                </button>
 
-                            {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
-                            <ManageModelsBox
-                                id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
-                                mode={{
-                                    type: "add",
-                                    checkedModelConfigIds:
-                                        toolsBlock.chatMessages.map(
-                                            (m) => m.model,
-                                        ),
-                                    onAddModel: handleAddModel,
-                                }}
-                            />
+                                {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
+                                <ManageModelsBox
+                                    id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
+                                    mode={{
+                                        type: "add",
+                                        checkedModelConfigIds:
+                                            toolsBlock.chatMessages.map(
+                                                (m) => m.model,
+                                            ),
+                                        onAddModel: handleAddModel,
+                                    }}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1894,6 +1922,7 @@ export default function MultiChat() {
     const location = useLocation();
     const appMetadata = useWaitForAppMetadata();
     const messageSetsQuery = MessageAPI.useMessageSets(chatId!);
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
     const [searchParams] = useSearchParams();
 
     // Extract replyId from query parameters
@@ -1950,7 +1979,12 @@ export default function MultiChat() {
 
     const handleMinimize = useCallback(
         (modelId: string) => {
-            if (chatId) minimizedModelsActions.minimizeModel(chatId, modelId);
+            if (!chatId) return;
+            if (chatContainerRef.current) {
+                pendingScrollTopRef.current =
+                    chatContainerRef.current.scrollTop;
+            }
+            minimizedModelsActions.minimizeModel(chatId, modelId);
         },
         [chatId],
     );
@@ -1958,6 +1992,10 @@ export default function MultiChat() {
     const handleToggleMinimize = useCallback(
         (modelId: string) => {
             if (!chatId) return;
+            if (chatContainerRef.current) {
+                pendingScrollTopRef.current =
+                    chatContainerRef.current.scrollTop;
+            }
             if (minimizedModels.has(modelId)) {
                 minimizedModelsActions.expandModel(chatId, modelId);
             } else {
@@ -1992,6 +2030,16 @@ export default function MultiChat() {
         [chatContainerRef],
     );
     const lastMessageSetRef = useRef<HTMLDivElement>(null);
+    const pendingScrollTopRef = useRef<number | null>(null);
+
+    useLayoutEffect(() => {
+        if (pendingScrollTopRef.current === null) return;
+        const container = chatContainerRef.current;
+        if (container) {
+            container.scrollTop = pendingScrollTopRef.current;
+        }
+        pendingScrollTopRef.current = null;
+    }, [minimizedModels]);
 
     // Replies drawer state - controlled by replyId query parameter
     const repliesDrawerOpen = !!replyChatId;
@@ -2024,23 +2072,31 @@ export default function MultiChat() {
         messageSetsQuery.data && messageSetsQuery.data.length > 0
             ? messageSetsQuery.data[messageSetsQuery.data.length - 1]
             : undefined;
-    const lastMessageSetId = currentMessageSet?.id;
     const currentCompareBlock =
         currentMessageSet?.selectedBlockType === "compare"
             ? currentMessageSet.compareBlock
             : undefined;
+    const getCompareDisplayName = useCallback(
+        (modelId: string) =>
+            modelConfigsQuery.data?.find((m) => m.id === modelId)
+                ?.displayName ?? modelId,
+        [modelConfigsQuery.data],
+    );
+    const sortedCompareMessages = useMemo(() => {
+        if (!currentCompareBlock) return [];
+        return [...currentCompareBlock.messages].sort((a, b) => {
+            const aActive = a.state === "streaming";
+            const bActive = b.state === "streaming";
+            const aMoved = movedRightModels.has(a.model);
+            const bMoved = movedRightModels.has(b.model);
 
-    const lastMessageSetIdRef = useRef<string | undefined>(undefined);
-    useEffect(() => {
-        if (!chatId || !lastMessageSetId) return;
-        if (
-            lastMessageSetIdRef.current &&
-            lastMessageSetIdRef.current !== lastMessageSetId
-        ) {
-            minimizedModelsActions.clearRecentExpanded(chatId);
-        }
-        lastMessageSetIdRef.current = lastMessageSetId;
-    }, [chatId, lastMessageSetId]);
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            if (aMoved !== bMoved) return aMoved ? 1 : -1;
+            return getCompareDisplayName(a.model).localeCompare(
+                getCompareDisplayName(b.model),
+            );
+        });
+    }, [currentCompareBlock, getCompareDisplayName, movedRightModels]);
 
     // ----------------------
     // Effects
@@ -2272,14 +2328,14 @@ export default function MultiChat() {
                 const index = parseInt(e.key) - 1;
                 if (
                     !currentCompareBlock ||
-                    currentCompareBlock.messages.length <= index
+                    sortedCompareMessages.length <= index
                 ) {
                     console.warn(
                         `couldn't select message at ${index} from cmd+${index + 1}`,
                     );
                     return;
                 }
-                const message = currentCompareBlock.messages[index];
+                const message = sortedCompareMessages[index];
 
                 selectMessage.mutate({
                     chatId: chatId!,
@@ -2335,6 +2391,7 @@ export default function MultiChat() {
         chatId,
         currentMessageSet,
         currentCompareBlock,
+        sortedCompareMessages,
         isQuickChatWindow,
         handleShareChat,
         handleOpenQuickChatInMainWindow,

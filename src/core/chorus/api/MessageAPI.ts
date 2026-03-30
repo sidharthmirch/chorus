@@ -671,11 +671,13 @@ export function useMessageSet(chatId: string, messageSetId: string) {
 export function useMessageSets(
     chatId: string,
     select?: (data: MessageSetDetail[]) => MessageSetDetail[],
+    options?: { enabled?: boolean },
 ) {
     return useQuery({
         select,
         queryKey: messageKeys.messageSets(chatId),
         queryFn: () => fetchMessageSets(chatId),
+        enabled: options?.enabled,
     });
 }
 
@@ -886,8 +888,9 @@ export function useRestartMessage(
             modelConfig: Models.ModelConfig;
         }) => {
             const originalMessage = await fetchMessage(messageId);
-            const cachedDraft =
-                queryClient.getQueryData<string>(draftKeys.messageDraft(chatId));
+            const cachedDraft = queryClient.getQueryData<string>(
+                draftKeys.messageDraft(chatId),
+            );
             const currentDraft = (
                 cachedDraft ??
                 (await fetchMessageDraft(chatId)) ??
@@ -901,11 +904,13 @@ export function useRestartMessage(
                 toolsDisabledActions.isToolsDisabledForModel(
                     chatId,
                     modelConfig.id,
-                ) ||
-                isToolUseUnsupportedError(originalMessage?.errorMessage);
+                ) || isToolUseUnsupportedError(originalMessage?.errorMessage);
 
             if (shouldDisableToolsForRetry) {
-                toolsDisabledActions.disableToolsForModel(chatId, modelConfig.id);
+                toolsDisabledActions.disableToolsForModel(
+                    chatId,
+                    modelConfig.id,
+                );
 
                 const [messageSets, draftAttachmentTypes] = await Promise.all([
                     fetchMessageSets(chatId),
@@ -1023,8 +1028,9 @@ export function useRestartMessageLegacy(
             modelConfig: Models.ModelConfig;
         }) => {
             const originalMessage = await fetchMessage(messageId);
-            const cachedDraft =
-                queryClient.getQueryData<string>(draftKeys.messageDraft(chatId));
+            const cachedDraft = queryClient.getQueryData<string>(
+                draftKeys.messageDraft(chatId),
+            );
             const currentDraft = (
                 cachedDraft ??
                 (await fetchMessageDraft(chatId)) ??

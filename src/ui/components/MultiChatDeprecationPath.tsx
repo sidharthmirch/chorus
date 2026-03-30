@@ -102,6 +102,29 @@ function getBrainstormerProvider(model: string): ProviderName {
     throw new Error(`Unknown brainstormer model: ${model}`);
 }
 
+const PROVIDER_NAMES: ProviderName[] = [
+    "anthropic",
+    "openai",
+    "google",
+    "perplexity",
+    "openrouter",
+    "ollama",
+    "lmstudio",
+    "grok",
+    "meta",
+];
+
+function getLegacyProviderName(model: string): ProviderName | undefined {
+    if (!model) return undefined;
+    const primaryToken = model.split("::")[0];
+    const legacyProviderId = primaryToken.includes("/")
+        ? primaryToken.split("/")[0]
+        : primaryToken;
+    return PROVIDER_NAMES.includes(legacyProviderId as ProviderName)
+        ? (legacyProviderId as ProviderName)
+        : undefined;
+}
+
 /**
  * For legacy reasons, the 'model' value in the message row might not always correspond
  * to a valid id in the models table.
@@ -710,17 +733,24 @@ function MinimizedColumnView({
         message.model,
         modelConfigsQuery.data ?? [],
     );
-    const modelId = modelConfigsQuery.data?.find(
+    const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
-    )?.modelId;
-    const providerName = modelId ? Models.getProviderName(modelId) : undefined;
+    );
+    const modelId = modelConfig?.modelId;
+    const providerName = modelId
+        ? Models.getProviderName(modelId)
+        : getLegacyProviderName(message.model);
     const failureDialogId = `minimized-failure-${message.id}`;
 
     const didNotReturnResponse =
-        message.state === "idle" && !message.text.trim() && !message.errorMessage;
+        message.state === "idle" &&
+        !message.text.trim() &&
+        !message.errorMessage;
     const hasFailed = Boolean(message.errorMessage) || didNotReturnResponse;
     const isRetrying =
-        retryRequested || restartMessage.isPending || message.state === "streaming";
+        retryRequested ||
+        restartMessage.isPending ||
+        message.state === "streaming";
     const failureMessage =
         message.errorMessage ?? "Model did not return a response.";
 
@@ -795,9 +825,21 @@ function MinimizedColumnView({
                                 restartMessage.reset();
                                 setRetryRequested(true);
                                 dialogActions.closeDialog(failureDialogId);
-                                restartMessage.mutate({
-                                    modelConfig: modelConfigQuery.data,
-                                });
+                                restartMessage.mutate(
+                                    {
+                                        modelConfig: modelConfigQuery.data,
+                                    },
+                                    {
+                                        onSuccess: (streamingToken) => {
+                                            if (!streamingToken) {
+                                                setRetryRequested(false);
+                                            }
+                                        },
+                                        onError: () => {
+                                            setRetryRequested(false);
+                                        },
+                                    },
+                                );
                             }}
                         >
                             {restartMessage.isPending ? (

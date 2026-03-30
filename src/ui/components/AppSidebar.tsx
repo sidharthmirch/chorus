@@ -467,14 +467,17 @@ function MinimizedModelEntry({
     );
 
     const hasEmptyIdleResponse =
-        message?.state === "idle" &&
+        !!message &&
+        message.state === "idle" &&
         !message.errorMessage &&
         !message.text.trim() &&
         (message.parts.length === 0 ||
-            message.parts.every((part) => !part.content));
+            message.parts.every((part) => part.content.trim().length === 0));
     const hasFailed = Boolean(message?.errorMessage) || hasEmptyIdleResponse;
     const isRetrying =
-        retryRequested || restartMessage.isPending || message?.state === "streaming";
+        retryRequested ||
+        restartMessage.isPending ||
+        message?.state === "streaming";
     const toolsDisabledForModel =
         toolsDisabledByChatId.get(chatId)?.has(modelId) ?? false;
 
@@ -527,7 +530,9 @@ function MinimizedModelEntry({
             <Dialog id={dialogId}>
                 <DialogContent className="max-w-md p-4">
                     <DialogHeader>
-                        <DialogTitle className="text-lg">Model failed</DialogTitle>
+                        <DialogTitle className="text-lg">
+                            Model failed
+                        </DialogTitle>
                         <DialogDescription className="text-sm whitespace-pre-wrap">
                             {message?.errorMessage ??
                                 "Model did not return a response."}
@@ -541,7 +546,11 @@ function MinimizedModelEntry({
                             Close
                         </Button>
                         <Button
-                            disabled={!modelConfig || !message || restartMessage.isPending}
+                            disabled={
+                                !modelConfig ||
+                                !message ||
+                                restartMessage.isPending
+                            }
                             onClick={() => {
                                 if (!modelConfig || !message) return;
                                 restartMessage.reset();
@@ -562,7 +571,9 @@ function MinimizedModelEntry({
                                 );
                             }}
                         >
-                            {restartMessage.isPending ? "Regenerating..." : "Regenerate response"}
+                            {restartMessage.isPending
+                                ? "Regenerating..."
+                                : "Regenerate response"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -576,7 +587,9 @@ export function AppSidebarInner() {
     const chatsQuery = useQuery(ChatAPI.chatQueries.list());
     const createProject = ProjectAPI.useCreateProject();
     const location = useLocation();
-    const currentChatId = location.pathname.split("/").pop()!; // well this is super hacky
+    const pathSegments = location.pathname.split("/").filter(Boolean);
+    const isChatRoute = pathSegments[0] === "chat" && Boolean(pathSegments[1]);
+    const currentChatId = isChatRoute ? pathSegments[1] : "";
     const updateChatProject = ProjectAPI.useSetChatProject();
     const getOrCreateNewChat = ChatAPI.useGetOrCreateNewChat();
 
@@ -589,7 +602,13 @@ export function AppSidebarInner() {
         [currentChatId, minimizedModelsByChatId],
     );
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
-    const messageSetsQuery = MessageAPI.useMessageSets(currentChatId);
+    const messageSetsQuery = MessageAPI.useMessageSets(
+        currentChatId,
+        undefined,
+        {
+            enabled: isChatRoute,
+        },
+    );
 
     // Build list of minimized model entries for the sidebar panel
     const latestMessageByModel = useMemo(() => {
@@ -623,11 +642,14 @@ export function AppSidebarInner() {
                 );
                 const message = latestMessageByModel.get(modelId);
                 const hasEmptyIdleResponse =
-                    message?.state === "idle" &&
+                    !!message &&
+                    message.state === "idle" &&
                     !message.errorMessage &&
                     !message.text.trim() &&
                     (message.parts.length === 0 ||
-                        message.parts.every((part) => !part.content));
+                        message.parts.every(
+                            (part) => part.content.trim().length === 0,
+                        ));
                 const hasFailed =
                     Boolean(message?.errorMessage) || hasEmptyIdleResponse;
                 return {
