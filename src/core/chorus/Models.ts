@@ -206,6 +206,45 @@ export type ModelConfig = {
     completionPricePerToken?: number;
 };
 
+/// ------------------------------------------------------------------------------------------------
+/// Provider Visibility & Model Profiles
+/// ------------------------------------------------------------------------------------------------
+
+/**
+ * Per-model visibility setting for provider-level filtering.
+ * Users can hide models they don't want to see in the model picker.
+ */
+export type ProviderVisibility = {
+    providerName: string;
+    modelId: string;
+    isVisible: boolean;
+};
+
+/**
+ * A named profile containing a set of selected model configs.
+ * Users can quickly switch between profiles (e.g., "3 model set", "4 model set").
+ */
+export type ModelProfile = {
+    id: string;
+    name: string;
+    modelConfigIds: string[]; // Ordered list of model config IDs
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+/**
+ * A named persona/role preset with a system prompt injected into chats.
+ */
+export type PromptProfile = {
+    id: string;
+    name: string;
+    systemPrompt: string;
+    icon?: string;
+    author: "user" | "system";
+    createdAt?: string;
+    updatedAt?: string;
+};
+
 export type UsageData = {
     prompt_tokens?: number;
     completion_tokens?: number;
