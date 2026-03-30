@@ -1596,6 +1596,10 @@ type MessageSetViewProps = {
     isQuickChatWindow: boolean;
     userMessageRef: React.RefObject<HTMLDivElement> | undefined;
     messageSetRef: React.RefObject<HTMLDivElement> | undefined;
+    minimizedModels: Set<string>;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 };
 
 const MessageSetView = memo(
@@ -1605,6 +1609,10 @@ const MessageSetView = memo(
         isQuickChatWindow,
         userMessageRef, // a ref that will be applied to user message container, if there is one
         messageSetRef, // a ref that will be applied to the message set container
+        minimizedModels,
+        onToggleMinimize,
+        movedRightModels,
+        onModelStopped,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
 
@@ -1658,6 +1666,10 @@ const MessageSetView = memo(
                             compareBlock={messageSet.compareBlock}
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
+                            minimizedModels={minimizedModels}
+                            onToggleMinimize={onToggleMinimize}
+                            movedRightModels={movedRightModels}
+                            onModelStopped={onModelStopped}
                         />
                     ) : messageSet.selectedBlockType === "chat" ? (
                         <ChatBlockView
@@ -2748,6 +2760,29 @@ function MainScrollableContentView({
         setShowScrollbar(false);
     };
 
+    const [minimizedModels, setMinimizedModels] = useState<Set<string>>(
+        new Set(),
+    );
+    const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
+        new Set(),
+    );
+
+    const handleToggleMinimize = useCallback((modelId: string) => {
+        setMinimizedModels((prev) => {
+            const next = new Set(prev);
+            if (next.has(modelId)) {
+                next.delete(modelId);
+            } else {
+                next.add(modelId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleModelStopped = useCallback((modelId: string) => {
+        setMovedRightModels((prev) => new Set([...prev, modelId]));
+    }, []);
+
     // early stopping
     if (messageSetsQuery.isPending) {
         return <ChatMessageSkeleton />;
@@ -2771,6 +2806,10 @@ function MainScrollableContentView({
                 userMessageRef={undefined}
                 isLastRow={isLastRow}
                 isQuickChatWindow={isQuickChatWindow}
+                minimizedModels={minimizedModels}
+                onToggleMinimize={handleToggleMinimize}
+                movedRightModels={movedRightModels}
+                onModelStopped={handleModelStopped}
             />
         );
     }

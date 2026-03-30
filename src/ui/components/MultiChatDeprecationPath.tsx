@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { motion, LayoutGroup } from "framer-motion";
 import { Button } from "./ui/button";
 import {
     Maximize2Icon,
+    Minimize2Icon,
     MergeIcon,
     RemoveFormattingIcon,
     StopCircleIcon,
@@ -289,6 +291,8 @@ function AIMessageView({
     isLastRow,
     isQuickChatWindow,
     isSynthesis,
+    onMinimize,
+    onStop,
 }: {
     message: Message;
     blockType: BlockType;
@@ -296,6 +300,8 @@ function AIMessageView({
     isLastRow?: boolean;
     isQuickChatWindow?: boolean;
     isSynthesis?: boolean;
+    onMinimize?: () => void;
+    onStop?: () => void;
 }) {
     const [raw, setRaw] = useState(false);
     const [streamStartTime, setStreamStartTime] = useState<Date>();
@@ -435,6 +441,7 @@ function AIMessageView({
                                                 chatId: message.chatId,
                                                 messageId: message.id,
                                             });
+                                            onStop?.();
                                         }}
                                     >
                                         <StopCircleIcon className="w-3.5 h-3.5" />
@@ -497,6 +504,25 @@ function AIMessageView({
                             </TooltipTrigger>
                             <TooltipContent>Open full screen</TooltipContent>
                         </Tooltip>
+                        {onMinimize && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        className="hover:text-foreground"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onMinimize();
+                                        }}
+                                    >
+                                        <Minimize2Icon
+                                            strokeWidth={1.5}
+                                            className="w-3.5 h-3.5"
+                                        />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Minimize</TooltipContent>
+                            </Tooltip>
+                        )}
                     </div>
                 </div>
 
@@ -664,16 +690,64 @@ function SynthesisAnimation() {
     );
 }
 
+function MinimizedColumnView({
+    message,
+    onExpand,
+}: {
+    message: Message;
+    onExpand: () => void;
+}) {
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const modelName = getMessageModelName(
+        message.model,
+        modelConfigsQuery.data ?? [],
+    );
+    const providerName = Models.getProviderName(
+        modelConfigsQuery.data?.find((m) => m.id === message.model)?.modelId ??
+            "",
+    );
+
+    return (
+        <button
+            onClick={onExpand}
+            className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
+        >
+            <ProviderLogo size="sm" provider={providerName} />
+            {message.state === "streaming" && (
+                <RetroSpinner />
+            )}
+            {message.errorMessage && (
+                <CircleAlertIcon className="w-3 h-3 text-destructive" />
+            )}
+            <span
+                className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
+                style={{ writingMode: "vertical-rl" }}
+            >
+                {modelName}
+            </span>
+            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
+        </button>
+    );
+}
+
 function CompareBlockView({
     messageSetId,
     compareBlock,
     isLastRow = false,
     isQuickChatWindow,
+    minimizedModels,
+    onToggleMinimize,
+    movedRightModels,
+    onModelStopped,
 }: {
     messageSetId: string;
     compareBlock: CompareBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const addMessageToCompareBlock = MessageAPI.useAddMessageToCompareBlock(
@@ -681,14 +755,25 @@ function CompareBlockView({
     );
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
 
-    const aiMessages = compareBlock.messages;
+    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical within groups
+    const sortedMessages = [...compareBlock.messages].sort((a, b) => {
+        const aActive = a.state === "streaming";
+        const bActive = b.state === "streaming";
+        const aMoved = movedRightModels.has(a.model);
+        const bMoved = movedRightModels.has(b.model);
+
+        if (aActive !== bActive) return aActive ? -1 : 1;
+        if (aMoved !== bMoved) return aMoved ? 1 : -1;
+        return a.model.localeCompare(b.model);
+    });
+
     const synthesisMessage = compareBlock.synthesis;
     const isSynthesisSelected = synthesisMessage?.selected ?? false;
     const aiMessagesToDisplay = [
         ...(synthesisMessage && synthesisMessage.selected
             ? [synthesisMessage]
             : []),
-        ...aiMessages,
+        ...sortedMessages,
     ];
 
     const selectSynthesis = MessageAPI.useSelectSynthesis();
@@ -707,11 +792,34 @@ function CompareBlockView({
     };
 
     function renderMessage(message: Message, index: number) {
+        const isSynthesis = message.model === "chorus::synthesize";
+        const isMinimized =
+            !isSynthesis && minimizedModels.has(message.model);
         const shortcutNumber = isLastRow ? index + 1 : undefined;
 
+        if (isMinimized) {
+            return (
+                <motion.div
+                    key={message.id}
+                    layout
+                    layoutId={`compare-col-${message.model}-${messageSetId}`}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="mr-2 pt-2 flex-none"
+                >
+                    <MinimizedColumnView
+                        message={message}
+                        onExpand={() => onToggleMinimize(message.model)}
+                    />
+                </motion.div>
+            );
+        }
+
         return (
-            <div
+            <motion.div
                 key={message.id}
+                layout
+                layoutId={`compare-col-${message.model}-${messageSetId}`}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
                 className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} ${
                     isQuickChatWindow
                         ? ""
@@ -724,13 +832,24 @@ function CompareBlockView({
                     shortcutNumber={shortcutNumber}
                     isLastRow={isLastRow}
                     isQuickChatWindow={isQuickChatWindow}
-                    isSynthesis={message.model === "chorus::synthesize"}
+                    isSynthesis={isSynthesis}
+                    onMinimize={
+                        !isSynthesis
+                            ? () => onToggleMinimize(message.model)
+                            : undefined
+                    }
+                    onStop={
+                        !isSynthesis
+                            ? () => onModelStopped(message.model)
+                            : undefined
+                    }
                 />
-            </div>
+            </motion.div>
         );
     }
 
     return (
+        <LayoutGroup id={`compare-${messageSetId}`}>
         <div
             className={`flex w-full h-fit pb-2 ${
                 // get horizontal scroll bars, plus hackily disable y scrolling
@@ -801,7 +920,7 @@ function CompareBlockView({
                         id={MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID}
                         mode={{
                             type: "add",
-                            checkedModelConfigIds: aiMessages.map(
+                            checkedModelConfigIds: compareBlock.messages.map(
                                 (m) => m.model,
                             ),
                             onAddModel: handleAddModel,
@@ -810,6 +929,7 @@ function CompareBlockView({
                 </>
             )}
         </div>
+        </LayoutGroup>
     );
 }
 
