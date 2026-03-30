@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { motion, LayoutGroup } from "framer-motion";
 import {
     FileTextIcon,
     ExternalLinkIcon,
@@ -20,6 +21,7 @@ import {
     Loader2,
     SearchIcon,
     Maximize2Icon,
+    Minimize2Icon,
     RemoveFormattingIcon,
     RefreshCcwIcon,
     StopCircleIcon,
@@ -1134,12 +1136,16 @@ export function ToolsMessageView({
     isLastRow,
     isOnlyMessage,
     isReply = false,
+    onMinimize,
+    onStop,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
     isLastRow: boolean;
     isOnlyMessage: boolean;
     isReply?: boolean;
+    onMinimize?: () => void;
+    onStop?: () => void;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1294,6 +1300,7 @@ export function ToolsMessageView({
                                                             messageId:
                                                                 message.id,
                                                         });
+                                                        onStop?.();
                                                     }}
                                                 >
                                                     <StopCircleIcon className="w-3.5 h-3.5" />
@@ -1428,6 +1435,28 @@ export function ToolsMessageView({
                                             </TooltipContent>
                                         </Tooltip>
                                     )}
+
+                                    {onMinimize && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    className="hover:text-foreground"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onMinimize();
+                                                    }}
+                                                >
+                                                    <Minimize2Icon
+                                                        strokeWidth={1.5}
+                                                        className="w-3.5 h-3.5"
+                                                    />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                Minimize
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1473,16 +1502,59 @@ export const MANAGE_MODELS_TOOLS_DIALOG_ID = "manage-models-compare";
 export const MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID =
     "manage-models-compare-inline"; // dialog for the inline add model button
 
+function MinimizedToolsColumnView({
+    message,
+    onExpand,
+}: {
+    message: Message;
+    onExpand: () => void;
+}) {
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const modelConfig = modelConfigsQuery.data?.find(
+        (m) => m.id === message.model,
+    );
+
+    return (
+        <button
+            onClick={onExpand}
+            className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
+        >
+            {modelConfig && (
+                <ProviderLogo size="sm" modelId={modelConfig.modelId} />
+            )}
+            {message.state === "streaming" && <RetroSpinner />}
+            {message.errorMessage && (
+                <CircleAlertIcon className="w-3 h-3 text-destructive" />
+            )}
+            <span
+                className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
+                style={{ writingMode: "vertical-rl" }}
+            >
+                {modelConfig?.displayName ?? message.model}
+            </span>
+            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
+        </button>
+    );
+}
+
 function ToolsBlockView({
     messageSetId,
     toolsBlock,
     isLastRow = false,
     isQuickChatWindow,
+    minimizedModels,
+    onToggleMinimize,
+    movedRightModels,
+    onModelStopped,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
@@ -1503,7 +1575,20 @@ function ToolsBlockView({
         });
     };
 
+    // Sort: streaming first, then non-moved-right, then explicitly stopped, all alphabetical within groups
+    const sortedMessages = [...toolsBlock.chatMessages].sort((a, b) => {
+        const aActive = a.state === "streaming";
+        const bActive = b.state === "streaming";
+        const aMoved = movedRightModels.has(a.model);
+        const bMoved = movedRightModels.has(b.model);
+
+        if (aActive !== bActive) return aActive ? -1 : 1;
+        if (aMoved !== bMoved) return aMoved ? 1 : -1;
+        return a.model.localeCompare(b.model);
+    });
+
     return (
+        <LayoutGroup id={`tools-${messageSetId}`}>
         <div
             ref={elementRef}
             className={`flex w-full h-fit pb-2 pr-5 gap-2 ${
@@ -1514,24 +1599,53 @@ function ToolsBlockView({
             ${shouldShowScrollbar ? "is-scrolling" : ""}
             ${!isQuickChatWindow ? "px-10" : ""}`}
         >
-            {toolsBlock.chatMessages.map((message, _index) => (
-                <div
-                    key={message.id}
-                    className={
-                        isQuickChatWindow
-                            ? "w-full max-w-prose"
-                            : `w-full flex-1 min-w-[450px] max-w-[550px]`
-                    }
-                >
-                    <ToolsMessageView
-                        message={message}
-                        // shortcutNumber={isLastRow ? index + 1 : undefined}
-                        isLastRow={isLastRow}
-                        isQuickChatWindow={isQuickChatWindow}
-                        isOnlyMessage={toolsBlock.chatMessages.length === 1}
-                    />
-                </div>
-            ))}
+            {sortedMessages.map((message) => {
+                const isMinimized = minimizedModels.has(message.model);
+
+                if (isMinimized) {
+                    return (
+                        <motion.div
+                            key={message.id}
+                            layout
+                            layoutId={`tools-col-${message.model}-${messageSetId}`}
+                            transition={{ duration: 0.3, ease: "easeInOut" }}
+                            className="flex-none pt-2"
+                        >
+                            <MinimizedToolsColumnView
+                                message={message}
+                                onExpand={() => onToggleMinimize(message.model)}
+                            />
+                        </motion.div>
+                    );
+                }
+
+                return (
+                    <motion.div
+                        key={message.id}
+                        layout
+                        layoutId={`tools-col-${message.model}-${messageSetId}`}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className={
+                            isQuickChatWindow
+                                ? "w-full max-w-prose"
+                                : `w-full flex-1 min-w-[450px] max-w-[550px]`
+                        }
+                    >
+                        <ToolsMessageView
+                            message={message}
+                            isLastRow={isLastRow}
+                            isQuickChatWindow={isQuickChatWindow}
+                            isOnlyMessage={toolsBlock.chatMessages.length === 1}
+                            onMinimize={
+                                toolsBlock.chatMessages.length > 1
+                                    ? () => onToggleMinimize(message.model)
+                                    : undefined
+                            }
+                            onStop={() => onModelStopped(message.model)}
+                        />
+                    </motion.div>
+                );
+            })}
             {isLastRow && !isQuickChatWindow && (
                 <div>
                     <button
@@ -1563,6 +1677,7 @@ function ToolsBlockView({
                 </div>
             )}
         </div>
+        </LayoutGroup>
     );
 }
 
@@ -1684,6 +1799,10 @@ const MessageSetView = memo(
                             toolsBlock={messageSet.toolsBlock}
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
+                            minimizedModels={minimizedModels}
+                            onToggleMinimize={onToggleMinimize}
+                            movedRightModels={movedRightModels}
+                            onModelStopped={onModelStopped}
                         />
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
