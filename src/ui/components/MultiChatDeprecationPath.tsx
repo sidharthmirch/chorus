@@ -34,6 +34,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogTitle,
 } from "./ui/dialog";
 import { MessageMarkdown } from "./renderers/MessageMarkdown";
@@ -697,7 +698,14 @@ function MinimizedColumnView({
     message: Message;
     onExpand: () => void;
 }) {
+    const [retryRequested, setRetryRequested] = useState(false);
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const modelConfigQuery = ModelsAPI.useModelConfig(message.model);
+    const restartMessage = MessageAPI.useRestartMessageLegacy(
+        message.chatId,
+        message.messageSetId,
+        message.id,
+    );
     const modelName = getMessageModelName(
         message.model,
         modelConfigsQuery.data ?? [],
@@ -706,25 +714,105 @@ function MinimizedColumnView({
         (m) => m.id === message.model,
     )?.modelId;
     const providerName = modelId ? Models.getProviderName(modelId) : undefined;
+    const failureDialogId = `minimized-failure-${message.id}`;
+
+    const didNotReturnResponse =
+        message.state === "idle" && !message.text.trim() && !message.errorMessage;
+    const hasFailed = Boolean(message.errorMessage) || didNotReturnResponse;
+    const isRetrying =
+        retryRequested || restartMessage.isPending || message.state === "streaming";
+    const failureMessage =
+        message.errorMessage ?? "Model did not return a response.";
+
+    useEffect(() => {
+        // Once regeneration starts producing output, restore the full column.
+        if (
+            retryRequested &&
+            (message.state === "streaming" || message.text.trim().length > 0)
+        ) {
+            setRetryRequested(false);
+            onExpand();
+        }
+    }, [message.state, message.text, onExpand, retryRequested]);
+
+    useEffect(() => {
+        if (retryRequested && restartMessage.isError) {
+            setRetryRequested(false);
+        }
+    }, [retryRequested, restartMessage.isError]);
 
     return (
-        <button
-            onClick={onExpand}
-            className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
-        >
-            {providerName && <ProviderLogo size="sm" provider={providerName} />}
-            {message.state === "streaming" && <RetroSpinner />}
-            {message.errorMessage && (
-                <CircleAlertIcon className="w-3 h-3 text-destructive" />
-            )}
-            <span
-                className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
-                style={{ writingMode: "vertical-rl" }}
+        <>
+            <button
+                onClick={() => {
+                    if (hasFailed && !isRetrying) {
+                        dialogActions.openDialog(failureDialogId);
+                        return;
+                    }
+                    onExpand();
+                }}
+                className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
             >
-                {modelName}
-            </span>
-            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
-        </button>
+                {providerName && (
+                    <ProviderLogo size="sm" provider={providerName} />
+                )}
+                {isRetrying && <RetroSpinner />}
+                {!isRetrying && hasFailed && (
+                    <CircleAlertIcon className="w-3 h-3 text-destructive" />
+                )}
+                <span
+                    className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
+                    style={{ writingMode: "vertical-rl" }}
+                >
+                    {modelName}
+                </span>
+                <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
+            </button>
+
+            <Dialog id={failureDialogId}>
+                <DialogContent className="max-w-md p-4">
+                    <DialogTitle className="text-lg">Model failed</DialogTitle>
+                    <DialogDescription className="text-sm whitespace-pre-wrap">
+                        {failureMessage}
+                    </DialogDescription>
+                    <DialogFooter className="pt-2">
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                dialogActions.closeDialog(failureDialogId)
+                            }
+                        >
+                            Close
+                        </Button>
+                        <Button
+                            disabled={
+                                !modelConfigQuery.data ||
+                                restartMessage.isPending ||
+                                message.state === "streaming"
+                            }
+                            onClick={() => {
+                                if (!modelConfigQuery.data) return;
+                                restartMessage.reset();
+                                setRetryRequested(true);
+                                dialogActions.closeDialog(failureDialogId);
+                                restartMessage.mutate({
+                                    modelConfig: modelConfigQuery.data,
+                                });
+                            }}
+                        >
+                            {restartMessage.isPending ? (
+                                <>
+                                    <RetroSpinner className="mr-2" />
+                                    Regenerating
+                                </>
+                            ) : (
+                                "Regenerate response"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 
