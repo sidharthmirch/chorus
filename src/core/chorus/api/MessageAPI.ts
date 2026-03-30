@@ -33,7 +33,7 @@ import { useAppContext } from "@ui/hooks/useAppContext";
 import { db } from "../DB";
 import { draftKeys } from "./DraftAPI";
 import { updateSavedModelConfigChat } from "./ModelConfigChatAPI";
-import { chatIsLoadingQueries, chatQueries } from "./ChatAPI";
+import { Chat, chatIsLoadingQueries, chatQueries } from "./ChatAPI";
 import {
     appMetadataKeys,
     getApiKeys,
@@ -3298,6 +3298,36 @@ export function useGenerateChatTitle() {
     const queryClient = useQueryClient();
     const getMessageSets = useGetMessageSets();
 
+    const extractTitleFromResponse = (fullResponse: string): string | null => {
+        if (!fullResponse) return null;
+
+        const tagMatch = fullResponse.match(/<title>(.*?)<\/title>/is);
+        const rawTitle = tagMatch?.[1] ?? fullResponse;
+        const withoutTags = rawTitle.replace(/<\/?title>/gi, "");
+        const firstLine =
+            withoutTags
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .find((line) => line.length > 0) ?? "";
+
+        const normalized = firstLine
+            .replace(/^title\s*[:-]\s*/i, "")
+            .replace(/["']/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        if (!normalized) return null;
+
+        return normalized.slice(0, 40);
+    };
+
+    const fallbackTitleFromMessage = (messageText: string): string | null => {
+        const normalized = messageText.replace(/\s+/g, " ").trim();
+        if (!normalized) return null;
+        const words = normalized.split(" ").slice(0, 5).join(" ");
+        return words.slice(0, 40);
+    };
+
     return useMutation({
         mutationKey: ["generateChatTitle"] as const,
         mutationFn: async ({ chatId }: { chatId: string }) => {
@@ -3315,10 +3345,9 @@ export function useGenerateChatTitle() {
             }
 
             const messageSets = await getMessageSets(chatId);
-            const userMessageText = Array.from(messageSets) // copy so we can reverse
-                .reverse()
+            const userMessageText = messageSets
                 .map((ms) => ms.userBlock?.message?.text)
-                .find((m) => m !== undefined);
+                .find((m) => m !== undefined && m.trim().length > 0);
 
             if (!userMessageText) {
                 console.log("Skipping title generation for chat", chatId);
@@ -3352,37 +3381,63 @@ export function useGenerateChatTitle() {
                 titleModelConfigId = settings.quickChat?.modelConfigId;
             }
 
-            const fullResponse = await simpleLLM(
-                `Based on this first message, write a 1-5 word title for the conversation. Try to put the most important words first. Format your response as <title>YOUR TITLE HERE</title>.
+            let cleanTitle: string | null = null;
+            try {
+                const fullResponse = await simpleLLM(
+                    `Based on this first message, write a 1-5 word title for the conversation. Try to put the most important words first. Format your response as <title>YOUR TITLE HERE</title>.
 If there's no information in the message, just return "Untitled Chat".
 <message>
 ${userMessageText}
 </message>`,
-                {
-                    maxTokens: 100,
-                },
-                titleModelConfigId,
-            );
-            // Extract title from XML tags and clean it up
-            const match = fullResponse.match(/<title>(.*?)<\/title>/s);
-            if (!match || !match[1]) {
-                console.warn("No title found in response:", fullResponse);
+                    {
+                        maxTokens: 100,
+                    },
+                    titleModelConfigId,
+                );
+                cleanTitle = extractTitleFromResponse(fullResponse);
+            } catch (error) {
+                console.warn("Failed to generate title via LLM:", error);
+            }
+
+            if (!cleanTitle) {
+                cleanTitle = fallbackTitleFromMessage(userMessageText);
+            }
+
+            if (!cleanTitle) {
+                console.warn("No title found in response or fallback.");
                 return;
             }
-            const cleanTitle = match[1]
-                .trim()
-                .slice(0, 40)
-                .replace(/["']/g, "");
-            if (cleanTitle) {
-                console.log("Setting chat title to:", cleanTitle);
-                await db.execute("UPDATE chats SET title = $1 WHERE id = $2", [
-                    cleanTitle,
-                    chatId,
-                ]);
-            }
+
+            console.log("Setting chat title to:", cleanTitle);
+            await db.execute("UPDATE chats SET title = $1 WHERE id = $2", [
+                cleanTitle,
+                chatId,
+            ]);
+            return { title: cleanTitle };
         },
         onSuccess: async (data, variables) => {
             if (!data?.skipped) {
+                if (data?.title) {
+                    queryClient.setQueryData(
+                        chatQueries.detail(variables.chatId).queryKey,
+                        (chat: Chat | undefined) =>
+                            chat
+                                ? {
+                                      ...chat,
+                                      title: data.title ?? chat.title,
+                                  }
+                                : chat,
+                    );
+                    queryClient.setQueryData(
+                        chatQueries.list().queryKey,
+                        (chats: Chat[] | undefined) =>
+                            chats?.map((chat) =>
+                                chat.id === variables.chatId
+                                    ? { ...chat, title: data.title ?? chat.title }
+                                    : chat,
+                            ),
+                    );
+                }
                 await queryClient.invalidateQueries(chatQueries.list());
                 await queryClient.invalidateQueries(
                     chatQueries.detail(variables.chatId),
