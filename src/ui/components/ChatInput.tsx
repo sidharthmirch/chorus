@@ -621,7 +621,7 @@ export function ChatInput({
             </form>
             <div className="flex py-3 w-full">
                 <div className="flex justify-between w-full mx-auto">
-                    <div className="flex items-center gap-2 h-7 overflow-x-auto -mx-1 no-scrollbar overflow-y-hidden relative w-[30rem]">
+                    <div className="flex items-center gap-2 h-7 overflow-x-auto -mx-1 no-scrollbar overflow-y-hidden relative flex-1 min-w-0 pr-1">
                         <AttachmentAddPill onSelect={fileSelect.mutate} />
                         {!isReply && (
                             <ManageModelsButtonCompare

@@ -26,37 +26,39 @@ export function PromptProfilePill({ chatId }: { chatId: string }) {
         dialogActions.openDialog(SETTINGS_DIALOG_ID);
     };
 
-    const trigger = activeProfile ? (
-        <button
-            className="inline-flex bg-muted items-center justify-center rounded-full h-7 pl-2 text-sm hover:bg-muted/80 px-3 py-1 ring-offset-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0 gap-1.5"
-            aria-label={`Prompt profile: ${activeProfile.name}`}
-        >
-            {activeProfile.icon ? (
-                <span className="text-xs leading-none">
-                    {activeProfile.icon}
-                </span>
-            ) : (
-                <UserCircle className="w-3 h-3" />
-            )}
-            <span>{activeProfile.name}</span>
-        </button>
-    ) : (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <button
-                    className="inline-flex bg-muted items-center justify-center rounded-full h-7 w-7 text-sm hover:bg-muted/80 ring-offset-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0 text-muted-foreground"
-                    aria-label="Set prompt profile"
-                >
-                    <UserCircle className="w-3.5 h-3.5" />
-                </button>
-            </TooltipTrigger>
-            <TooltipContent>Set prompt profile</TooltipContent>
-        </Tooltip>
-    );
-
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+            {activeProfile ? (
+                <PopoverTrigger asChild>
+                    <button
+                        className="inline-flex bg-muted items-center justify-center rounded-full h-7 pl-2 text-sm hover:bg-muted/80 px-3 py-1 ring-offset-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0 gap-1.5 max-w-[12rem] min-w-0 overflow-hidden"
+                        aria-label={`Prompt profile: ${activeProfile.name}`}
+                    >
+                        {activeProfile.icon ? (
+                            <span className="text-xs leading-none">
+                                {activeProfile.icon}
+                            </span>
+                        ) : (
+                            <UserCircle className="w-3 h-3" />
+                        )}
+                        <span className="truncate">{activeProfile.name}</span>
+                    </button>
+                </PopoverTrigger>
+            ) : (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                            <button
+                                className="inline-flex bg-muted items-center justify-center rounded-full h-7 w-7 text-sm hover:bg-muted/80 ring-offset-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0 text-muted-foreground"
+                                aria-label="Set prompt profile"
+                            >
+                                <UserCircle className="w-3.5 h-3.5" />
+                            </button>
+                        </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Set prompt profile</TooltipContent>
+                </Tooltip>
+            )}
             <PopoverContent
                 className="w-64 p-2"
                 align="start"
