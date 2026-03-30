@@ -1544,7 +1544,6 @@ function ToolsBlockView({
     isQuickChatWindow,
     minimizedModels,
     onMinimize,
-    onExpand,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
@@ -1552,7 +1551,6 @@ function ToolsBlockView({
     isQuickChatWindow: boolean;
     minimizedModels: Set<string>;
     onMinimize: (modelId: string) => void;
-    onExpand: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
@@ -1592,9 +1590,6 @@ function ToolsBlockView({
         }
     }, [toolsBlock.chatMessages, minimizedModels, onMinimize]);
 
-    const minimizedMessages = toolsBlock.chatMessages.filter((m) =>
-        minimizedModels.has(m.model),
-    );
     const activeMessages = [...toolsBlock.chatMessages]
         .filter((m) => !minimizedModels.has(m.model))
         .sort((a, b) =>
@@ -1604,22 +1599,7 @@ function ToolsBlockView({
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
             <div className="flex w-full h-fit">
-                {/* Left panel: minimized models */}
-                {minimizedMessages.length > 0 && !isQuickChatWindow && (
-                    <div className="flex-none flex flex-col gap-1 border-r px-2 pt-6 pb-2 min-w-[160px] max-w-[200px]">
-                        <div className="text-xs text-muted-foreground/60 uppercase tracking-wider font-geist-mono mb-1 px-1">
-                            Minimized
-                        </div>
-                        {minimizedMessages.map((message) => (
-                            <MinimizedToolsColumnView
-                                key={message.id}
-                                message={message}
-                                onExpand={() => onExpand(message.model)}
-                            />
-                        ))}
-                    </div>
-                )}
-                {/* Main scrollable area: active models */}
+                {/* Main scrollable area: active (non-minimized) models only */}
                 <div
                     ref={elementRef}
                     className={`flex flex-1 h-fit pb-2 pr-5 gap-2 ${
@@ -1730,7 +1710,6 @@ type MessageSetViewProps = {
     movedRightModels: Set<string>; // for CompareBlockView (deprecated path)
     onModelStopped: (modelId: string) => void; // for CompareBlockView (deprecated path)
     onMinimize: (modelId: string) => void; // for ToolsBlockView
-    onExpand: (modelId: string) => void; // for ToolsBlockView
 };
 
 const MessageSetView = memo(
@@ -1745,7 +1724,6 @@ const MessageSetView = memo(
         movedRightModels,
         onModelStopped,
         onMinimize,
-        onExpand,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
 
@@ -1819,7 +1797,6 @@ const MessageSetView = memo(
                             isQuickChatWindow={isQuickChatWindow}
                             minimizedModels={minimizedModels}
                             onMinimize={onMinimize}
-                            onExpand={onExpand}
                         />
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
@@ -2986,6 +2963,21 @@ function MainScrollableContentView({
 
     const messageSets = messageSetsQuery.data;
 
+    // Collect the latest message per minimized model (for the left panel)
+    const minimizedPanelMessages = useMemo(() => {
+        const modelToLatestMsg = new Map<string, Message>();
+        for (const ms of messageSets) {
+            if (ms.selectedBlockType === "tools" && ms.toolsBlock) {
+                for (const m of ms.toolsBlock.chatMessages) {
+                    if (minimizedModels.has(m.model)) {
+                        modelToLatestMsg.set(m.model, m);
+                    }
+                }
+            }
+        }
+        return [...modelToLatestMsg.values()];
+    }, [messageSets, minimizedModels]);
+
     function renderMessageSet(
         ms: MessageSetDetail,
         messageSetRef: React.RefObject<HTMLDivElement> | undefined = undefined,
@@ -3004,7 +2996,6 @@ function MainScrollableContentView({
                 movedRightModels={movedRightModels}
                 onModelStopped={onModelStopped}
                 onMinimize={onMinimize}
-                onExpand={onExpand}
             />
         );
     }
@@ -3028,54 +3019,75 @@ function MainScrollableContentView({
 
     return (
         <div
-            ref={chatContainerRef}
-            className={`absolute inset-0 overflow-y-scroll overflow-x-hidden ${showScrollbar ? "" : "invisible-scrollbar"} ${
-                isQuickChatWindow ? "pl-4 pt-4 mb-16" : "top-10 pt-10"
-            }`}
+            className="absolute inset-0 flex"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            data-tauri-drag-region={isQuickChatWindow ? "true" : undefined}
         >
+            {/* Left panel: minimized models — sits outside the scroll area so everything shifts right */}
+            {minimizedPanelMessages.length > 0 && !isQuickChatWindow && (
+                <div className="flex-none flex flex-col gap-1 border-r px-2 pt-12 pb-2 min-w-[160px] max-w-[200px] overflow-y-auto">
+                    <div className="text-xs text-muted-foreground/60 uppercase tracking-wider font-geist-mono mb-1 px-1">
+                        Minimized
+                    </div>
+                    {minimizedPanelMessages.map((message) => (
+                        <MinimizedToolsColumnView
+                            key={message.model}
+                            message={message}
+                            onExpand={() => onExpand(message.model)}
+                        />
+                    ))}
+                </div>
+            )}
             <div
-                className="space-y-5 max-w-10xl mx-auto select-text"
+                ref={chatContainerRef}
+                className={`flex-1 overflow-y-scroll overflow-x-hidden ${showScrollbar ? "" : "invisible-scrollbar"} ${
+                    isQuickChatWindow ? "pl-4 pt-4 mb-16" : "top-10 pt-10"
+                }`}
                 data-tauri-drag-region={isQuickChatWindow ? "true" : undefined}
             >
-                {appMetadata["has_dismissed_onboarding"] === "false" &&
-                    isQuickChatWindow && (
-                        <p className="text-sm text-muted-foreground">
-                            Welcome! Press <code>⌘I</code> to enable vision mode
-                            to let your Ambient Chat see your screen.
-                        </p>
-                    )}
+                <div
+                    className="space-y-5 max-w-10xl mx-auto select-text"
+                    data-tauri-drag-region={
+                        isQuickChatWindow ? "true" : undefined
+                    }
+                >
+                    {appMetadata["has_dismissed_onboarding"] === "false" &&
+                        isQuickChatWindow && (
+                            <p className="text-sm text-muted-foreground">
+                                Welcome! Press <code>⌘I</code> to enable vision
+                                mode to let your Ambient Chat see your screen.
+                            </p>
+                        )}
 
-                {messageSets.length > 0 && (
-                    <>
-                        {otherMessageSets.map((ms) => (
-                            <div key={ms.id}>{renderMessageSet(ms)}</div>
-                        ))}
-                        <div
-                            // we should subtract enough space that there's no scroll bar on first message
-                            // on either qc or normal chat, but not so much that on subsequent messages
-                            // you can see old messages peaking in at the top.
-                            className={`space-y-5 ${
-                                isQuickChatWindow
-                                    ? "h-[calc(100vh-120px)]"
-                                    : "h-[calc(100vh-80px)]"
-                            }`}
-                            data-tauri-drag-region={
-                                isQuickChatWindow ? "true" : undefined
-                            }
-                        >
-                            {lastUserSet &&
-                                renderMessageSet(
-                                    lastUserSet,
-                                    lastMessageSetRef,
-                                )}
-                            {lastAISet && renderMessageSet(lastAISet)}
-                            <div ref={nonQcSpacerRef} />
-                        </div>
-                    </>
-                )}
+                    {messageSets.length > 0 && (
+                        <>
+                            {otherMessageSets.map((ms) => (
+                                <div key={ms.id}>{renderMessageSet(ms)}</div>
+                            ))}
+                            <div
+                                // we should subtract enough space that there's no scroll bar on first message
+                                // on either qc or normal chat, but not so much that on subsequent messages
+                                // you can see old messages peaking in at the top.
+                                className={`space-y-5 ${
+                                    isQuickChatWindow
+                                        ? "h-[calc(100vh-120px)]"
+                                        : "h-[calc(100vh-80px)]"
+                                }`}
+                                data-tauri-drag-region={
+                                    isQuickChatWindow ? "true" : undefined
+                                }
+                            >
+                                {lastUserSet &&
+                                    renderMessageSet(
+                                        lastUserSet,
+                                        lastMessageSetRef,
+                                    )}
+                                {lastAISet && renderMessageSet(lastAISet)}
+                                <div ref={nonQcSpacerRef} />
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );
