@@ -702,17 +702,21 @@ function MinimizedColumnView({
         message.model,
         modelConfigsQuery.data ?? [],
     );
-    const providerName = Models.getProviderName(
-        modelConfigsQuery.data?.find((m) => m.id === message.model)?.modelId ??
-            "",
-    );
+    const modelId = modelConfigsQuery.data?.find(
+        (m) => m.id === message.model,
+    )?.modelId;
+    const providerName = modelId
+        ? Models.getProviderName(modelId)
+        : undefined;
 
     return (
         <button
             onClick={onExpand}
             className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
         >
-            <ProviderLogo size="sm" provider={providerName} />
+            {providerName && (
+                <ProviderLogo size="sm" provider={providerName} />
+            )}
             {message.state === "streaming" && (
                 <RetroSpinner />
             )}
@@ -754,8 +758,13 @@ function CompareBlockView({
         chatId!,
     );
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
 
-    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical within groups
+    const getDisplayName = (modelId: string) =>
+        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+
+    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical by display name within groups
     const sortedMessages = [...compareBlock.messages].sort((a, b) => {
         const aActive = a.state === "streaming";
         const bActive = b.state === "streaming";
@@ -764,7 +773,7 @@ function CompareBlockView({
 
         if (aActive !== bActive) return aActive ? -1 : 1;
         if (aMoved !== bMoved) return aMoved ? 1 : -1;
-        return a.model.localeCompare(b.model);
+        return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
     });
 
     const synthesisMessage = compareBlock.synthesis;

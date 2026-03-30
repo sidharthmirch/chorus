@@ -1558,6 +1558,7 @@ function ToolsBlockView({
 }) {
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
 
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
@@ -1575,7 +1576,11 @@ function ToolsBlockView({
         });
     };
 
-    // Sort: streaming first, then non-moved-right, then explicitly stopped, all alphabetical within groups
+    const getDisplayName = (modelId: string) =>
+        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+
+    // Sort: streaming first, then non-moved-right, then explicitly stopped, all alphabetical by display name within groups
     const sortedMessages = [...toolsBlock.chatMessages].sort((a, b) => {
         const aActive = a.state === "streaming";
         const bActive = b.state === "streaming";
@@ -1584,7 +1589,7 @@ function ToolsBlockView({
 
         if (aActive !== bActive) return aActive ? -1 : 1;
         if (aMoved !== bMoved) return aMoved ? 1 : -1;
-        return a.model.localeCompare(b.model);
+        return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
     });
 
     return (
@@ -2886,6 +2891,12 @@ function MainScrollableContentView({
         new Set(),
     );
 
+    // Reset per-chat model layout state when navigating between chats
+    useEffect(() => {
+        setMinimizedModels(new Set());
+        setMovedRightModels(new Set());
+    }, [chatId]);
+
     const handleToggleMinimize = useCallback((modelId: string) => {
         setMinimizedModels((prev) => {
             const next = new Set(prev);
@@ -2899,7 +2910,12 @@ function MainScrollableContentView({
     }, []);
 
     const handleModelStopped = useCallback((modelId: string) => {
-        setMovedRightModels((prev) => new Set([...prev, modelId]));
+        setMovedRightModels((prev) => {
+            if (prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.add(modelId);
+            return next;
+        });
     }, []);
 
     // early stopping
