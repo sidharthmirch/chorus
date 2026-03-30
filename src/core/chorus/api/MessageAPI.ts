@@ -60,6 +60,7 @@ import {
 import { SettingsManager } from "@core/utilities/Settings";
 import { Attachment, AttachmentDBRow, readAttachment } from "./AttachmentsAPI";
 import { fetchChatPromptProfileSystemPrompt } from "./PromptProfilesAPI";
+import { toolsDisabledActions } from "@core/infra/ToolsDisabledStore";
 
 // Query keys objects are based on https://tkdodo.eu/blog/effective-react-query-keys
 // although also consider this approach: https://tkdodo.eu/blog/leveraging-the-query-function-context
@@ -320,6 +321,79 @@ export async function fetchMessage(messageId: string): Promise<Message | null> {
     }
 
     return readMessage(messageRow, messageParts, attachments);
+}
+
+function isFailedMessage(message: Message | null): boolean {
+    if (!message) return false;
+    if (message.errorMessage) return true;
+    if (message.state !== "idle") return false;
+
+    const hasText = message.text.trim().length > 0;
+    const hasPartContent = message.parts.some(
+        (part) => part.content.trim().length > 0,
+    );
+    return !hasText && !hasPartContent;
+}
+
+const TOOL_UNSUPPORTED_ERROR_PATTERNS = [
+    "does not support tool",
+    "doesn't support tool",
+    "tool use is not supported",
+    "tools are not supported",
+    "tool calls are not supported",
+    "function calling is not supported",
+    "unsupported parameter: 'tools'",
+    "unknown parameter: tools",
+    "unsupported parameter: tools",
+    "tool_choice",
+];
+
+function isToolUseUnsupportedError(errorMessage: string | undefined): boolean {
+    if (!errorMessage) return false;
+    const lowerMessage = errorMessage.toLowerCase();
+    return TOOL_UNSUPPORTED_ERROR_PATTERNS.some((pattern) =>
+        lowerMessage.includes(pattern),
+    );
+}
+
+function isMediaAttachmentType(type: Attachment["type"]): boolean {
+    return type === "image" || type === "pdf";
+}
+
+function hasUnsupportedMediaForModel(
+    messageSets: MessageSetDetail[],
+    draftAttachmentTypes: Attachment["type"][],
+    modelConfig: ModelConfig,
+): boolean {
+    const allAttachmentTypes: Attachment["type"][] = [
+        ...messageSets.flatMap(
+            (messageSet) =>
+                messageSet.userBlock.message?.attachments?.map(
+                    (attachment) => attachment.type,
+                ) ?? [],
+        ),
+        ...draftAttachmentTypes,
+    ];
+
+    return allAttachmentTypes.some(
+        (attachmentType) =>
+            isMediaAttachmentType(attachmentType) &&
+            !modelConfig.supportedAttachmentTypes.includes(attachmentType),
+    );
+}
+
+async function fetchDraftAttachmentTypes(
+    chatId: string,
+): Promise<Attachment["type"][]> {
+    return (
+        await db.select<{ type: Attachment["type"] }[]>(
+            `SELECT attachments.type
+             FROM draft_attachments
+             JOIN attachments ON draft_attachments.attachment_id = attachments.id
+             WHERE draft_attachments.chat_id = ?`,
+            [chatId],
+        )
+    ).map((row) => row.type);
 }
 
 export async function fetchMessageDraft(
@@ -598,11 +672,13 @@ export function useMessageSet(chatId: string, messageSetId: string) {
 export function useMessageSets(
     chatId: string,
     select?: (data: MessageSetDetail[]) => MessageSetDetail[],
+    options?: { enabled?: boolean },
 ) {
     return useQuery({
         select,
         queryKey: messageKeys.messageSets(chatId),
         queryFn: () => fetchMessageSets(chatId),
+        enabled: options?.enabled,
     });
 }
 
@@ -812,6 +888,55 @@ export function useRestartMessage(
         }: {
             modelConfig: Models.ModelConfig;
         }) => {
+            const originalMessage = await fetchMessage(messageId);
+            const cachedDraft = queryClient.getQueryData<string>(
+                draftKeys.messageDraft(chatId),
+            );
+            const currentDraft = (
+                cachedDraft ??
+                (await fetchMessageDraft(chatId)) ??
+                ""
+            ).trim();
+            const shouldUseDraftForRegenerate =
+                Boolean(originalMessage?.selected) &&
+                isFailedMessage(originalMessage) &&
+                currentDraft.length > 0;
+            const shouldDisableToolsForRetry =
+                toolsDisabledActions.isToolsDisabledForModel(
+                    chatId,
+                    modelConfig.id,
+                ) || isToolUseUnsupportedError(originalMessage?.errorMessage);
+
+            if (shouldDisableToolsForRetry) {
+                toolsDisabledActions.disableToolsForModel(
+                    chatId,
+                    modelConfig.id,
+                );
+
+                const [messageSets, draftAttachmentTypes] = await Promise.all([
+                    fetchMessageSets(chatId),
+                    fetchDraftAttachmentTypes(chatId),
+                ]);
+
+                // no-tools models often cannot handle image/pdf context either
+                if (
+                    hasUnsupportedMediaForModel(
+                        messageSets,
+                        draftAttachmentTypes,
+                        modelConfig,
+                    )
+                ) {
+                    console.warn(
+                        "Skipping no-tools retry due to unsupported media attachments",
+                        {
+                            chatId,
+                            modelConfigId: modelConfig.id,
+                        },
+                    );
+                    return undefined;
+                }
+            }
+
             const streamingToken = uuidv4();
             const lockResult = await db.execute(
                 `UPDATE messages
@@ -846,12 +971,24 @@ export function useRestartMessage(
                 queryKey: messageKeys.messageSets(chatId),
             });
 
+            if (shouldUseDraftForRegenerate) {
+                await db.execute(
+                    "INSERT OR REPLACE INTO message_drafts (chat_id, content) VALUES ($1, $2)",
+                    [chatId, ""],
+                );
+                queryClient.setQueryData(draftKeys.messageDraft(chatId), "");
+            }
+
             await streamToolsMessage.mutateAsync({
                 chatId,
                 messageSetId,
                 messageId,
                 streamingToken,
                 modelConfig,
+                draftUserInput: shouldUseDraftForRegenerate
+                    ? currentDraft
+                    : undefined,
+                disableTools: shouldDisableToolsForRetry,
             });
 
             return streamingToken;
@@ -891,6 +1028,20 @@ export function useRestartMessageLegacy(
         }: {
             modelConfig: Models.ModelConfig;
         }) => {
+            const originalMessage = await fetchMessage(messageId);
+            const cachedDraft = queryClient.getQueryData<string>(
+                draftKeys.messageDraft(chatId),
+            );
+            const currentDraft = (
+                cachedDraft ??
+                (await fetchMessageDraft(chatId)) ??
+                ""
+            ).trim();
+            const shouldUseDraftForRegenerate =
+                Boolean(originalMessage?.selected) &&
+                isFailedMessage(originalMessage) &&
+                currentDraft.length > 0;
+
             const streamingToken = uuidv4();
             const result = await db.execute(
                 `UPDATE messages
@@ -918,11 +1069,30 @@ export function useRestartMessageLegacy(
                 queryKey: messageKeys.messageSets(chatId),
             });
 
+            if (shouldUseDraftForRegenerate) {
+                await db.execute(
+                    "INSERT OR REPLACE INTO message_drafts (chat_id, content) VALUES ($1, $2)",
+                    [chatId, ""],
+                );
+                queryClient.setQueryData(draftKeys.messageDraft(chatId), "");
+            }
+
             const messageSets = await getMessageSets(chatId);
 
             // assume this is the last message set
             const previousMessageSets = messageSets?.slice(0, -1);
-            const conversation = llmConversation(previousMessageSets);
+            const conversation = [
+                ...llmConversation(previousMessageSets),
+                ...(shouldUseDraftForRegenerate
+                    ? [
+                          {
+                              role: "user" as const,
+                              content: currentDraft,
+                              attachments: [],
+                          },
+                      ]
+                    : []),
+            ];
 
             await streamMessageText.mutateAsync({
                 chatId,
@@ -2512,12 +2682,16 @@ function useStreamToolsMessage() {
             messageId,
             streamingToken,
             modelConfig,
+            draftUserInput,
+            disableTools,
         }: {
             chatId: string;
             messageSetId: string;
             messageId: string;
             streamingToken: string;
             modelConfig: ModelConfig;
+            draftUserInput?: string;
+            disableTools?: boolean;
         }) => {
             const projectId = (
                 await queryClient.ensureQueryData(chatQueries.detail(chatId))
@@ -2557,14 +2731,22 @@ function useStreamToolsMessage() {
                         }
                     },
                 );
-                const previousMessageSetsPlusThisMessage = [
-                    ...previousMessageSets,
+                const currentMessageConversation = llmConversation([
                     augmentedLastMessageSet,
-                ];
-
+                ]);
                 const conversation: LLMMessage[] = [
                     ...projectContext,
-                    ...llmConversation(previousMessageSetsPlusThisMessage),
+                    ...llmConversation(previousMessageSets),
+                    ...(draftUserInput
+                        ? [
+                              {
+                                  role: "user" as const,
+                                  content: draftUserInput,
+                                  attachments: [],
+                              },
+                          ]
+                        : []),
+                    ...currentMessageConversation,
                 ];
 
                 console.log(`[level ${level}] streaming ai message`);
@@ -2581,7 +2763,10 @@ function useStreamToolsMessage() {
                     streamingToken,
                 });
 
-                const toolsets = isQuickChatWindow ? [] : await getToolsets();
+                const toolsets =
+                    isQuickChatWindow || disableTools
+                        ? []
+                        : await getToolsets();
                 const tools = toolsets.flatMap((toolset) => {
                     return toolset.listTools();
                 });
@@ -2699,11 +2884,13 @@ function usePopulateToolsBlock(chatId: string) {
             messageSetId,
             isQuickChatWindow,
             replyToModelId,
+            excludedModelIds,
         }: {
             messageSetId: string;
             previousMessageSets: MessageSetDetail[];
             isQuickChatWindow: boolean;
             replyToModelId?: string;
+            excludedModelIds?: Set<string>;
         }) => {
             // BTBL: do we need to protect against double-population here by ensuring
             // it's empty before we populate?
@@ -2723,6 +2910,12 @@ function usePopulateToolsBlock(chatId: string) {
             } else {
                 // Normal flow: use selected model configs
                 modelConfigs = await getSelectedModelConfigs(isQuickChatWindow);
+                // Skip minimized models
+                if (excludedModelIds && excludedModelIds.size > 0) {
+                    modelConfigs = modelConfigs.filter(
+                        (m) => !excludedModelIds.has(m.id),
+                    );
+                }
             }
 
             if (modelConfigs.length === 0) {
@@ -2778,6 +2971,11 @@ function usePopulateToolsBlock(chatId: string) {
                         messageId: createMessageResult.messageId,
                         modelConfig,
                         streamingToken: createMessageResult.streamingToken,
+                        disableTools:
+                            toolsDisabledActions.isToolsDisabledForModel(
+                                chatId,
+                                modelConfig.id,
+                            ),
                     });
                 }),
             );
@@ -2814,10 +3012,12 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
             messageSetId,
             blockType,
             replyToModelId,
+            excludedModelIds,
         }: {
             messageSetId: string;
             blockType: BlockType;
             replyToModelId?: string;
+            excludedModelIds?: Set<string>;
         }) => {
             const messageSets = await getMessageSets(chatId);
             const messageSet = messageSets.find((m) => m.id === messageSetId);
@@ -2843,6 +3043,7 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
                         previousMessageSets,
                         isQuickChatWindow,
                         replyToModelId,
+                        excludedModelIds,
                     });
                 }
                 default: {

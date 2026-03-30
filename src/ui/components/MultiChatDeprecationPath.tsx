@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { motion, LayoutGroup } from "framer-motion";
 import { Button } from "./ui/button";
 import {
     Maximize2Icon,
+    Minimize2Icon,
     MergeIcon,
     RemoveFormattingIcon,
     StopCircleIcon,
@@ -32,6 +34,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogTitle,
 } from "./ui/dialog";
 import { MessageMarkdown } from "./renderers/MessageMarkdown";
@@ -97,6 +100,29 @@ function getBrainstormerProvider(model: string): ProviderName {
         ].provider;
     }
     throw new Error(`Unknown brainstormer model: ${model}`);
+}
+
+const PROVIDER_NAMES: ProviderName[] = [
+    "anthropic",
+    "openai",
+    "google",
+    "perplexity",
+    "openrouter",
+    "ollama",
+    "lmstudio",
+    "grok",
+    "meta",
+];
+
+function getLegacyProviderName(model: string): ProviderName | undefined {
+    if (!model) return undefined;
+    const primaryToken = model.split("::")[0];
+    const legacyProviderId = primaryToken.includes("/")
+        ? primaryToken.split("/")[0]
+        : primaryToken;
+    return PROVIDER_NAMES.includes(legacyProviderId as ProviderName)
+        ? (legacyProviderId as ProviderName)
+        : undefined;
 }
 
 /**
@@ -289,6 +315,8 @@ function AIMessageView({
     isLastRow,
     isQuickChatWindow,
     isSynthesis,
+    onMinimize,
+    onStop,
 }: {
     message: Message;
     blockType: BlockType;
@@ -296,6 +324,8 @@ function AIMessageView({
     isLastRow?: boolean;
     isQuickChatWindow?: boolean;
     isSynthesis?: boolean;
+    onMinimize?: () => void;
+    onStop?: () => void;
 }) {
     const [raw, setRaw] = useState(false);
     const [streamStartTime, setStreamStartTime] = useState<Date>();
@@ -435,6 +465,7 @@ function AIMessageView({
                                                 chatId: message.chatId,
                                                 messageId: message.id,
                                             });
+                                            onStop?.();
                                         }}
                                     >
                                         <StopCircleIcon className="w-3.5 h-3.5" />
@@ -497,6 +528,25 @@ function AIMessageView({
                             </TooltipTrigger>
                             <TooltipContent>Open full screen</TooltipContent>
                         </Tooltip>
+                        {onMinimize && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        className="hover:text-foreground"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onMinimize();
+                                        }}
+                                    >
+                                        <Minimize2Icon
+                                            strokeWidth={1.5}
+                                            className="w-3.5 h-3.5"
+                                        />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Minimize</TooltipContent>
+                            </Tooltip>
+                        )}
                     </div>
                 </div>
 
@@ -664,31 +714,199 @@ function SynthesisAnimation() {
     );
 }
 
+function MinimizedColumnView({
+    message,
+    onExpand,
+}: {
+    message: Message;
+    onExpand: () => void;
+}) {
+    const [retryRequested, setRetryRequested] = useState(false);
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const modelConfigQuery = ModelsAPI.useModelConfig(message.model);
+    const restartMessage = MessageAPI.useRestartMessageLegacy(
+        message.chatId,
+        message.messageSetId,
+        message.id,
+    );
+    const modelName = getMessageModelName(
+        message.model,
+        modelConfigsQuery.data ?? [],
+    );
+    const modelConfig = modelConfigsQuery.data?.find(
+        (m) => m.id === message.model,
+    );
+    const modelId = modelConfig?.modelId;
+    const providerName = modelId
+        ? Models.getProviderName(modelId)
+        : getLegacyProviderName(message.model);
+    const failureDialogId = `minimized-failure-${message.id}`;
+
+    const didNotReturnResponse =
+        message.state === "idle" &&
+        !message.text.trim() &&
+        !message.errorMessage;
+    const hasFailed = Boolean(message.errorMessage) || didNotReturnResponse;
+    const isRetrying =
+        retryRequested ||
+        restartMessage.isPending ||
+        message.state === "streaming";
+    const failureMessage =
+        message.errorMessage ?? "Model did not return a response.";
+
+    useEffect(() => {
+        // Once regeneration starts producing output, restore the full column.
+        if (
+            retryRequested &&
+            (message.state === "streaming" || message.text.trim().length > 0)
+        ) {
+            setRetryRequested(false);
+            onExpand();
+        }
+    }, [message.state, message.text, onExpand, retryRequested]);
+
+    useEffect(() => {
+        if (retryRequested && restartMessage.isError) {
+            setRetryRequested(false);
+        }
+    }, [retryRequested, restartMessage.isError]);
+
+    return (
+        <>
+            <button
+                onClick={() => {
+                    if (hasFailed && !isRetrying) {
+                        dialogActions.openDialog(failureDialogId);
+                        return;
+                    }
+                    onExpand();
+                }}
+                className="group/minimized flex flex-col items-center gap-2 w-10 pt-2 pb-4 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer"
+            >
+                {providerName && (
+                    <ProviderLogo size="sm" provider={providerName} />
+                )}
+                {isRetrying && <RetroSpinner />}
+                {!isRetrying && hasFailed && (
+                    <CircleAlertIcon className="w-3 h-3 text-destructive" />
+                )}
+                <span
+                    className="text-xs text-muted-foreground max-h-[120px] overflow-hidden"
+                    style={{ writingMode: "vertical-rl" }}
+                >
+                    {modelName}
+                </span>
+                <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity" />
+            </button>
+
+            <Dialog id={failureDialogId}>
+                <DialogContent className="max-w-md p-4">
+                    <DialogTitle className="text-lg">Model failed</DialogTitle>
+                    <DialogDescription className="text-sm whitespace-pre-wrap">
+                        {failureMessage}
+                    </DialogDescription>
+                    <DialogFooter className="pt-2">
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                dialogActions.closeDialog(failureDialogId)
+                            }
+                        >
+                            Close
+                        </Button>
+                        <Button
+                            disabled={
+                                !modelConfigQuery.data ||
+                                restartMessage.isPending ||
+                                message.state === "streaming"
+                            }
+                            onClick={() => {
+                                if (!modelConfigQuery.data) return;
+                                restartMessage.reset();
+                                setRetryRequested(true);
+                                dialogActions.closeDialog(failureDialogId);
+                                restartMessage.mutate(
+                                    {
+                                        modelConfig: modelConfigQuery.data,
+                                    },
+                                    {
+                                        onSuccess: (streamingToken) => {
+                                            if (!streamingToken) {
+                                                setRetryRequested(false);
+                                            }
+                                        },
+                                        onError: () => {
+                                            setRetryRequested(false);
+                                        },
+                                    },
+                                );
+                            }}
+                        >
+                            {restartMessage.isPending ? (
+                                <>
+                                    <RetroSpinner className="mr-2" />
+                                    Regenerating
+                                </>
+                            ) : (
+                                "Regenerate response"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 function CompareBlockView({
     messageSetId,
     compareBlock,
     isLastRow = false,
     isQuickChatWindow,
+    minimizedModels,
+    onToggleMinimize,
+    movedRightModels,
+    onModelStopped,
 }: {
     messageSetId: string;
     compareBlock: CompareBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const addMessageToCompareBlock = MessageAPI.useAddMessageToCompareBlock(
         chatId!,
     );
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
 
-    const aiMessages = compareBlock.messages;
+    const getDisplayName = (modelId: string) =>
+        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+
+    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical by display name within groups
+    const sortedMessages = [...compareBlock.messages].sort((a, b) => {
+        const aActive = a.state === "streaming";
+        const bActive = b.state === "streaming";
+        const aMoved = movedRightModels.has(a.model);
+        const bMoved = movedRightModels.has(b.model);
+
+        if (aActive !== bActive) return aActive ? -1 : 1;
+        if (aMoved !== bMoved) return aMoved ? 1 : -1;
+        return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
+    });
+
     const synthesisMessage = compareBlock.synthesis;
     const isSynthesisSelected = synthesisMessage?.selected ?? false;
     const aiMessagesToDisplay = [
         ...(synthesisMessage && synthesisMessage.selected
             ? [synthesisMessage]
             : []),
-        ...aiMessages,
+        ...sortedMessages,
     ];
 
     const selectSynthesis = MessageAPI.useSelectSynthesis();
@@ -707,11 +925,33 @@ function CompareBlockView({
     };
 
     function renderMessage(message: Message, index: number) {
+        const isSynthesis = message.model === "chorus::synthesize";
+        const isMinimized = !isSynthesis && minimizedModels.has(message.model);
         const shortcutNumber = isLastRow ? index + 1 : undefined;
 
+        if (isMinimized) {
+            return (
+                <motion.div
+                    key={message.id}
+                    layout
+                    layoutId={`compare-col-${message.model}-${messageSetId}`}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="mr-2 pt-2 flex-none"
+                >
+                    <MinimizedColumnView
+                        message={message}
+                        onExpand={() => onToggleMinimize(message.model)}
+                    />
+                </motion.div>
+            );
+        }
+
         return (
-            <div
+            <motion.div
                 key={message.id}
+                layout
+                layoutId={`compare-col-${message.model}-${messageSetId}`}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
                 className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} ${
                     isQuickChatWindow
                         ? ""
@@ -724,92 +964,103 @@ function CompareBlockView({
                     shortcutNumber={shortcutNumber}
                     isLastRow={isLastRow}
                     isQuickChatWindow={isQuickChatWindow}
-                    isSynthesis={message.model === "chorus::synthesize"}
+                    isSynthesis={isSynthesis}
+                    onMinimize={
+                        !isSynthesis
+                            ? () => onToggleMinimize(message.model)
+                            : undefined
+                    }
+                    onStop={
+                        !isSynthesis
+                            ? () => onModelStopped(message.model)
+                            : undefined
+                    }
                 />
-            </div>
+            </motion.div>
         );
     }
 
     return (
-        <div
-            className={`flex w-full h-fit pb-2 ${
-                // get horizontal scroll bars, plus hackily disable y scrolling
-                // because we're seeing scroll bars when we shouldn't
-                "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
-            }`}
-        >
-            <div className="flex-none w-10 mt-1">
-                {isLastRow && aiMessagesToDisplay.length > 1 && (
-                    <Tooltip>
-                        {/* synthesis button */}
-                        <TooltipTrigger asChild>
-                            {isSynthesisSelected ? (
-                                <button
-                                    className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                    onClick={() => {
-                                        deselectSynthesis.mutate({
-                                            chatId: chatId!,
-                                            messageSetId,
-                                        });
-                                    }}
-                                >
-                                    <SplitIcon className="w-3 h-3" />
-                                </button>
-                            ) : (
-                                <button
-                                    className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                    onClick={() => {
-                                        selectSynthesis.mutate({
-                                            chatId: chatId!,
-                                            messageSetId,
-                                        });
-                                    }}
-                                >
-                                    <MergeIcon className="w-3 h-3" />
-                                </button>
-                            )}
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="start">
-                            {isSynthesisSelected
-                                ? "Revert to original responses"
-                                : "Synthesize replies into a single message (⌘S)"}
-                        </TooltipContent>
-                    </Tooltip>
+        <LayoutGroup id={`compare-${messageSetId}`}>
+            <div
+                className={`flex w-full h-fit pb-2 ${
+                    // get horizontal scroll bars, plus hackily disable y scrolling
+                    // because we're seeing scroll bars when we shouldn't
+                    "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
+                }`}
+            >
+                <div className="flex-none w-10 mt-1">
+                    {isLastRow && aiMessagesToDisplay.length > 1 && (
+                        <Tooltip>
+                            {/* synthesis button */}
+                            <TooltipTrigger asChild>
+                                {isSynthesisSelected ? (
+                                    <button
+                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                        onClick={() => {
+                                            deselectSynthesis.mutate({
+                                                chatId: chatId!,
+                                                messageSetId,
+                                            });
+                                        }}
+                                    >
+                                        <SplitIcon className="w-3 h-3" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                        onClick={() => {
+                                            selectSynthesis.mutate({
+                                                chatId: chatId!,
+                                                messageSetId,
+                                            });
+                                        }}
+                                    >
+                                        <MergeIcon className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start">
+                                {isSynthesisSelected
+                                    ? "Revert to original responses"
+                                    : "Synthesize replies into a single message (⌘S)"}
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
+                </div>
+                {aiMessagesToDisplay.map((message, index) => {
+                    return renderMessage(message, index);
+                })}
+                {isLastRow && (
+                    <>
+                        <button
+                            className="w-14 flex-none text-sm text-muted-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit hover:bg-accent"
+                            onClick={() => {
+                                dialogActions.openDialog(
+                                    MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID,
+                                );
+                            }}
+                        >
+                            <div className="flex flex-col items-center gap-1">
+                                <PlusIcon className="w-3 h-3" />
+                                Add
+                            </div>
+                        </button>
+
+                        {/* Add Model box (can go basically anywhere, but shouldn't be inside the button) */}
+                        <ManageModelsBox
+                            id={MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID}
+                            mode={{
+                                type: "add",
+                                checkedModelConfigIds:
+                                    compareBlock.messages.map((m) => m.model),
+                                onAddModel: handleAddModel,
+                            }}
+                        />
+                    </>
                 )}
             </div>
-            {aiMessagesToDisplay.map((message, index) => {
-                return renderMessage(message, index);
-            })}
-            {isLastRow && (
-                <>
-                    <button
-                        className="w-14 flex-none text-sm text-muted-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit hover:bg-accent"
-                        onClick={() => {
-                            dialogActions.openDialog(
-                                MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID,
-                            );
-                        }}
-                    >
-                        <div className="flex flex-col items-center gap-1">
-                            <PlusIcon className="w-3 h-3" />
-                            Add
-                        </div>
-                    </button>
-
-                    {/* Add Model box (can go basically anywhere, but shouldn't be inside the button) */}
-                    <ManageModelsBox
-                        id={MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID}
-                        mode={{
-                            type: "add",
-                            checkedModelConfigIds: aiMessages.map(
-                                (m) => m.model,
-                            ),
-                            onAddModel: handleAddModel,
-                        }}
-                    />
-                </>
-            )}
-        </div>
+        </LayoutGroup>
     );
 }
 
