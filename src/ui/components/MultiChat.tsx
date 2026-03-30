@@ -1572,6 +1572,9 @@ function ToolsBlockView({
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const recentlyExpandedModelsByChatId = useMinimizedModelsStore(
+        (s) => s.recentlyExpandedModelsByChatId,
+    );
 
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
@@ -1589,9 +1592,31 @@ function ToolsBlockView({
         });
     };
 
-    const getDisplayName = (modelId: string) =>
-        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
-        modelId;
+    const getDisplayName = useCallback(
+        (modelId: string) =>
+            modelConfigsQuery.data?.find((m) => m.id === modelId)
+                ?.displayName ?? modelId,
+        [modelConfigsQuery.data],
+    );
+    const recentlyExpandedModels = useMemo(
+        () =>
+            recentlyExpandedModelsByChatId.get(chatId ?? "") ??
+            new Set<string>(),
+        [chatId, recentlyExpandedModelsByChatId],
+    );
+    const recentlyExpandedModelNames = useMemo(() => {
+        if (recentlyExpandedModels.size === 0) return [];
+        return [...recentlyExpandedModels].map((modelId) =>
+            getDisplayName(modelId),
+        );
+    }, [recentlyExpandedModels, getDisplayName]);
+    const recentlyExpandedIndicator = useMemo(() => {
+        if (recentlyExpandedModelNames.length === 0) return null;
+        if (recentlyExpandedModelNames.length > 2) {
+            return `${recentlyExpandedModelNames.length} re-added models will receive your next message`;
+        }
+        return `Next message will include ${recentlyExpandedModelNames.join(", ")}`;
+    }, [recentlyExpandedModelNames]);
 
     // Auto-minimize models that returned no response
     useEffect(() => {
@@ -1671,6 +1696,11 @@ function ToolsBlockView({
                                     Add
                                 </div>
                             </button>
+                            {recentlyExpandedIndicator && (
+                                <div className="mt-1 text-[10px] text-muted-foreground text-center leading-snug max-w-[72px]">
+                                    {recentlyExpandedIndicator}
+                                </div>
+                            )}
 
                             {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
                             <ManageModelsBox
@@ -1994,10 +2024,23 @@ export default function MultiChat() {
         messageSetsQuery.data && messageSetsQuery.data.length > 0
             ? messageSetsQuery.data[messageSetsQuery.data.length - 1]
             : undefined;
+    const lastMessageSetId = currentMessageSet?.id;
     const currentCompareBlock =
         currentMessageSet?.selectedBlockType === "compare"
             ? currentMessageSet.compareBlock
             : undefined;
+
+    const lastMessageSetIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (!chatId || !lastMessageSetId) return;
+        if (
+            lastMessageSetIdRef.current &&
+            lastMessageSetIdRef.current !== lastMessageSetId
+        ) {
+            minimizedModelsActions.clearRecentExpanded(chatId);
+        }
+        lastMessageSetIdRef.current = lastMessageSetId;
+    }, [chatId, lastMessageSetId]);
 
     // ----------------------
     // Effects
