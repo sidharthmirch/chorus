@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useCallback, memo, useMemo } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+    useCallback,
+    memo,
+    useMemo,
+    useLayoutEffect,
+} from "react";
 import React from "react";
 import {
     useParams,
@@ -8,6 +16,7 @@ import {
 } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { motion, LayoutGroup } from "framer-motion";
 import {
     FileTextIcon,
     ExternalLinkIcon,
@@ -20,6 +29,7 @@ import {
     Loader2,
     SearchIcon,
     Maximize2Icon,
+    Minimize2Icon,
     RemoveFormattingIcon,
     RefreshCcwIcon,
     StopCircleIcon,
@@ -83,6 +93,11 @@ import { CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Collapsible } from "./ui/collapsible";
 import * as _ from "lodash";
 import {
+    minimizedModelsActions,
+    useMinimizedModelsStore,
+} from "@core/infra/MinimizedModelsStore";
+import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
+import {
     getToolsetIcon,
     UserToolCall,
     UserToolResult,
@@ -116,7 +131,7 @@ import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
-import SimpleCopyButton from "./unused/CopyButton";
+import SimpleCopyButton from "./CopyButton";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import {
@@ -1134,12 +1149,16 @@ export function ToolsMessageView({
     isLastRow,
     isOnlyMessage,
     isReply = false,
+    onMinimize,
+    onStop,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
     isLastRow: boolean;
     isOnlyMessage: boolean;
     isReply?: boolean;
+    onMinimize?: () => void;
+    onStop?: () => void;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1166,6 +1185,9 @@ export function ToolsMessageView({
         replyToId: message.id,
     });
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const toolsDisabledByChatId = useToolsDisabledStore(
+        (s) => s.toolsDisabledByChatId,
+    );
     // // Set stream start time when streaming begins
     // useEffect(() => {
     //     if (message.state === "streaming" && !streamStartTime) {
@@ -1181,6 +1203,8 @@ export function ToolsMessageView({
     const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     );
+    const toolsDisabledForModel =
+        toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
     const messageClasses = [
         "relative",
@@ -1258,7 +1282,14 @@ export function ToolsMessageView({
                                                 className="-mt-[1px]"
                                             />
                                             <div className="text-sm">
-                                                {modelConfig?.displayName}
+                                                <span>
+                                                    {modelConfig?.displayName}
+                                                </span>
+                                                {toolsDisabledForModel && (
+                                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
+                                                        tools off
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -1294,6 +1325,7 @@ export function ToolsMessageView({
                                                             messageId:
                                                                 message.id,
                                                         });
+                                                        onStop?.();
                                                     }}
                                                 >
                                                     <StopCircleIcon className="w-3.5 h-3.5" />
@@ -1410,6 +1442,28 @@ export function ToolsMessageView({
                                         </TooltipContent>
                                     </Tooltip>
 
+                                    {onMinimize && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    className="hover:text-foreground"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onMinimize();
+                                                    }}
+                                                >
+                                                    <Minimize2Icon
+                                                        strokeWidth={1.5}
+                                                        className="w-3.5 h-3.5"
+                                                    />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                Minimize
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
+
                                     {!isQuickChatWindow && !isReply && (
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -1473,19 +1527,64 @@ export const MANAGE_MODELS_TOOLS_DIALOG_ID = "manage-models-compare";
 export const MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID =
     "manage-models-compare-inline"; // dialog for the inline add model button
 
+export function MinimizedToolsColumnView({
+    message,
+    onExpand,
+}: {
+    message: Message;
+    onExpand: () => void;
+}) {
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const modelConfig = modelConfigsQuery.data?.find(
+        (m) => m.id === message.model,
+    );
+    const hasEmptyIdleResponse =
+        message.state === "idle" &&
+        !message.errorMessage &&
+        !message.text.trim() &&
+        (message.parts.length === 0 ||
+            message.parts.every((part) => part.content.trim().length === 0));
+
+    return (
+        <button
+            onClick={onExpand}
+            className="group/minimized flex items-center gap-2 w-full px-2 py-1.5 rounded-md border-[0.090rem] hover:bg-accent/50 transition-colors cursor-pointer text-left"
+        >
+            {modelConfig && (
+                <ProviderLogo size="sm" modelId={modelConfig.modelId} />
+            )}
+            <span className="text-xs text-muted-foreground flex-1 truncate">
+                {modelConfig?.displayName ?? message.model}
+            </span>
+            {message.state === "streaming" && <RetroSpinner />}
+            {(message.errorMessage || hasEmptyIdleResponse) && (
+                <CircleAlertIcon className="w-3 h-3 text-destructive" />
+            )}
+            <Maximize2Icon className="w-3 h-3 text-muted-foreground opacity-0 group-hover/minimized:opacity-100 transition-opacity flex-none" />
+        </button>
+    );
+}
+
 function ToolsBlockView({
     messageSetId,
     toolsBlock,
     isLastRow = false,
     isQuickChatWindow,
+    minimizedModels,
+    onMinimize,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const selectedModelConfigsCompare =
+        ModelsAPI.useSelectedModelConfigsCompare();
 
     const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
@@ -1503,66 +1602,151 @@ function ToolsBlockView({
         });
     };
 
-    return (
-        <div
-            ref={elementRef}
-            className={`flex w-full h-fit pb-2 pr-5 gap-2 ${
-                // get horizontal scroll bars, plus hackily disable y scrolling
-                // because we're seeing scroll bars when we shouldn't
-                "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
-            }
-            ${shouldShowScrollbar ? "is-scrolling" : ""}
-            ${!isQuickChatWindow ? "px-10" : ""}`}
-        >
-            {toolsBlock.chatMessages.map((message, _index) => (
-                <div
-                    key={message.id}
-                    className={
-                        isQuickChatWindow
-                            ? "w-full max-w-prose"
-                            : `w-full flex-1 min-w-[450px] max-w-[550px]`
-                    }
-                >
-                    <ToolsMessageView
-                        message={message}
-                        // shortcutNumber={isLastRow ? index + 1 : undefined}
-                        isLastRow={isLastRow}
-                        isQuickChatWindow={isQuickChatWindow}
-                        isOnlyMessage={toolsBlock.chatMessages.length === 1}
-                    />
-                </div>
-            ))}
-            {isLastRow && !isQuickChatWindow && (
-                <div>
-                    <button
-                        // brighten border in dark mode bc it's hard to see
-                        className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 mt-2 h-fit border-dashed"
-                        onClick={() => {
-                            dialogActions.openDialog(
-                                MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
-                            );
-                        }}
-                    >
-                        <div className="flex flex-col items-center gap-1 py-1">
-                            <PlusIcon className="font-medium w-3 h-3" />
-                            Add
-                        </div>
-                    </button>
+    const getDisplayName = useCallback(
+        (modelId: string) =>
+            modelConfigsQuery.data?.find((m) => m.id === modelId)
+                ?.displayName ?? modelId,
+        [modelConfigsQuery.data],
+    );
+    const selectedModelConfigs = useMemo(
+        () => selectedModelConfigsCompare.data ?? [],
+        [selectedModelConfigsCompare.data],
+    );
+    const currentModelIds = useMemo(
+        () => new Set(toolsBlock.chatMessages.map((m) => m.model)),
+        [toolsBlock.chatMessages],
+    );
+    const pendingModelConfigs = useMemo(() => {
+        if (selectedModelConfigs.length === 0) return [];
+        return selectedModelConfigs.filter(
+            (modelConfig) =>
+                !currentModelIds.has(modelConfig.id) &&
+                !minimizedModels.has(modelConfig.id),
+        );
+    }, [selectedModelConfigs, currentModelIds, minimizedModels]);
 
-                    {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
-                    <ManageModelsBox
-                        id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
-                        mode={{
-                            type: "add",
-                            checkedModelConfigIds: toolsBlock.chatMessages.map(
-                                (m) => m.model,
-                            ),
-                            onAddModel: handleAddModel,
-                        }}
-                    />
+    // Auto-minimize models that returned no response or errored
+    useEffect(() => {
+        for (const message of toolsBlock.chatMessages) {
+            const hasEmptyIdleResponse =
+                message.state === "idle" &&
+                !message.errorMessage &&
+                !message.text.trim() &&
+                (message.parts.length === 0 ||
+                    message.parts.every(
+                        (part) => part.content.trim().length === 0,
+                    ));
+            if (
+                !minimizedModels.has(message.model) &&
+                (message.errorMessage || hasEmptyIdleResponse)
+            ) {
+                onMinimize(message.model);
+            }
+        }
+    }, [toolsBlock.chatMessages, minimizedModels, onMinimize]);
+
+    const activeMessages = [...toolsBlock.chatMessages]
+        .filter((m) => !minimizedModels.has(m.model))
+        .sort((a, b) =>
+            getDisplayName(a.model).localeCompare(getDisplayName(b.model)),
+        );
+
+    return (
+        <LayoutGroup id={`tools-${messageSetId}`}>
+            <div className="flex w-full h-fit">
+                {/* Main scrollable area: active (non-minimized) models only */}
+                <div
+                    ref={elementRef}
+                    className={`flex flex-1 h-fit pb-2 pr-5 gap-2 ${
+                        // get horizontal scroll bars, plus hackily disable y scrolling
+                        // because we're seeing scroll bars when we shouldn't
+                        "overflow-x-auto scrollbar-on-scroll overflow-y-hidden"
+                    }
+                ${shouldShowScrollbar ? "is-scrolling" : ""}
+                ${!isQuickChatWindow ? "px-10" : ""}`}
+                >
+                    {activeMessages.map((message) => (
+                        <motion.div
+                            key={message.id}
+                            layout
+                            layoutId={`tools-col-${message.model}-${messageSetId}`}
+                            transition={{ duration: 0.3, ease: "easeInOut" }}
+                            className={
+                                isQuickChatWindow
+                                    ? "w-full max-w-prose"
+                                    : `w-full flex-1 min-w-[450px] max-w-[550px]`
+                            }
+                        >
+                            <ToolsMessageView
+                                message={message}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                isOnlyMessage={
+                                    toolsBlock.chatMessages.length === 1
+                                }
+                                onMinimize={
+                                    toolsBlock.chatMessages.length > 1
+                                        ? () => onMinimize(message.model)
+                                        : undefined
+                                }
+                                onStop={() => onMinimize(message.model)}
+                            />
+                        </motion.div>
+                    ))}
+                    {isLastRow && !isQuickChatWindow && (
+                        <div className="flex items-end gap-2 self-end">
+                            {pendingModelConfigs.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                        Included in next response
+                                    </div>
+                                    {pendingModelConfigs.map((modelConfig) => (
+                                        <button
+                                            key={modelConfig.id}
+                                            className="px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground border rounded-md bg-muted/30 max-w-[140px] truncate text-left hover:bg-muted/50"
+                                            onClick={() =>
+                                                onMinimize(modelConfig.id)
+                                            }
+                                        >
+                                            {modelConfig.displayName}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex flex-col items-center">
+                                <button
+                                    // brighten border in dark mode bc it's hard to see
+                                    className="w-14 flex-none text-sm text-muted-foreground hover:text-foreground rounded-md border-[0.090rem] py-[0.6rem] px-2 h-fit border-dashed"
+                                    onClick={() => {
+                                        dialogActions.openDialog(
+                                            MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID,
+                                        );
+                                    }}
+                                >
+                                    <div className="flex flex-col items-center gap-1 py-1">
+                                        <PlusIcon className="font-medium w-3 h-3" />
+                                        Add
+                                    </div>
+                                </button>
+
+                                {/* Add Model dialog (can go basically anywhere, but shouldn't be inside the button) */}
+                                <ManageModelsBox
+                                    id={MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID}
+                                    mode={{
+                                        type: "add",
+                                        checkedModelConfigIds:
+                                            toolsBlock.chatMessages.map(
+                                                (m) => m.model,
+                                            ),
+                                        onAddModel: handleAddModel,
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
-            )}
-        </div>
+            </div>
+        </LayoutGroup>
     );
 }
 
@@ -1596,6 +1780,11 @@ type MessageSetViewProps = {
     isQuickChatWindow: boolean;
     userMessageRef: React.RefObject<HTMLDivElement> | undefined;
     messageSetRef: React.RefObject<HTMLDivElement> | undefined;
+    minimizedModels: Set<string>;
+    onToggleMinimize: (modelId: string) => void; // for CompareBlockView (deprecated path)
+    movedRightModels: Set<string>; // for CompareBlockView (deprecated path)
+    onModelStopped: (modelId: string) => void; // for CompareBlockView (deprecated path)
+    onMinimize: (modelId: string) => void; // for ToolsBlockView
 };
 
 const MessageSetView = memo(
@@ -1605,6 +1794,11 @@ const MessageSetView = memo(
         isQuickChatWindow,
         userMessageRef, // a ref that will be applied to user message container, if there is one
         messageSetRef, // a ref that will be applied to the message set container
+        minimizedModels,
+        onToggleMinimize,
+        movedRightModels,
+        onModelStopped,
+        onMinimize,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
 
@@ -1658,6 +1852,10 @@ const MessageSetView = memo(
                             compareBlock={messageSet.compareBlock}
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
+                            minimizedModels={minimizedModels}
+                            onToggleMinimize={onToggleMinimize}
+                            movedRightModels={movedRightModels}
+                            onModelStopped={onModelStopped}
                         />
                     ) : messageSet.selectedBlockType === "chat" ? (
                         <ChatBlockView
@@ -1672,6 +1870,8 @@ const MessageSetView = memo(
                             toolsBlock={messageSet.toolsBlock}
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
+                            minimizedModels={minimizedModels}
+                            onMinimize={onMinimize}
                         />
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
@@ -1722,6 +1922,7 @@ export default function MultiChat() {
     const location = useLocation();
     const appMetadata = useWaitForAppMetadata();
     const messageSetsQuery = MessageAPI.useMessageSets(chatId!);
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
     const [searchParams] = useSearchParams();
 
     // Extract replyId from query parameters
@@ -1757,6 +1958,62 @@ export default function MultiChat() {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    // Minimized model state — lives in a shared store so AppSidebar can read it
+    const minimizedModelsByChatId = useMinimizedModelsStore(
+        (s) => s.minimizedModelsByChatId,
+    );
+    const minimizedModels = useMemo(
+        () => minimizedModelsByChatId.get(chatId ?? "") ?? new Set<string>(),
+        [chatId, minimizedModelsByChatId],
+    );
+
+    const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
+        new Set(),
+    );
+
+    // Reset per-chat layout state when navigating between chats
+    useEffect(() => {
+        if (chatId) minimizedModelsActions.clearChat(chatId);
+        setMovedRightModels(new Set());
+    }, [chatId]);
+
+    const handleMinimize = useCallback(
+        (modelId: string) => {
+            if (!chatId) return;
+            if (chatContainerRef.current) {
+                pendingScrollTopRef.current =
+                    chatContainerRef.current.scrollTop;
+            }
+            minimizedModelsActions.minimizeModel(chatId, modelId);
+        },
+        [chatId],
+    );
+
+    const handleToggleMinimize = useCallback(
+        (modelId: string) => {
+            if (!chatId) return;
+            if (chatContainerRef.current) {
+                pendingScrollTopRef.current =
+                    chatContainerRef.current.scrollTop;
+            }
+            if (minimizedModels.has(modelId)) {
+                minimizedModelsActions.expandModel(chatId, modelId);
+            } else {
+                minimizedModelsActions.minimizeModel(chatId, modelId);
+            }
+        },
+        [chatId, minimizedModels],
+    );
+
+    const handleModelStopped = useCallback((modelId: string) => {
+        setMovedRightModels((prev) => {
+            if (prev.has(modelId)) return prev;
+            const next = new Set(prev);
+            next.add(modelId);
+            return next;
+        });
+    }, []);
+
     // Scroll-to-bottom handling
     const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -1773,6 +2030,16 @@ export default function MultiChat() {
         [chatContainerRef],
     );
     const lastMessageSetRef = useRef<HTMLDivElement>(null);
+    const pendingScrollTopRef = useRef<number | null>(null);
+
+    useLayoutEffect(() => {
+        if (pendingScrollTopRef.current === null) return;
+        const container = chatContainerRef.current;
+        if (container) {
+            container.scrollTop = pendingScrollTopRef.current;
+        }
+        pendingScrollTopRef.current = null;
+    }, [minimizedModels]);
 
     // Replies drawer state - controlled by replyId query parameter
     const repliesDrawerOpen = !!replyChatId;
@@ -1809,6 +2076,27 @@ export default function MultiChat() {
         currentMessageSet?.selectedBlockType === "compare"
             ? currentMessageSet.compareBlock
             : undefined;
+    const getCompareDisplayName = useCallback(
+        (modelId: string) =>
+            modelConfigsQuery.data?.find((m) => m.id === modelId)
+                ?.displayName ?? modelId,
+        [modelConfigsQuery.data],
+    );
+    const sortedCompareMessages = useMemo(() => {
+        if (!currentCompareBlock) return [];
+        return [...currentCompareBlock.messages].sort((a, b) => {
+            const aActive = a.state === "streaming";
+            const bActive = b.state === "streaming";
+            const aMoved = movedRightModels.has(a.model);
+            const bMoved = movedRightModels.has(b.model);
+
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            if (aMoved !== bMoved) return aMoved ? 1 : -1;
+            return getCompareDisplayName(a.model).localeCompare(
+                getCompareDisplayName(b.model),
+            );
+        });
+    }, [currentCompareBlock, getCompareDisplayName, movedRightModels]);
 
     // ----------------------
     // Effects
@@ -2040,14 +2328,14 @@ export default function MultiChat() {
                 const index = parseInt(e.key) - 1;
                 if (
                     !currentCompareBlock ||
-                    currentCompareBlock.messages.length <= index
+                    sortedCompareMessages.length <= index
                 ) {
                     console.warn(
                         `couldn't select message at ${index} from cmd+${index + 1}`,
                     );
                     return;
                 }
-                const message = currentCompareBlock.messages[index];
+                const message = sortedCompareMessages[index];
 
                 selectMessage.mutate({
                     chatId: chatId!,
@@ -2103,6 +2391,7 @@ export default function MultiChat() {
         chatId,
         currentMessageSet,
         currentCompareBlock,
+        sortedCompareMessages,
         isQuickChatWindow,
         handleShareChat,
         handleOpenQuickChatInMainWindow,
@@ -2467,6 +2756,11 @@ export default function MultiChat() {
                                     inputRef={inputRef}
                                     setShowScrollButton={setShowScrollButton}
                                     handleScrollToBottom={handleScrollToBottom}
+                                    minimizedModels={minimizedModels}
+                                    onMinimize={handleMinimize}
+                                    onToggleMinimize={handleToggleMinimize}
+                                    movedRightModels={movedRightModels}
+                                    onModelStopped={handleModelStopped}
                                 />
                                 <ChatInput
                                     isNewChat={chatQuery.data?.isNewChat}
@@ -2480,6 +2774,7 @@ export default function MultiChat() {
                                     sentAttachmentTypes={sentAttachmentTypes}
                                     showScrollButton={showScrollButton}
                                     handleScrollToBottom={handleScrollToBottom}
+                                    minimizedModels={minimizedModels}
                                 />
                             </div>
                         </ResizablePanel>
@@ -2635,12 +2930,22 @@ function MainScrollableContentView({
     inputRef, // used for spacing
     setShowScrollButton,
     handleScrollToBottom,
+    minimizedModels,
+    onMinimize,
+    onToggleMinimize,
+    movedRightModels,
+    onModelStopped,
 }: {
     chatContainerRef: React.RefObject<HTMLDivElement>;
     lastMessageSetRef: React.RefObject<HTMLDivElement>;
     inputRef: React.RefObject<HTMLTextAreaElement>;
     setShowScrollButton: (show: boolean) => void;
     handleScrollToBottom: (smooth?: boolean) => void;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    onToggleMinimize: (modelId: string) => void;
+    movedRightModels: Set<string>;
+    onModelStopped: (modelId: string) => void;
 }) {
     const appMetadata = useWaitForAppMetadata();
     const { chatId } = useParams();
@@ -2748,6 +3053,8 @@ function MainScrollableContentView({
         setShowScrollbar(false);
     };
 
+    // minimizedModels and related state are lifted to MultiChat and passed as props
+
     // early stopping
     if (messageSetsQuery.isPending) {
         return <ChatMessageSkeleton />;
@@ -2771,6 +3078,11 @@ function MainScrollableContentView({
                 userMessageRef={undefined}
                 isLastRow={isLastRow}
                 isQuickChatWindow={isQuickChatWindow}
+                minimizedModels={minimizedModels}
+                onToggleMinimize={onToggleMinimize}
+                movedRightModels={movedRightModels}
+                onModelStopped={onModelStopped}
+                onMinimize={onMinimize}
             />
         );
     }
