@@ -85,6 +85,10 @@ import { CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Collapsible } from "./ui/collapsible";
 import * as _ from "lodash";
 import {
+    minimizedModelsActions,
+    useMinimizedModelsStore,
+} from "@core/infra/MinimizedModelsStore";
+import {
     getToolsetIcon,
     UserToolCall,
     UserToolResult,
@@ -1502,7 +1506,7 @@ export const MANAGE_MODELS_TOOLS_DIALOG_ID = "manage-models-compare";
 export const MANAGE_MODELS_TOOLS_INLINE_DIALOG_ID =
     "manage-models-compare-inline"; // dialog for the inline add model button
 
-function MinimizedToolsColumnView({
+export function MinimizedToolsColumnView({
     message,
     onExpand,
 }: {
@@ -1882,55 +1886,42 @@ export default function MultiChat() {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
-    // Minimized model state (lifted here so ChatInput can skip minimized models)
-    const [minimizedModels, setMinimizedModels] = useState<Set<string>>(
-        new Set(),
+    // Minimized model state — lives in a shared store so AppSidebar can read it
+    const minimizedModelsByChatId = useMinimizedModelsStore(
+        (s) => s.minimizedModelsByChatId,
     );
+    const minimizedModels =
+        minimizedModelsByChatId.get(chatId ?? "") ?? new Set<string>();
+
     const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
         new Set(),
     );
 
-    // Reset per-chat model layout state when navigating between chats
+    // Reset per-chat layout state when navigating between chats
     useEffect(() => {
-        setMinimizedModels(new Set());
+        if (chatId) minimizedModelsActions.clearChat(chatId);
         setMovedRightModels(new Set());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatId]);
 
-    const handleMinimize = useCallback((modelId: string) => {
-        setMinimizedModels((prev) => {
-            if (prev.has(modelId)) return prev;
-            const next = new Set(prev);
-            next.add(modelId);
-            return next;
-        });
-    }, []);
+    const handleMinimize = useCallback(
+        (modelId: string) => {
+            if (chatId) minimizedModelsActions.minimizeModel(chatId, modelId);
+        },
+        [chatId],
+    );
 
-    const handleExpand = useCallback((modelId: string) => {
-        setMinimizedModels((prev) => {
-            if (!prev.has(modelId)) return prev;
-            const next = new Set(prev);
-            next.delete(modelId);
-            return next;
-        });
-        setMovedRightModels((prev) => {
-            if (!prev.has(modelId)) return prev;
-            const next = new Set(prev);
-            next.delete(modelId);
-            return next;
-        });
-    }, []);
-
-    const handleToggleMinimize = useCallback((modelId: string) => {
-        setMinimizedModels((prev) => {
-            const next = new Set(prev);
-            if (next.has(modelId)) {
-                next.delete(modelId);
+    const handleToggleMinimize = useCallback(
+        (modelId: string) => {
+            if (!chatId) return;
+            if (minimizedModels.has(modelId)) {
+                minimizedModelsActions.expandModel(chatId, modelId);
             } else {
-                next.add(modelId);
+                minimizedModelsActions.minimizeModel(chatId, modelId);
             }
-            return next;
-        });
-    }, []);
+        },
+        [chatId, minimizedModels],
+    );
 
     const handleModelStopped = useCallback((modelId: string) => {
         setMovedRightModels((prev) => {
@@ -2653,7 +2644,6 @@ export default function MultiChat() {
                                     handleScrollToBottom={handleScrollToBottom}
                                     minimizedModels={minimizedModels}
                                     onMinimize={handleMinimize}
-                                    onExpand={handleExpand}
                                     onToggleMinimize={handleToggleMinimize}
                                     movedRightModels={movedRightModels}
                                     onModelStopped={handleModelStopped}
@@ -2828,7 +2818,6 @@ function MainScrollableContentView({
     handleScrollToBottom,
     minimizedModels,
     onMinimize,
-    onExpand,
     onToggleMinimize,
     movedRightModels,
     onModelStopped,
@@ -2840,7 +2829,6 @@ function MainScrollableContentView({
     handleScrollToBottom: (smooth?: boolean) => void;
     minimizedModels: Set<string>;
     onMinimize: (modelId: string) => void;
-    onExpand: (modelId: string) => void;
     onToggleMinimize: (modelId: string) => void;
     movedRightModels: Set<string>;
     onModelStopped: (modelId: string) => void;
@@ -2953,23 +2941,6 @@ function MainScrollableContentView({
 
     // minimizedModels and related state are lifted to MultiChat and passed as props
 
-    // Collect the latest message per minimized model (for the left panel).
-    // Must be before early returns to satisfy rules of hooks.
-    const minimizedPanelMessages = useMemo(() => {
-        const data = messageSetsQuery.data ?? [];
-        const modelToLatestMsg = new Map<string, Message>();
-        for (const ms of data) {
-            if (ms.selectedBlockType === "tools" && ms.toolsBlock) {
-                for (const m of ms.toolsBlock.chatMessages) {
-                    if (minimizedModels.has(m.model)) {
-                        modelToLatestMsg.set(m.model, m);
-                    }
-                }
-            }
-        }
-        return [...modelToLatestMsg.values()];
-    }, [messageSetsQuery.data, minimizedModels]);
-
     // early stopping
     if (messageSetsQuery.isPending) {
         return <ChatMessageSkeleton />;
@@ -3021,75 +2992,54 @@ function MainScrollableContentView({
 
     return (
         <div
-            className="absolute inset-0 flex"
+            ref={chatContainerRef}
+            className={`absolute inset-0 overflow-y-scroll overflow-x-hidden ${showScrollbar ? "" : "invisible-scrollbar"} ${
+                isQuickChatWindow ? "pl-4 pt-4 mb-16" : "top-10 pt-10"
+            }`}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            data-tauri-drag-region={isQuickChatWindow ? "true" : undefined}
         >
-            {/* Left panel: minimized models — sits outside the scroll area so everything shifts right */}
-            {minimizedPanelMessages.length > 0 && !isQuickChatWindow && (
-                <div className="flex-none flex flex-col gap-1 border-r px-2 pt-12 pb-2 min-w-[160px] max-w-[200px] overflow-y-auto">
-                    <div className="text-xs text-muted-foreground/60 uppercase tracking-wider font-geist-mono mb-1 px-1">
-                        Minimized
-                    </div>
-                    {minimizedPanelMessages.map((message) => (
-                        <MinimizedToolsColumnView
-                            key={message.model}
-                            message={message}
-                            onExpand={() => onExpand(message.model)}
-                        />
-                    ))}
-                </div>
-            )}
             <div
-                ref={chatContainerRef}
-                className={`flex-1 overflow-y-scroll overflow-x-hidden ${showScrollbar ? "" : "invisible-scrollbar"} ${
-                    isQuickChatWindow ? "pl-4 pt-4 mb-16" : "top-10 pt-10"
-                }`}
+                className="space-y-5 max-w-10xl mx-auto select-text"
                 data-tauri-drag-region={isQuickChatWindow ? "true" : undefined}
             >
-                <div
-                    className="space-y-5 max-w-10xl mx-auto select-text"
-                    data-tauri-drag-region={
-                        isQuickChatWindow ? "true" : undefined
-                    }
-                >
-                    {appMetadata["has_dismissed_onboarding"] === "false" &&
-                        isQuickChatWindow && (
-                            <p className="text-sm text-muted-foreground">
-                                Welcome! Press <code>⌘I</code> to enable vision
-                                mode to let your Ambient Chat see your screen.
-                            </p>
-                        )}
-
-                    {messageSets.length > 0 && (
-                        <>
-                            {otherMessageSets.map((ms) => (
-                                <div key={ms.id}>{renderMessageSet(ms)}</div>
-                            ))}
-                            <div
-                                // we should subtract enough space that there's no scroll bar on first message
-                                // on either qc or normal chat, but not so much that on subsequent messages
-                                // you can see old messages peaking in at the top.
-                                className={`space-y-5 ${
-                                    isQuickChatWindow
-                                        ? "h-[calc(100vh-120px)]"
-                                        : "h-[calc(100vh-80px)]"
-                                }`}
-                                data-tauri-drag-region={
-                                    isQuickChatWindow ? "true" : undefined
-                                }
-                            >
-                                {lastUserSet &&
-                                    renderMessageSet(
-                                        lastUserSet,
-                                        lastMessageSetRef,
-                                    )}
-                                {lastAISet && renderMessageSet(lastAISet)}
-                                <div ref={nonQcSpacerRef} />
-                            </div>
-                        </>
+                {appMetadata["has_dismissed_onboarding"] === "false" &&
+                    isQuickChatWindow && (
+                        <p className="text-sm text-muted-foreground">
+                            Welcome! Press <code>⌘I</code> to enable vision mode
+                            to let your Ambient Chat see your screen.
+                        </p>
                     )}
-                </div>
+
+                {messageSets.length > 0 && (
+                    <>
+                        {otherMessageSets.map((ms) => (
+                            <div key={ms.id}>{renderMessageSet(ms)}</div>
+                        ))}
+                        <div
+                            // we should subtract enough space that there's no scroll bar on first message
+                            // on either qc or normal chat, but not so much that on subsequent messages
+                            // you can see old messages peaking in at the top.
+                            className={`space-y-5 ${
+                                isQuickChatWindow
+                                    ? "h-[calc(100vh-120px)]"
+                                    : "h-[calc(100vh-80px)]"
+                            }`}
+                            data-tauri-drag-region={
+                                isQuickChatWindow ? "true" : undefined
+                            }
+                        >
+                            {lastUserSet &&
+                                renderMessageSet(
+                                    lastUserSet,
+                                    lastMessageSetRef,
+                                )}
+                            {lastAISet && renderMessageSet(lastAISet)}
+                            <div ref={nonQcSpacerRef} />
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

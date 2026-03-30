@@ -77,6 +77,12 @@ import { dialogActions, useDialogStore } from "@core/infra/DialogStore";
 import { projectQueries, useCreateProject } from "@core/chorus/api/ProjectAPI";
 import { chatQueries } from "@core/chorus/api/ChatAPI";
 import { useToggleProjectIsCollapsed } from "@core/chorus/api/ProjectAPI";
+import {
+    minimizedModelsActions,
+    useMinimizedModelsStore,
+} from "@core/infra/MinimizedModelsStore";
+import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
+import { ProviderLogo } from "@ui/components/ui/provider-logo";
 
 function isToday(date: Date) {
     const today = new Date();
@@ -440,6 +446,24 @@ export function AppSidebarInner() {
     const updateChatProject = ProjectAPI.useSetChatProject();
     const getOrCreateNewChat = ChatAPI.useGetOrCreateNewChat();
 
+    // Minimized models for the current chat
+    const minimizedModelsByChatId = useMinimizedModelsStore(
+        (s) => s.minimizedModelsByChatId,
+    );
+    const minimizedModelIds =
+        minimizedModelsByChatId.get(currentChatId) ?? new Set<string>();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+
+    // Build list of minimized model entries for the sidebar panel
+    const minimizedEntries = useMemo(() => {
+        return [...minimizedModelIds].map((modelId) => {
+            const config = modelConfigsQuery.data?.find(
+                (m) => m.id === modelId,
+            );
+            return { modelId, displayName: config?.displayName ?? modelId };
+        });
+    }, [minimizedModelIds, modelConfigsQuery.data]);
+
     const [showAllChats, setShowAllChats] = useState(false);
 
     const sensors = useSensors(
@@ -567,6 +591,67 @@ export function AppSidebarInner() {
                                         ⌘N
                                     </span>
                                 </button>
+
+                                {/* Minimized models panel */}
+                                {minimizedEntries.length > 0 && (
+                                    <div className="mb-2">
+                                        <div className="pt-2 px-3 mb-1 sidebar-label text-muted-foreground">
+                                            Minimized
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            {minimizedEntries.map(
+                                                ({ modelId }) => {
+                                                    // Find the latest message for this model from cached query data
+                                                    // We pass a placeholder message object since MinimizedToolsColumnView
+                                                    // uses modelConfigsQuery internally for display
+                                                    return (
+                                                        <div
+                                                            key={modelId}
+                                                            className="px-1"
+                                                        >
+                                                            <button
+                                                                onClick={() =>
+                                                                    minimizedModelsActions.expandModel(
+                                                                        currentChatId,
+                                                                        modelId,
+                                                                    )
+                                                                }
+                                                                className="group/minimized flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent transition-colors cursor-pointer text-left"
+                                                            >
+                                                                {(() => {
+                                                                    const config =
+                                                                        modelConfigsQuery.data?.find(
+                                                                            (
+                                                                                m,
+                                                                            ) =>
+                                                                                m.id ===
+                                                                                modelId,
+                                                                        );
+                                                                    return (
+                                                                        <>
+                                                                            {config && (
+                                                                                <ProviderLogo
+                                                                                    size="sm"
+                                                                                    modelId={
+                                                                                        config.modelId
+                                                                                    }
+                                                                                />
+                                                                            )}
+                                                                            <span className="text-xs text-muted-foreground flex-1 truncate">
+                                                                                {config?.displayName ??
+                                                                                    modelId}
+                                                                            </span>
+                                                                        </>
+                                                                    );
+                                                                })()}
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                },
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* add new project */}
                                 {hasNonQuickChats && (
