@@ -2953,20 +2953,12 @@ function MainScrollableContentView({
 
     // minimizedModels and related state are lifted to MultiChat and passed as props
 
-    // early stopping
-    if (messageSetsQuery.isPending) {
-        return <ChatMessageSkeleton />;
-    }
-    if (messageSetsQuery.error) {
-        return <div>Error: {messageSetsQuery.error.message}</div>;
-    }
-
-    const messageSets = messageSetsQuery.data;
-
-    // Collect the latest message per minimized model (for the left panel)
+    // Collect the latest message per minimized model (for the left panel).
+    // Must be before early returns to satisfy rules of hooks.
     const minimizedPanelMessages = useMemo(() => {
+        const data = messageSetsQuery.data ?? [];
         const modelToLatestMsg = new Map<string, Message>();
-        for (const ms of messageSets) {
+        for (const ms of data) {
             if (ms.selectedBlockType === "tools" && ms.toolsBlock) {
                 for (const m of ms.toolsBlock.chatMessages) {
                     if (minimizedModels.has(m.model)) {
@@ -2976,7 +2968,17 @@ function MainScrollableContentView({
             }
         }
         return [...modelToLatestMsg.values()];
-    }, [messageSets, minimizedModels]);
+    }, [messageSetsQuery.data, minimizedModels]);
+
+    // early stopping
+    if (messageSetsQuery.isPending) {
+        return <ChatMessageSkeleton />;
+    }
+    if (messageSetsQuery.error) {
+        return <div>Error: {messageSetsQuery.error.message}</div>;
+    }
+
+    const messageSets = messageSetsQuery.data;
 
     function renderMessageSet(
         ms: MessageSetDetail,
