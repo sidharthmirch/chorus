@@ -3405,7 +3405,7 @@ ${userMessageText}
 
             if (!cleanTitle) {
                 console.warn("No title found in response or fallback.");
-                return;
+                return { skipped: true };
             }
 
             console.log("Setting chat title to:", cleanTitle);
@@ -3416,31 +3416,29 @@ ${userMessageText}
             return { title: cleanTitle };
         },
         onSuccess: async (data, variables) => {
-            if (!data?.skipped) {
-                if (data?.title) {
-                    queryClient.setQueryData(
-                        chatQueries.detail(variables.chatId).queryKey,
-                        (chat: Chat | undefined) =>
-                            chat
+            if (data?.title) {
+                queryClient.setQueryData(
+                    chatQueries.detail(variables.chatId).queryKey,
+                    (chat: Chat | undefined) =>
+                        chat
+                            ? {
+                                  ...chat,
+                                  title: data.title ?? chat.title,
+                              }
+                            : chat,
+                );
+                queryClient.setQueryData(
+                    chatQueries.list().queryKey,
+                    (chats: Chat[] | undefined) =>
+                        chats?.map((chat) =>
+                            chat.id === variables.chatId
                                 ? {
                                       ...chat,
                                       title: data.title ?? chat.title,
                                   }
                                 : chat,
-                    );
-                    queryClient.setQueryData(
-                        chatQueries.list().queryKey,
-                        (chats: Chat[] | undefined) =>
-                            chats?.map((chat) =>
-                                chat.id === variables.chatId
-                                    ? {
-                                          ...chat,
-                                          title: data.title ?? chat.title,
-                                      }
-                                    : chat,
-                            ),
-                    );
-                }
+                        ),
+                );
                 await queryClient.invalidateQueries(chatQueries.list());
                 await queryClient.invalidateQueries(
                     chatQueries.detail(variables.chatId),
