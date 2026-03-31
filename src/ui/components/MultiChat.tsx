@@ -108,7 +108,7 @@ import { SidebarTrigger } from "@ui/components/ui/sidebar";
 import { useSidebar } from "@ui/hooks/useSidebar";
 import { useShortcut } from "@ui/hooks/useShortcut";
 import { projectDisplayName, sendTauriNotification } from "@ui/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ManageModelsBox } from "./ManageModelsBox";
 import RepliesDrawer from "./RepliesDrawer";
 import useElementScrollDetection from "@ui/hooks/useScrollDetection";
@@ -128,11 +128,17 @@ import { filterReplyMessageSets } from "@ui/lib/replyUtils";
 import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import * as ChatAPI from "@core/chorus/api/ChatAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
+import { fetchSavedModelConfigChat } from "@core/chorus/api/ModelConfigChatAPI";
+import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
 import SimpleCopyButton from "./unused/CopyButton";
 import { MessageCostDisplay } from "./MessageCostDisplay";
+import {
+    computeInitialChatCompareModelConfigIds,
+    syncGlobalCompareMetadataToConfigIds,
+} from "@core/chorus/ChatCompareSelection";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import {
     isPermissionGranted,
@@ -1581,25 +1587,32 @@ function ToolsBlockView({
     onMinimize: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
+    const queryClient = useQueryClient();
     const { elementRef, shouldShowScrollbar } = useElementScrollDetection();
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
-    const selectedModelConfigsCompare =
-        ModelsAPI.useSelectedModelConfigsCompare();
-
-    const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
+    const chatCompareModelConfigs =
+        ModelConfigChatAPI.useChatCompareModelConfigs(chatId!);
+    const appendModelToChatCompare =
+        ModelConfigChatAPI.useAppendModelConfigToChatCompare(chatId!);
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
         chatId!,
     );
     const handleAddModel = (modelId: string) => {
-        // First add the model to the selected models list
-        addModelToCompareConfigs.mutate({
-            newSelectedModelConfigId: modelId,
-        });
-        // Then add it to the current message set
-        addMessageToToolsBlock.mutate({
-            messageSetId,
-            modelId,
-        });
+        void (async () => {
+            await appendModelToChatCompare.mutateAsync(modelId);
+            const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
+            await syncGlobalCompareMetadataToConfigIds(
+                ids,
+                modelConfigsQuery.data ?? [],
+            );
+            void queryClient.invalidateQueries(
+                ModelsAPI.modelConfigQueries.compare(),
+            );
+            addMessageToToolsBlock.mutate({
+                messageSetId,
+                modelId,
+            });
+        })();
     };
 
     const getDisplayName = useCallback(
@@ -1608,10 +1621,7 @@ function ToolsBlockView({
                 ?.displayName ?? modelId,
         [modelConfigsQuery.data],
     );
-    const selectedModelConfigs = useMemo(
-        () => selectedModelConfigsCompare.data ?? [],
-        [selectedModelConfigsCompare.data],
-    );
+    const selectedModelConfigs = chatCompareModelConfigs;
     const currentModelIds = useMemo(
         () => new Set(toolsBlock.chatMessages.map((m) => m.model)),
         [toolsBlock.chatMessages],
@@ -1923,7 +1933,40 @@ export default function MultiChat() {
     const appMetadata = useWaitForAppMetadata();
     const messageSetsQuery = MessageAPI.useMessageSets(chatId!);
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const savedCompareModelsQuery = ModelConfigChatAPI.useSavedModelConfigChat(
+        chatId!,
+    );
+    const updateSavedCompareModels =
+        ModelConfigChatAPI.useUpdateSavedModelConfigChat();
+    const savedCompareLegacyInitRef = useRef<string | null>(null);
     const [searchParams] = useSearchParams();
+
+    // One-time backfill: older main chats have no saved_model_configs_chats row yet
+    useEffect(() => {
+        if (!chatId || !chatQuery.data) return;
+        if (chatQuery.data.quickChat || chatQuery.data.replyToId) return;
+        if (
+            !savedCompareModelsQuery.isSuccess ||
+            savedCompareModelsQuery.data !== null
+        ) {
+            return;
+        }
+        if (savedCompareLegacyInitRef.current === chatId) return;
+        savedCompareLegacyInitRef.current = chatId;
+        void (async () => {
+            const ids = await computeInitialChatCompareModelConfigIds();
+            await updateSavedCompareModels.mutateAsync({
+                chatId,
+                modelIds: ids,
+            });
+        })();
+    }, [
+        chatId,
+        chatQuery.data,
+        savedCompareModelsQuery.isSuccess,
+        savedCompareModelsQuery.data,
+        updateSavedCompareModels,
+    ]);
 
     // Extract replyId from query parameters
     const replyChatId = searchParams.get("replyId");

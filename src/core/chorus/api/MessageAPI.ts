@@ -32,7 +32,10 @@ import _ from "lodash";
 import { useAppContext } from "@ui/hooks/useAppContext";
 import { db } from "../DB";
 import { draftKeys } from "./DraftAPI";
-import { updateSavedModelConfigChat } from "./ModelConfigChatAPI";
+import {
+    fetchSavedModelConfigChat,
+    updateSavedModelConfigChat,
+} from "./ModelConfigChatAPI";
 import { Chat, chatIsLoadingQueries, chatQueries } from "./ChatAPI";
 import {
     appMetadataKeys,
@@ -2908,8 +2911,11 @@ function usePopulateToolsBlock(chatId: string) {
                 }
                 modelConfigs = [modelConfig];
             } else {
-                // Normal flow: use selected model configs
-                modelConfigs = await getSelectedModelConfigs(isQuickChatWindow);
+                // Normal flow: per-chat compare selection (not global app_metadata)
+                modelConfigs = await getSelectedModelConfigs(
+                    isQuickChatWindow,
+                    chatId,
+                );
                 // Skip minimized models
                 if (excludedModelIds && excludedModelIds.size > 0) {
                     modelConfigs = modelConfigs.filter(
@@ -3588,16 +3594,30 @@ export function useUpdateSelectedModelConfigQuickChat() {
 export function useGetSelectedModelConfigs() {
     const queryClient = useQueryClient();
 
-    return async (isQuickChatWindow: boolean) => {
+    return async (isQuickChatWindow: boolean, chatId: string) => {
         if (isQuickChatWindow) {
             const quickChatModelConfig = await queryClient.ensureQueryData(
                 modelConfigQueries.quickChat(),
             );
             return quickChatModelConfig ? [quickChatModelConfig] : [];
-        } else {
-            return await queryClient.ensureQueryData(
-                modelConfigQueries.compare(),
-            );
         }
+
+        const savedIds = await fetchSavedModelConfigChat(chatId);
+        const allConfigs = await queryClient.ensureQueryData(
+            modelConfigQueries.listConfigs(),
+        );
+        if (savedIds && savedIds.length > 0) {
+            const byId = new Map(allConfigs.map((m) => [m.id, m]));
+            const ordered: ModelConfig[] = [];
+            for (const id of savedIds) {
+                const cfg = byId.get(id);
+                if (cfg) ordered.push(cfg);
+            }
+            if (ordered.length > 0) {
+                return ordered;
+            }
+        }
+
+        return await queryClient.ensureQueryData(modelConfigQueries.compare());
     };
 }

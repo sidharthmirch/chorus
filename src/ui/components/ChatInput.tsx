@@ -20,7 +20,7 @@ import { useWaitForAppMetadata } from "@ui/hooks/useWaitForAppMetadata";
 import { ManageModelsButtonCompare } from "./ModelPills";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import ToolsBox from "./ToolsBox";
 import { useShortcut } from "@ui/hooks/useShortcut";
 import {
@@ -38,11 +38,16 @@ import { EmptyState } from "./EmptyState";
 import { handleInputPasteWithAttachments } from "@ui/lib/utils";
 import { inputActions, useInputStore } from "@core/infra/InputStore";
 import { useSearchParams } from "react-router-dom";
-import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
+import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
+import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
+import { useActiveModelProfile } from "@core/chorus/api/ModelProfilesAPI";
+import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { PromptProfilePill } from "./PromptProfilePill";
+import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
+import { modelConfigQueries } from "@core/chorus/api/ModelsAPI";
 
 const DEFAULT_CHAT_INPUT_ID = "default-chat-input";
 const REPLY_CHAT_INPUT_ID = "reply-chat-input";
@@ -91,9 +96,22 @@ export function ChatInput({
     handleScrollToBottom?: () => void;
     minimizedModels?: Set<string>;
 }) {
-    const selectedModelConfigsCompare =
-        ModelsAPI.useSelectedModelConfigsCompare();
+    const queryClient = useQueryClient();
     const modelConfigs = ModelsAPI.useModelConfigs();
+    const providerVisibilityMap = useProviderVisibilityMap();
+    const activeProfile = useActiveModelProfile();
+    const visibleModelConfigs = useMemo(
+        () =>
+            getFilteredModelConfigs(
+                modelConfigs.data ?? [],
+                providerVisibilityMap,
+                activeProfile,
+            ),
+        [modelConfigs.data, providerVisibilityMap, activeProfile],
+    );
+
+    const chatCompareModelConfigs =
+        ModelConfigChatAPI.useChatCompareModelConfigs(chatId);
     const appMetadata = useWaitForAppMetadata();
     const cautiousEnter = appMetadata["cautious_enter"] === "true";
 
@@ -142,9 +160,11 @@ export function ChatInput({
         ModelConfigChatAPI.useUpdateReplyModelConfig();
 
     const getReplyToModelConfig = useCallback(
-        (modelId: string | undefined) => {
-            return modelId
-                ? modelConfigs.data?.find((m) => m.modelId === modelId)
+        (raw: string | undefined) => {
+            return raw
+                ? modelConfigs.data?.find(
+                      (m) => m.id === raw || m.modelId === raw,
+                  )
                 : undefined;
         },
         [modelConfigs.data],
@@ -167,9 +187,8 @@ export function ChatInput({
 
     const posthog = usePostHog();
 
-    const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
-    const updateSelectedModelConfigsCompare =
-        MessageAPI.useUpdateSelectedModelConfigsCompare();
+    const updateSavedChatCompare =
+        ModelConfigChatAPI.useUpdateSavedModelConfigChat();
 
     const createMessageSetPair = MessageAPI.useCreateMessageSetPair();
     const createMessage = MessageAPI.useCreateMessage();
@@ -368,48 +387,63 @@ export function ChatInput({
     };
 
     // --------------------------------------------------------------------------
-    // Model management
+    // Model management (persisted per chat; never tied to draft/input state)
     // --------------------------------------------------------------------------
 
-    /**
-     * Ensures a model config is selected
-     */
+    const persistMainChatCompareIds = useCallback(
+        async (configIds: string[]) => {
+            const visibleIds = new Set(visibleModelConfigs.map((c) => c.id));
+            let next = configIds.filter((id) => visibleIds.has(id));
+            if (next.length === 0 && visibleModelConfigs[0]) {
+                next = [visibleModelConfigs[0].id];
+            }
+            await updateSavedChatCompare.mutateAsync({
+                chatId,
+                modelIds: next,
+            });
+            await syncGlobalCompareMetadataToConfigIds(
+                next,
+                modelConfigs.data ?? [],
+            );
+            void queryClient.invalidateQueries(modelConfigQueries.compare());
+        },
+        [
+            chatId,
+            modelConfigs.data,
+            queryClient,
+            updateSavedChatCompare,
+            visibleModelConfigs,
+        ],
+    );
+
     const ensureCompareModelConfigSelected = useCallback(
         async (modelConfigId: string) => {
-            await addModelToCompareConfigs.mutateAsync({
-                newSelectedModelConfigId: modelConfigId,
-            });
+            const ids = chatCompareModelConfigs.map((m) => m.id);
+            if (ids.includes(modelConfigId)) return;
+            await persistMainChatCompareIds([...ids, modelConfigId]);
         },
-        [addModelToCompareConfigs],
+        [chatCompareModelConfigs, persistMainChatCompareIds],
     );
 
     const ensureCompareModelConfigDeselected = useCallback(
         async (modelConfigId: string) => {
-            const newModelConfigs = selectedModelConfigsCompare.data?.filter(
-                (m) => m.id !== modelConfigId,
-            );
-            await updateSelectedModelConfigsCompare.mutateAsync({
-                modelConfigs: newModelConfigs ?? [],
-            });
+            const newIds = chatCompareModelConfigs
+                .filter((m) => m.id !== modelConfigId)
+                .map((m) => m.id);
+            await persistMainChatCompareIds(newIds);
 
-            posthog.capture("selected_model_configs_updated", {
-                selectedModelConfigs: newModelConfigs?.map((m) => m.id) ?? [],
+            posthog?.capture("selected_model_configs_updated", {
+                selectedModelConfigs: newIds,
                 modelConfigRemoved: modelConfigId,
             });
         },
-        [
-            selectedModelConfigsCompare,
-            posthog,
-            updateSelectedModelConfigsCompare,
-        ],
+        [chatCompareModelConfigs, persistMainChatCompareIds, posthog],
     );
 
     const toggleCompareModelConfig = useCallback(
         async (modelConfigId: string) => {
-            console.log("toggleCompareModelConfig", modelConfigId);
             try {
-                // Check if model is already selected
-                const isSelected = selectedModelConfigsCompare.data?.some(
+                const isSelected = chatCompareModelConfigs.some(
                     (m) => m.id === modelConfigId,
                 );
 
@@ -426,7 +460,7 @@ export function ChatInput({
             }
         },
         [
-            selectedModelConfigsCompare,
+            chatCompareModelConfigs,
             ensureCompareModelConfigSelected,
             ensureCompareModelConfigDeselected,
         ],
@@ -434,27 +468,36 @@ export function ChatInput({
 
     const clearCompareModelConfigs = useCallback(() => {
         void (async () => {
-            await updateSelectedModelConfigsCompare.mutateAsync({
-                modelConfigs: [],
-            });
-            void posthog.capture("selected_model_configs_updated", {
+            await persistMainChatCompareIds([]);
+            void posthog?.capture("selected_model_configs_updated", {
                 selectedModelConfigs: [],
             });
         })();
-    }, [posthog, updateSelectedModelConfigsCompare]);
+    }, [persistMainChatCompareIds, posthog]);
 
     const selectAllCompareModelConfigs = useCallback(
-        (modelConfigs: ModelConfig[]) => {
+        (picked: ModelConfig[]) => {
             void (async () => {
-                await updateSelectedModelConfigsCompare.mutateAsync({
-                    modelConfigs,
-                });
-                void posthog.capture("selected_model_configs_updated", {
-                    selectedModelConfigs: modelConfigs.map((m) => m.id),
+                const visibleIds = new Set(
+                    visibleModelConfigs.map((c) => c.id),
+                );
+                const ids = picked
+                    .filter((m) => visibleIds.has(m.id))
+                    .map((m) => m.id);
+                await persistMainChatCompareIds(ids);
+                void posthog?.capture("selected_model_configs_updated", {
+                    selectedModelConfigs: ids,
                 });
             })();
         },
-        [posthog, updateSelectedModelConfigsCompare],
+        [persistMainChatCompareIds, posthog, visibleModelConfigs],
+    );
+
+    const reorderMainChatCompare = useCallback(
+        (ordered: ModelConfig[]) => {
+            void persistMainChatCompareIds(ordered.map((m) => m.id));
+        },
+        [persistMainChatCompareIds],
     );
 
     // Update focus when dialog closes or chat id changes
@@ -625,9 +668,7 @@ export function ChatInput({
                         <AttachmentAddPill onSelect={fileSelect.mutate} />
                         {!isReply && (
                             <ManageModelsButtonCompare
-                                selectedModelConfigs={
-                                    selectedModelConfigsCompare.data ?? []
-                                }
+                                selectedModelConfigs={chatCompareModelConfigs}
                                 dialogId={MANAGE_MODELS_COMPARE_DIALOG_ID}
                             />
                         )}
@@ -699,6 +740,10 @@ export function ChatInput({
                             onClearModelConfigs: clearCompareModelConfigs,
                             onSelectAllModelConfigs:
                                 selectAllCompareModelConfigs,
+                            selectedModelConfigsForChat:
+                                chatCompareModelConfigs,
+                            onReorderSelectedModelConfigs:
+                                reorderMainChatCompare,
                         }}
                     />
                 )}
@@ -714,10 +759,9 @@ export function ChatInput({
                                     (m) => m.id === modelId,
                                 );
                                 if (modelConfig) {
-                                    // Update the database with the selected model
                                     void updateReplyModelConfig.mutateAsync({
                                         chatId,
-                                        modelId: modelConfig.modelId,
+                                        modelConfigId: modelConfig.id,
                                     });
                                 }
                             },

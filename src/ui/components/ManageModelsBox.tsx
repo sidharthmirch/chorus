@@ -112,10 +112,13 @@ const isNewModel = (newUntil: string | undefined): boolean => {
 
 type ModelPickerMode =
     | {
-          type: "default"; // multiselect for updating selectedModelConfigs (deprecated)
+          type: "default";
           onToggleModelConfig: (id: string) => void;
           onClearModelConfigs: () => void;
           onSelectAllModelConfigs: (modelConfigs: ModelConfig[]) => void;
+          /** When set, UI reflects this list instead of global compare metadata */
+          selectedModelConfigsForChat?: ModelConfig[];
+          onReorderSelectedModelConfigs?: (modelConfigs: ModelConfig[]) => void;
       }
     | {
           type: "add"; // used for adding to an existing set
@@ -375,10 +378,15 @@ export function ManageModelsBox({
 
     const selectedModelConfigsCompareResult =
         ModelsAPI.useSelectedModelConfigsCompare();
-    const selectedModelConfigsCompare = useMemo(
+    const selectedModelConfigsCompareGlobal = useMemo(
         () => selectedModelConfigsCompareResult.data ?? [],
         [selectedModelConfigsCompareResult.data],
     );
+
+    const selectedModelConfigsCompare =
+        mode.type === "default" && mode.selectedModelConfigsForChat
+            ? mode.selectedModelConfigsForChat
+            : selectedModelConfigsCompareGlobal;
 
     const updateSelectedModelConfigsCompare =
         MessageAPI.useUpdateSelectedModelConfigsCompare();
@@ -431,9 +439,13 @@ export function ManageModelsBox({
         const items = [...selectedModelConfigsCompare];
         const [moved] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, moved);
-        await updateSelectedModelConfigsCompare.mutateAsync({
-            modelConfigs: items,
-        });
+        if (mode.type === "default" && mode.onReorderSelectedModelConfigs) {
+            mode.onReorderSelectedModelConfigs(items);
+        } else {
+            await updateSelectedModelConfigsCompare.mutateAsync({
+                modelConfigs: items,
+            });
+        }
     }
 
     // Helper function to render model pills for dragging

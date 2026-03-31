@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { produce } from "immer";
 import { useNavigate } from "react-router-dom";
+import { computeInitialChatCompareModelConfigIds } from "../ChatCompareSelection";
 import { db } from "../DB";
 import { getVersion } from "@tauri-apps/api/app";
 import { usePostHog } from "posthog-js/react";
+import { updateSavedModelConfigChat } from "./ModelConfigChatAPI";
 
 const chatKeys = {
     all: () => ["chats"] as const,
@@ -207,7 +209,13 @@ export function useCreateNewChat() {
             if (!result.length) {
                 throw new Error("Failed to create chat");
             }
-            return result[0].id;
+            const chatId = result[0].id;
+            if (projectId !== "quick-chat") {
+                const compareIds =
+                    await computeInitialChatCompareModelConfigIds();
+                await updateSavedModelConfigChat(chatId, compareIds);
+            }
+            return chatId;
         },
         onSuccess: async (chatId: string) => {
             await queryClient.invalidateQueries(chatQueries.list());
@@ -239,7 +247,10 @@ export function useCreateGroupChat() {
             if (!result.length) {
                 throw new Error("Failed to create group chat");
             }
-            return result[0].id;
+            const chatId = result[0].id;
+            const compareIds = await computeInitialChatCompareModelConfigIds();
+            await updateSavedModelConfigChat(chatId, compareIds);
+            return chatId;
         },
         onSuccess: async (chatId: string) => {
             await queryClient.invalidateQueries(chatQueries.list());

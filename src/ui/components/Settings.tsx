@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Select,
     SelectContent,
@@ -47,6 +47,7 @@ import {
 import { toast } from "sonner";
 import { config } from "@core/config";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Switch } from "@ui/components/ui/switch";
 import {
     Tabs,
@@ -89,7 +90,10 @@ import ImportChatDialog from "./ImportChatDialog";
 import { dialogActions } from "@core/infra/DialogStore";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { PermissionsTab } from "./PermissionsTab";
+import { useActiveModelProfile } from "@core/chorus/api/ModelProfilesAPI";
 import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
+import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
+import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { cn } from "@ui/lib/utils";
 
 import { VisibleModelsTab } from "./VisibleModelsTab";
@@ -1150,6 +1154,7 @@ interface Settings {
     cautiousEnter?: boolean;
     customToolsets?: CustomToolsetConfig[];
     titleGenerationModelConfigId?: string;
+    defaultChatModels?: string[] | null;
 }
 
 export default function Settings({ tab = "general" }: SettingsProps) {
@@ -1168,7 +1173,21 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const [quickChatShortcut, setQuickChatShortcut] = useState("Alt+Space");
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
         useState<string | undefined>(undefined);
+    const [defaultChatModels, setDefaultChatModels] = useState<string[] | null>(
+        null,
+    );
     const modelConfigsQuery = useModelConfigs();
+    const providerVisibilityMap = useProviderVisibilityMap();
+    const activeProfile = useActiveModelProfile();
+    const visibleModelConfigsForDefaults = useMemo(
+        () =>
+            getFilteredModelConfigs(
+                modelConfigsQuery.data ?? [],
+                providerVisibilityMap,
+                activeProfile,
+            ),
+        [modelConfigsQuery.data, providerVisibilityMap, activeProfile],
+    );
     const cheapOpenRouterModelOptions = useMemo(
         () =>
             (modelConfigsQuery.data ?? [])
@@ -1287,10 +1306,49 @@ export default function Settings({ tab = "general" }: SettingsProps) {
             setTitleGenerationModelConfigId(
                 settings.titleGenerationModelConfigId,
             );
+            setDefaultChatModels(settings.defaultChatModels ?? null);
         };
 
         void loadSettings();
     }, [db, setMonoFont, setSansFont, settingsManager]);
+
+    const handleToggleDefaultChatModel = useCallback(
+        async (configId: string) => {
+            const visibleIds = new Set(
+                visibleModelConfigsForDefaults.map((c) => c.id),
+            );
+            if (!visibleIds.has(configId)) return;
+
+            let next: string[] | null;
+            if (!defaultChatModels || defaultChatModels.length === 0) {
+                next = [configId];
+            } else if (defaultChatModels.includes(configId)) {
+                const filtered = defaultChatModels.filter(
+                    (id) => id !== configId,
+                );
+                next = filtered.length === 0 ? null : filtered;
+            } else {
+                next = [...defaultChatModels, configId];
+            }
+
+            setDefaultChatModels(next);
+            const currentSettings = await settingsManager.get();
+            void settingsManager.set({
+                ...currentSettings,
+                defaultChatModels: next,
+            });
+        },
+        [defaultChatModels, settingsManager, visibleModelConfigsForDefaults],
+    );
+
+    const handleClearDefaultChatModels = useCallback(async () => {
+        setDefaultChatModels(null);
+        const currentSettings = await settingsManager.get();
+        void settingsManager.set({
+            ...currentSettings,
+            defaultChatModels: null,
+        });
+    }, [settingsManager]);
 
     const handleQuickChatShortcutChange = async (value: string) => {
         setQuickChatShortcut(value);
@@ -1662,6 +1720,66 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                             )}
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div>
+                                    <label className="block font-semibold mb-1">
+                                        Default models for new chats
+                                    </label>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                        When set, new regular chats start with
+                                        these models. Otherwise Chorus uses your
+                                        current ambient compare selection (the
+                                        same list managed with ⌘J in chat).
+                                    </p>
+                                    <div className="border rounded-md max-h-52 overflow-y-auto p-3 space-y-2 mb-2">
+                                        {visibleModelConfigsForDefaults.length ===
+                                        0 ? (
+                                            <p className="text-sm text-muted-foreground">
+                                                No visible models. Adjust
+                                                visible models or your profile.
+                                            </p>
+                                        ) : (
+                                            visibleModelConfigsForDefaults.map(
+                                                (m) => (
+                                                    <label
+                                                        key={m.id}
+                                                        className="flex items-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Checkbox
+                                                            checked={
+                                                                defaultChatModels?.includes(
+                                                                    m.id,
+                                                                ) ?? false
+                                                            }
+                                                            onCheckedChange={() =>
+                                                                void handleToggleDefaultChatModel(
+                                                                    m.id,
+                                                                )
+                                                            }
+                                                        />
+                                                        <span className="text-sm">
+                                                            {m.displayName}
+                                                        </span>
+                                                    </label>
+                                                ),
+                                            )
+                                        )}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            void handleClearDefaultChatModels()
+                                        }
+                                        disabled={
+                                            defaultChatModels === null ||
+                                            defaultChatModels.length === 0
+                                        }
+                                    >
+                                        Use ambient selection
+                                    </Button>
                                 </div>
 
                                 <div className="flex items-center justify-between pt-6">

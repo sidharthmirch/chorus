@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { motion, LayoutGroup } from "framer-motion";
 import { Button } from "./ui/button";
@@ -53,6 +54,9 @@ import * as Brainstorms from "@core/chorus/brainstorm";
 import Markdown from "react-markdown";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import { Skeleton } from "./ui/skeleton";
+import { fetchSavedModelConfigChat } from "@core/chorus/api/ModelConfigChatAPI";
+import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
+import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import { useWaitForAppMetadata } from "@ui/hooks/useWaitForAppMetadata";
 import { ProviderName } from "@core/chorus/Models";
@@ -878,10 +882,12 @@ function CompareBlockView({
     onModelStopped: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
+    const queryClient = useQueryClient();
     const addMessageToCompareBlock = MessageAPI.useAddMessageToCompareBlock(
         chatId!,
     );
-    const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
+    const appendModelToChatCompare =
+        ModelConfigChatAPI.useAppendModelConfigToChatCompare(chatId!);
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
 
     const getDisplayName = (modelId: string) =>
@@ -913,15 +919,21 @@ function CompareBlockView({
     const deselectSynthesis = MessageAPI.useDeselectSynthesis();
 
     const handleAddModel = (modelId: string) => {
-        // First add the model to the selected models list
-        addModelToCompareConfigs.mutate({
-            newSelectedModelConfigId: modelId,
-        });
-        // Then add it to the current message set
-        addMessageToCompareBlock.mutate({
-            messageSetId,
-            modelId,
-        });
+        void (async () => {
+            await appendModelToChatCompare.mutateAsync(modelId);
+            const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
+            await syncGlobalCompareMetadataToConfigIds(
+                ids,
+                modelConfigsQuery.data ?? [],
+            );
+            void queryClient.invalidateQueries(
+                ModelsAPI.modelConfigQueries.compare(),
+            );
+            addMessageToCompareBlock.mutate({
+                messageSetId,
+                modelId,
+            });
+        })();
     };
 
     function renderMessage(message: Message, index: number) {

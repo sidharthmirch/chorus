@@ -1,7 +1,13 @@
 // Saved model config hooks
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
+import { resolveOrderedCompareConfigs } from "../ChatCompareSelection";
 import { db } from "../DB";
+import * as ModelsAPI from "./ModelsAPI";
+import { useActiveModelProfile } from "./ModelProfilesAPI";
+import { useProviderVisibilityMap } from "./ProviderVisibilityAPI";
 import { v4 as uuidv4 } from "uuid";
 
 const modelConfigChatKeys = {
@@ -9,8 +15,8 @@ const modelConfigChatKeys = {
         ["savedModelConfig", chatId] as const,
 };
 
-// Saved model config functions
-async function fetchSavedModelConfigChat(
+// Saved model config functions (model **config** ids, same as messages.model)
+export async function fetchSavedModelConfigChat(
     chatId: string,
 ): Promise<string[] | null> {
     const rows = await db.select<{ model_ids: string }[]>(
@@ -87,6 +93,58 @@ export function useUpdateSavedModelConfigChat() {
     });
 }
 
+/**
+ * Ordered compare selection for a regular chat: persisted ids ∩ visible configs.
+ */
+export function useChatCompareModelConfigs(chatId: string) {
+    const savedModelConfig = useSavedModelConfigChat(chatId);
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const providerVisibilityMap = useProviderVisibilityMap();
+    const activeProfile = useActiveModelProfile();
+
+    const visibleConfigs = useMemo(
+        () =>
+            getFilteredModelConfigs(
+                modelConfigsQuery.data ?? [],
+                providerVisibilityMap,
+                activeProfile,
+            ),
+        [modelConfigsQuery.data, providerVisibilityMap, activeProfile],
+    );
+
+    return useMemo(
+        () =>
+            resolveOrderedCompareConfigs(
+                savedModelConfig.data,
+                modelConfigsQuery.data ?? [],
+                visibleConfigs,
+            ),
+        [savedModelConfig.data, modelConfigsQuery.data, visibleConfigs],
+    );
+}
+
+export function useAppendModelConfigToChatCompare(chatId: string) {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (newSelectedModelConfigId: string) => {
+            const current = (await fetchSavedModelConfigChat(chatId)) ?? [];
+            if (current.includes(newSelectedModelConfigId)) {
+                return;
+            }
+            await updateSavedModelConfigChat(chatId, [
+                ...current,
+                newSelectedModelConfigId,
+            ]);
+        },
+        onSuccess: () => {
+            void queryClient.invalidateQueries({
+                queryKey: modelConfigChatKeys.savedModelConfigChat(chatId),
+            });
+        },
+    });
+}
+
 // Convenience hook for reply chats - gets just the first model ID
 export function useReplyModelConfig(chatId: string) {
     const savedModelConfig = useSavedModelConfigChat(chatId);
@@ -96,18 +154,21 @@ export function useReplyModelConfig(chatId: string) {
     };
 }
 
-// Convenience hook for updating reply model - updates with a single model ID
+// Convenience hook for updating reply model (one model **config** id)
 export function useUpdateReplyModelConfig() {
     const updateSavedModelConfig = useUpdateSavedModelConfigChat();
 
     return useMutation({
         mutationFn: ({
             chatId,
-            modelId,
+            modelConfigId,
         }: {
             chatId: string;
-            modelId: string;
+            modelConfigId: string;
         }) =>
-            updateSavedModelConfig.mutateAsync({ chatId, modelIds: [modelId] }),
+            updateSavedModelConfig.mutateAsync({
+                chatId,
+                modelIds: [modelConfigId],
+            }),
     });
 }
