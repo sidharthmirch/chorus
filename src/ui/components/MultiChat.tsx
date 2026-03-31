@@ -96,6 +96,7 @@ import {
     minimizedModelsActions,
     useMinimizedModelsStore,
 } from "@core/infra/MinimizedModelsStore";
+import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 import {
     getToolsetIcon,
@@ -2082,9 +2083,19 @@ export default function MultiChat() {
                 ?.displayName ?? modelId,
         [modelConfigsQuery.data],
     );
+    const customCompareOrder = useModelOrderStore(
+        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    );
     const sortedCompareMessages = useMemo(() => {
         if (!currentCompareBlock) return [];
         return [...currentCompareBlock.messages].sort((a, b) => {
+            if (customCompareOrder) {
+                const aIdx = customCompareOrder.indexOf(a.model);
+                const bIdx = customCompareOrder.indexOf(b.model);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
             const aActive = a.state === "streaming";
             const bActive = b.state === "streaming";
             const aMoved = movedRightModels.has(a.model);
@@ -2096,7 +2107,12 @@ export default function MultiChat() {
                 getCompareDisplayName(b.model),
             );
         });
-    }, [currentCompareBlock, getCompareDisplayName, movedRightModels]);
+    }, [
+        currentCompareBlock,
+        getCompareDisplayName,
+        movedRightModels,
+        customCompareOrder,
+    ]);
 
     // ----------------------
     // Effects

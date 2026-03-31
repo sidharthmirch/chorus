@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { motion, LayoutGroup } from "framer-motion";
+import {
+    DragDropContext,
+    Droppable,
+    Draggable,
+    DropResult,
+} from "@hello-pangea/dnd";
+import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import { Button } from "./ui/button";
 import {
     Maximize2Icon,
@@ -18,7 +25,7 @@ import {
     InfoIcon,
     UndoIcon,
 } from "lucide-react";
-import { XIcon, PlusIcon } from "lucide-react";
+import { XIcon, PlusIcon, GripVerticalIcon } from "lucide-react";
 import RetroSpinner from "./ui/retro-spinner";
 import { TooltipContent } from "./ui/tooltip";
 import { Tooltip } from "./ui/tooltip";
@@ -888,8 +895,20 @@ function CompareBlockView({
         modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
         modelId;
 
-    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical by display name within groups
+    const customOrder = useModelOrderStore(
+        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    );
+    const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
+
+    // Sort: custom order when set, else streaming first → non-moved-right → alphabetical
     const sortedMessages = [...compareBlock.messages].sort((a, b) => {
+        if (customOrder) {
+            const aIdx = customOrder.indexOf(a.model);
+            const bIdx = customOrder.indexOf(b.model);
+            if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+            if (aIdx !== -1) return -1;
+            if (bIdx !== -1) return 1;
+        }
         const aActive = a.state === "streaming";
         const bActive = b.state === "streaming";
         const aMoved = movedRightModels.has(a.model);
@@ -902,83 +921,48 @@ function CompareBlockView({
 
     const synthesisMessage = compareBlock.synthesis;
     const isSynthesisSelected = synthesisMessage?.selected ?? false;
-    const aiMessagesToDisplay = [
-        ...(synthesisMessage && synthesisMessage.selected
-            ? [synthesisMessage]
-            : []),
-        ...sortedMessages,
-    ];
 
     const selectSynthesis = MessageAPI.useSelectSynthesis();
     const deselectSynthesis = MessageAPI.useDeselectSynthesis();
 
     const handleAddModel = (modelId: string) => {
-        // First add the model to the selected models list
         addModelToCompareConfigs.mutate({
             newSelectedModelConfigId: modelId,
         });
-        // Then add it to the current message set
         addMessageToCompareBlock.mutate({
             messageSetId,
             modelId,
         });
+        // Append new model to end of custom order
+        if (chatId) {
+            const current =
+                customOrder ?? sortedMessages.map((m) => m.model);
+            setModelOrder(chatId, [...current, modelId]);
+        }
     };
 
-    function renderMessage(message: Message, index: number) {
-        const isSynthesis = message.model === "chorus::synthesize";
-        const isMinimized = !isSynthesis && minimizedModels.has(message.model);
-        const shortcutNumber = isLastRow ? index + 1 : undefined;
-
-        if (isMinimized) {
-            return (
-                <motion.div
-                    key={message.id}
-                    layout
-                    layoutId={`compare-col-${message.model}-${messageSetId}`}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="mr-2 pt-2 flex-none"
-                >
-                    <MinimizedColumnView
-                        message={message}
-                        onExpand={() => onToggleMinimize(message.model)}
-                    />
-                </motion.div>
-            );
-        }
-
-        return (
-            <motion.div
-                key={message.id}
-                layout
-                layoutId={`compare-col-${message.model}-${messageSetId}`}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} ${
-                    isQuickChatWindow
-                        ? ""
-                        : "flex-1 w-full min-w-[400px] max-w-[550px]"
-                } w-full max-w-prose`}
-            >
-                <AIMessageView
-                    message={message}
-                    blockType="compare"
-                    shortcutNumber={shortcutNumber}
-                    isLastRow={isLastRow}
-                    isQuickChatWindow={isQuickChatWindow}
-                    isSynthesis={isSynthesis}
-                    onMinimize={
-                        !isSynthesis
-                            ? () => onToggleMinimize(message.model)
-                            : undefined
-                    }
-                    onStop={
-                        !isSynthesis
-                            ? () => onModelStopped(message.model)
-                            : undefined
-                    }
-                />
-            </motion.div>
-        );
+    function onDragEnd(result: DropResult) {
+        if (
+            !result.destination ||
+            result.source.index === result.destination.index
+        )
+            return;
+        const newOrder = sortedMessages.map((m) => m.model);
+        const [moved] = newOrder.splice(result.source.index, 1);
+        newOrder.splice(result.destination.index, 0, moved);
+        if (chatId) setModelOrder(chatId, newOrder);
     }
+
+    // Total visible items for shortcut numbering: synthesis (if shown) + model columns
+    const synthesisShortcut = isLastRow ? 1 : undefined;
+    const modelShortcutOffset = isLastRow
+        ? isSynthesisSelected
+            ? 2
+            : 1
+        : undefined;
+
+    const totalVisibleCount =
+        (isSynthesisSelected ? 1 : 0) + sortedMessages.length;
 
     return (
         <LayoutGroup id={`compare-${messageSetId}`}>
@@ -990,7 +974,7 @@ function CompareBlockView({
                 }`}
             >
                 <div className="flex-none w-10 mt-1">
-                    {isLastRow && aiMessagesToDisplay.length > 1 && (
+                    {isLastRow && totalVisibleCount > 1 && (
                         <Tooltip>
                             {/* synthesis button */}
                             <TooltipTrigger asChild>
@@ -1028,9 +1012,142 @@ function CompareBlockView({
                         </Tooltip>
                     )}
                 </div>
-                {aiMessagesToDisplay.map((message, index) => {
-                    return renderMessage(message, index);
-                })}
+
+                {/* Synthesis message (pinned, not draggable) */}
+                {synthesisMessage && isSynthesisSelected && (
+                    <motion.div
+                        key={synthesisMessage.id}
+                        layoutId={`compare-col-${synthesisMessage.model}-${messageSetId}`}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} w-full max-w-prose`}
+                    >
+                        <AIMessageView
+                            message={synthesisMessage}
+                            blockType="compare"
+                            shortcutNumber={synthesisShortcut}
+                            isLastRow={isLastRow}
+                            isQuickChatWindow={isQuickChatWindow}
+                            isSynthesis={true}
+                        />
+                    </motion.div>
+                )}
+
+                {/* Draggable model columns */}
+                <DragDropContext onDragEnd={onDragEnd}>
+                    <Droppable
+                        droppableId={`compare-cols-${messageSetId}`}
+                        direction="horizontal"
+                    >
+                        {(provided) => (
+                            <div
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                                className="flex"
+                            >
+                                {sortedMessages.map((message, index) => {
+                                    const isMinimized = minimizedModels.has(
+                                        message.model,
+                                    );
+                                    const shortcutNumber =
+                                        modelShortcutOffset !== undefined
+                                            ? modelShortcutOffset + index
+                                            : undefined;
+
+                                    return (
+                                        <Draggable
+                                            key={message.model}
+                                            draggableId={message.model}
+                                            index={index}
+                                        >
+                                            {(dragProvided, dragSnapshot) => (
+                                                <div
+                                                    ref={dragProvided.innerRef}
+                                                    {...dragProvided.draggableProps}
+                                                    className={`mr-2 ${
+                                                        isQuickChatWindow
+                                                            ? "pt-0"
+                                                            : "pt-2"
+                                                    } ${
+                                                        isMinimized
+                                                            ? "flex-none"
+                                                            : isQuickChatWindow
+                                                              ? ""
+                                                              : "flex-1 w-full min-w-[400px] max-w-[550px]"
+                                                    } w-full max-w-prose`}
+                                                >
+                                                    {/* Drag handle — only shown on hover, hidden for quick chat */}
+                                                    {!isQuickChatWindow && (
+                                                        <div
+                                                            {...dragProvided.dragHandleProps}
+                                                            className={`flex justify-center h-4 mb-1 cursor-grab active:cursor-grabbing transition-opacity ${
+                                                                dragSnapshot.isDragging
+                                                                    ? "opacity-100"
+                                                                    : "opacity-0 hover:opacity-100"
+                                                            }`}
+                                                        >
+                                                            <GripVerticalIcon className="w-4 h-4 text-muted-foreground" />
+                                                        </div>
+                                                    )}
+                                                    <motion.div
+                                                        layoutId={`compare-col-${message.model}-${messageSetId}`}
+                                                        transition={{
+                                                            duration: 0.3,
+                                                            ease: "easeInOut",
+                                                        }}
+                                                    >
+                                                        {isMinimized ? (
+                                                            <MinimizedColumnView
+                                                                message={
+                                                                    message
+                                                                }
+                                                                onExpand={() =>
+                                                                    onToggleMinimize(
+                                                                        message.model,
+                                                                    )
+                                                                }
+                                                            />
+                                                        ) : (
+                                                            <AIMessageView
+                                                                message={
+                                                                    message
+                                                                }
+                                                                blockType="compare"
+                                                                shortcutNumber={
+                                                                    shortcutNumber
+                                                                }
+                                                                isLastRow={
+                                                                    isLastRow
+                                                                }
+                                                                isQuickChatWindow={
+                                                                    isQuickChatWindow
+                                                                }
+                                                                isSynthesis={
+                                                                    false
+                                                                }
+                                                                onMinimize={() =>
+                                                                    onToggleMinimize(
+                                                                        message.model,
+                                                                    )
+                                                                }
+                                                                onStop={() =>
+                                                                    onModelStopped(
+                                                                        message.model,
+                                                                    )
+                                                                }
+                                                            />
+                                                        )}
+                                                    </motion.div>
+                                                </div>
+                                            )}
+                                        </Draggable>
+                                    );
+                                })}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                </DragDropContext>
+
                 {isLastRow && (
                     <>
                         <button
