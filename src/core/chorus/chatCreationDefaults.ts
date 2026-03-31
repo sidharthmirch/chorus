@@ -6,6 +6,7 @@ import { SettingsManager } from "@core/utilities/Settings";
 import { fetchProviderVisibleModels } from "./api/ProviderVisibilityAPI";
 import { fetchModelConfigs, modelConfigQueries } from "./api/ModelsAPI";
 import { fetchPromptProfiles } from "./api/PromptProfilesAPI";
+import { fetchProject } from "./api/ProjectAPI";
 import type { QueryClient } from "@tanstack/react-query";
 
 /**
@@ -43,8 +44,8 @@ export async function applyCreationDefaultsForNewChatRow(
     chatId: string,
     queryClient?: QueryClient,
 ): Promise<void> {
-    const rows = await db.select<{ quick_chat: number }[]>(
-        "SELECT quick_chat FROM chats WHERE id = ?",
+    const rows = await db.select<{ quick_chat: number; project_id: string }[]>(
+        "SELECT quick_chat, project_id FROM chats WHERE id = ?",
         [chatId],
     );
     if (rows.length === 0) return;
@@ -56,15 +57,33 @@ export async function applyCreationDefaultsForNewChatRow(
         return;
     }
 
-    await applyDefaultPromptProfileForChat(chatId, settings);
+    // Use per-project default profile if set, falling back to global default.
+    let projectDefaultProfileId: string | undefined;
+    const projectId = rows[0].project_id;
+    if (projectId && projectId !== "default") {
+        try {
+            const project = await fetchProject(projectId);
+            projectDefaultProfileId = project.defaultPromptProfileId;
+        } catch {
+            // project not found; proceed with global default
+        }
+    }
+
+    await applyDefaultPromptProfileForChat(
+        chatId,
+        settings,
+        projectDefaultProfileId,
+    );
 }
 
 export async function applyDefaultPromptProfileForChat(
     chatId: string,
     settings?: Settings,
+    projectDefaultProfileId?: string,
 ): Promise<void> {
     const s = settings ?? (await SettingsManager.getInstance().get());
-    const profileId = s.defaultPromptProfileId;
+    // Per-project profile takes precedence over the global default.
+    const profileId = projectDefaultProfileId ?? s.defaultPromptProfileId;
     if (!profileId) return;
 
     const profiles = await fetchPromptProfiles();

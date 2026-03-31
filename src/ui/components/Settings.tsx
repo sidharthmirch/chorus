@@ -1171,7 +1171,7 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const [searchParams] = useSearchParams();
     const rawTab = tab || searchParams.get("tab");
     const normalizedTab =
-        rawTab === ("quick-chat" as string)
+        rawTab === "quick-chat"
             ? "defaults"
             : rawTab && Object.prototype.hasOwnProperty.call(TABS, rawTab)
               ? (rawTab as SettingsTabId)

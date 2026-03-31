@@ -26,6 +26,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from "./ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "./ui/select";
 import { AttachmentDropArea } from "./AttachmentsViews";
 import _ from "lodash";
 import AutoExpandingTextarea from "./AutoExpandingTextarea";
@@ -48,8 +55,11 @@ import { dialogActions, useDialogStore } from "@core/infra/DialogStore";
 import { useSettings } from "./hooks/useSettings";
 import { Link } from "react-router-dom";
 import { SidebarTrigger } from "./ui/sidebar";
+import { usePromptProfiles } from "@core/chorus/api/PromptProfilesAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import * as ChatAPI from "@core/chorus/api/ChatAPI";
+
+const NONE = "__none__";
 
 const deleteProjectDialogId = (projectId: string) =>
     `delete-project-dialog-${projectId}`;
@@ -72,6 +82,11 @@ export default function ProjectView() {
     const deleteProject = ProjectAPI.useDeleteProject();
     const getOrCreateNewChat = ChatAPI.useGetOrCreateNewChat();
     const setMagicProjectsEnabled = ProjectAPI.useSetMagicProjectsEnabled();
+    const setProjectDefaultPromptProfile =
+        ProjectAPI.useSetProjectDefaultPromptProfile();
+
+    // Queries
+    const { data: promptProfiles } = usePromptProfiles();
 
     // Queries
     const projectsQuery = useQuery(ProjectAPI.projectQueries.list());
@@ -423,6 +438,42 @@ export default function ProjectView() {
                             disabled={project.isImported}
                         />
                     </div>
+                    {(promptProfiles?.length ?? 0) > 0 && (
+                        <div className="flex justify-between items-center gap-2 bg-muted px-3 py-2 rounded mt-1">
+                            <div className="flex flex-col gap-1 min-w-0">
+                                <h2 className="font-medium text-sm">
+                                    Default Prompt Profile
+                                </h2>
+                                <p className="text-xs text-muted-foreground font-[350] -mt-0.5">
+                                    Applied to new chats in this project,
+                                    overriding the global default.
+                                </p>
+                            </div>
+                            <Select
+                                value={project.defaultPromptProfileId ?? NONE}
+                                onValueChange={(v) => {
+                                    void setProjectDefaultPromptProfile.mutateAsync(
+                                        {
+                                            projectId,
+                                            profileId: v === NONE ? null : v,
+                                        },
+                                    );
+                                }}
+                            >
+                                <SelectTrigger className="w-36 h-7 text-xs shrink-0">
+                                    <SelectValue placeholder="None" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE}>None</SelectItem>
+                                    {(promptProfiles ?? []).map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                            {p.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                     <div className="">
                         {/* Magic context details */}
                         <div className="space-y-2 mt-1 max-h-[400px] overflow-y-auto">
