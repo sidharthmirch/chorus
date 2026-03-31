@@ -627,12 +627,8 @@ export function ManageModelsBox({
     /** Profile models the user can actually select (API keys, list visibility). */
     const profileSelectableConfigs = useMemo(() => {
         if (!activeProfile) return [];
-        const selectableIds = new Set(
-            selectableVisibleModels.map((m) => m.id),
-        );
-        const byId = new Map(
-            (modelConfigs.data ?? []).map((m) => [m.id, m]),
-        );
+        const selectableIds = new Set(selectableVisibleModels.map((m) => m.id));
+        const byId = new Map((modelConfigs.data ?? []).map((m) => [m.id, m]));
         const ordered: ModelConfig[] = [];
         for (const configId of activeProfile.modelConfigIds) {
             if (!selectableIds.has(configId)) continue;
@@ -754,7 +750,9 @@ export function ManageModelsBox({
                         trailing={
                             mode.type === "default" ? (
                                 <>
-                                    <span className="select-none">Select All</span>
+                                    <span className="select-none">
+                                        Select All
+                                    </span>
                                     <span className="text-[10px] inline-flex items-center gap-0.5 bg-muted-foreground/10 rounded px-1 py-0.5 font-sans">
                                         <span>⌘</span>
                                         <span>⇧</span>
