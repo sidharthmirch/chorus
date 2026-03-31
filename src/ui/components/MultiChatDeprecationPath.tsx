@@ -15,7 +15,6 @@ import type {
     DragEndEvent,
     DragOverEvent,
 } from "@dnd-kit/core";
-type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableColumnItem } from "./SortableColumnItem";
 import { useModelOrderStore } from "@core/infra/ModelOrderStore";
@@ -77,6 +76,8 @@ import { ProviderName } from "@core/chorus/Models";
 import { dialogActions } from "@core/infra/DialogStore";
 import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import SimpleCopyButton from "./unused/CopyButton";
+
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 
 function getReviewerLongName(
     model: string,
@@ -1005,6 +1006,7 @@ function CompareBlockView({
 
     const totalVisibleCount =
         (isSynthesisSelected ? 1 : 0) + sortedMessages.length;
+    const compareItemOrder = sortedMessages.map((m) => m.model);
 
     return (
         <LayoutGroup id={`compare-${messageSetId}`}>
@@ -1059,6 +1061,7 @@ function CompareBlockView({
                 {synthesisMessage && isSynthesisSelected && (
                     <motion.div
                         key={synthesisMessage.id}
+                        layout
                         layoutId={`compare-col-${synthesisMessage.model}-${messageSetId}`}
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} w-full max-w-prose`}
@@ -1094,60 +1097,67 @@ function CompareBlockView({
                                     : undefined;
 
                             return (
-                                <SortableColumnItem
+                                <motion.div
                                     key={message.model}
-                                    id={message.model}
-                                    disabled={!message.selected || isMinimized}
-                                    activeDragId={activeDragId}
-                                    overId={overId}
-                                    itemOrder={sortedMessages.map(
-                                        (m) => m.model,
-                                    )}
-                                    className={`mr-2 ${
-                                        isQuickChatWindow ? "pt-0" : "pt-2"
-                                    } ${
-                                        isMinimized
-                                            ? "flex-none"
-                                            : isQuickChatWindow
-                                              ? ""
-                                              : "flex-1 w-full min-w-[400px] max-w-[550px]"
-                                    } w-full max-w-prose`}
+                                    layout
+                                    layoutId={`compare-col-${message.model}-${messageSetId}`}
                                 >
-                                    {(listeners) =>
-                                        isMinimized ? (
-                                            <MinimizedColumnView
-                                                message={message}
-                                                onExpand={() =>
-                                                    onToggleMinimize(
-                                                        message.model,
-                                                    )
-                                                }
-                                            />
-                                        ) : (
-                                            <AIMessageView
-                                                message={message}
-                                                blockType="compare"
-                                                shortcutNumber={shortcutNumber}
-                                                isLastRow={isLastRow}
-                                                isQuickChatWindow={
-                                                    isQuickChatWindow
-                                                }
-                                                isSynthesis={false}
-                                                onMinimize={() =>
-                                                    onToggleMinimize(
-                                                        message.model,
-                                                    )
-                                                }
-                                                onStop={() =>
-                                                    onModelStopped(
-                                                        message.model,
-                                                    )
-                                                }
-                                                dragHandleProps={listeners}
-                                            />
-                                        )
-                                    }
-                                </SortableColumnItem>
+                                    <SortableColumnItem
+                                        id={message.model}
+                                        disabled={
+                                            !message.selected || isMinimized
+                                        }
+                                        activeDragId={activeDragId}
+                                        overId={overId}
+                                        itemOrder={compareItemOrder}
+                                        className={`mr-2 ${
+                                            isQuickChatWindow ? "pt-0" : "pt-2"
+                                        } ${
+                                            isMinimized
+                                                ? "flex-none"
+                                                : isQuickChatWindow
+                                                  ? ""
+                                                  : "flex-1 w-full min-w-[400px] max-w-[550px]"
+                                        } w-full max-w-prose`}
+                                    >
+                                        {(listeners) =>
+                                            isMinimized ? (
+                                                <MinimizedColumnView
+                                                    message={message}
+                                                    onExpand={() =>
+                                                        onToggleMinimize(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                />
+                                            ) : (
+                                                <AIMessageView
+                                                    message={message}
+                                                    blockType="compare"
+                                                    shortcutNumber={
+                                                        shortcutNumber
+                                                    }
+                                                    isLastRow={isLastRow}
+                                                    isQuickChatWindow={
+                                                        isQuickChatWindow
+                                                    }
+                                                    isSynthesis={false}
+                                                    onMinimize={() =>
+                                                        onToggleMinimize(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                    onStop={() =>
+                                                        onModelStopped(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                    dragHandleProps={listeners}
+                                                />
+                                            )
+                                        }
+                                    </SortableColumnItem>
+                                </motion.div>
                             );
                         })}
                     </div>
