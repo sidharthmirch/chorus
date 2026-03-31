@@ -2,7 +2,7 @@
     "name": "chorus",
     "license": "MIT",
     "private": true,
-    "version": "0.14.12",
+    "version": "0.14.13",
     "type": "module",
     "scripts": {
         "tauri": "tauri",
