@@ -106,7 +106,11 @@ import {
     useDraggable,
     closestCenter,
 } from "@dnd-kit/core";
-import type { DragStartEvent, DragEndEvent, DragOverEvent } from "@dnd-kit/core";
+import type {
+    DragStartEvent,
+    DragEndEvent,
+    DragOverEvent,
+} from "@dnd-kit/core";
 type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableColumnItem } from "./SortableColumnItem";
@@ -1121,9 +1125,7 @@ function ToolsAIMessageViewInner({
             </div>
             {showReorderOverlay && (
                 <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none">
-                    <div
-                        className="select-none rounded-md border border-border-accent/60 bg-background/85 px-3 py-1 text-[11px] font-geist-mono uppercase tracking-[0.16em] text-accent-700 shadow-sm backdrop-blur-sm"
-                    >
+                    <div className="select-none rounded-md border border-border-accent/60 bg-background/85 px-3 py-1 text-[11px] font-geist-mono uppercase tracking-[0.16em] text-accent-700 shadow-sm backdrop-blur-sm">
                         Drag to reorder
                     </div>
                 </div>
@@ -1621,8 +1623,8 @@ function ToolsBlockView({
     );
     const deselectToolsMessages = MessageAPI.useDeselectToolsMessages();
 
-    const customOrder = useModelOrderStore(
-        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    const customOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
     );
     const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
 
@@ -1692,12 +1694,7 @@ function ToolsBlockView({
                 messageSetId,
             });
         }
-    }, [
-        chatId,
-        messageSetId,
-        toolsBlock.chatMessages,
-        deselectToolsMessages,
-    ]);
+    }, [chatId, messageSetId, toolsBlock.chatMessages, deselectToolsMessages]);
 
     // Auto-minimize models that returned no response or errored
     useEffect(() => {
@@ -1745,7 +1742,9 @@ function ToolsBlockView({
                 if (aFinishIdx !== -1 && bFinishIdx !== -1)
                     return aFinishIdx - bFinishIdx;
             }
-            return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
+            return getDisplayName(a.model).localeCompare(
+                getDisplayName(b.model),
+            );
         });
 
     const handleAddModel = (modelId: string) => {
@@ -1821,7 +1820,9 @@ function ToolsBlockView({
                                     disabled={!message.selected}
                                     activeDragId={activeDragId}
                                     overId={overId}
-                                    itemOrder={activeMessages.map((m) => m.model)}
+                                    itemOrder={activeMessages.map(
+                                        (m) => m.model,
+                                    )}
                                     className={
                                         isQuickChatWindow
                                             ? "w-full max-w-prose"
@@ -1840,8 +1841,8 @@ function ToolsBlockView({
                                                     .length === 1
                                             }
                                             onMinimize={
-                                                toolsBlock.chatMessages
-                                                    .length > 1
+                                                toolsBlock.chatMessages.length >
+                                                1
                                                     ? () =>
                                                           onMinimize(
                                                               message.model,
@@ -2256,8 +2257,8 @@ export default function MultiChat() {
                 ?.displayName ?? modelId,
         [modelConfigsQuery.data],
     );
-    const customCompareOrder = useModelOrderStore(
-        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    const customCompareOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
     );
     const sortedCompareMessages = useMemo(() => {
         if (!currentCompareBlock) return [];

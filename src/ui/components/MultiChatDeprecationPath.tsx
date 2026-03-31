@@ -10,7 +10,11 @@ import {
     useDraggable,
     closestCenter,
 } from "@dnd-kit/core";
-import type { DragStartEvent, DragEndEvent, DragOverEvent } from "@dnd-kit/core";
+import type {
+    DragStartEvent,
+    DragEndEvent,
+    DragOverEvent,
+} from "@dnd-kit/core";
 type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableColumnItem } from "./SortableColumnItem";
@@ -444,7 +448,9 @@ function AIMessageView({
                         </div>
                     ) : (
                         // compare mode: model name, always visible
-                        <div className={`ml-2 px-2.5 bg-background flex items-center`}>
+                        <div
+                            className={`ml-2 px-2.5 bg-background flex items-center`}
+                        >
                             <span className="print-model-name text-sm font-[400] text-gray-800 rounded-full py-1 inline-flex items-center gap-1">
                                 {isSynthesis ? (
                                     <MergeIcon className="w-3 h-3 inline-block mb-0.5 mr-1" />
@@ -915,8 +921,8 @@ function CompareBlockView({
         modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
         modelId;
 
-    const customOrder = useModelOrderStore(
-        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    const customOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
     );
     const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
 
@@ -955,8 +961,7 @@ function CompareBlockView({
         });
         // Append new model to end of custom order
         if (chatId) {
-            const current =
-                customOrder ?? sortedMessages.map((m) => m.model);
+            const current = customOrder ?? sortedMessages.map((m) => m.model);
             setModelOrder(chatId, [...current, modelId]);
         }
     };
@@ -1095,7 +1100,9 @@ function CompareBlockView({
                                     disabled={!message.selected || isMinimized}
                                     activeDragId={activeDragId}
                                     overId={overId}
-                                    itemOrder={sortedMessages.map((m) => m.model)}
+                                    itemOrder={sortedMessages.map(
+                                        (m) => m.model,
+                                    )}
                                     className={`mr-2 ${
                                         isQuickChatWindow ? "pt-0" : "pt-2"
                                     } ${
@@ -1132,7 +1139,9 @@ function CompareBlockView({
                                                     )
                                                 }
                                                 onStop={() =>
-                                                    onModelStopped(message.model)
+                                                    onModelStopped(
+                                                        message.model,
+                                                    )
                                                 }
                                                 dragHandleProps={listeners}
                                             />

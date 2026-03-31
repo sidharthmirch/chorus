@@ -2969,9 +2969,10 @@ function usePopulateToolsBlock(chatId: string) {
                 }),
             });
             if (firstCreateMessageResult) {
-                await db.execute("UPDATE messages SET selected = 0 WHERE id = ?", [
-                    firstCreateMessageResult.messageId,
-                ]);
+                await db.execute(
+                    "UPDATE messages SET selected = 0 WHERE id = ?",
+                    [firstCreateMessageResult.messageId],
+                );
             }
 
             // phase 2: create the rest of the messages and stream all

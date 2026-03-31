@@ -72,7 +72,8 @@ export function SortableColumnItem({
             // Highlight the hovered replacement target so it's clear which item
             // is being displaced by the drop.
             if (id === overId) {
-                replacementDirection = activeIndex < overIndex ? "left" : "right";
+                replacementDirection =
+                    activeIndex < overIndex ? "left" : "right";
             }
         }
     }
