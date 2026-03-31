@@ -16,6 +16,9 @@
 -   Dynamically fetch and select models from providers
 -   Prompt profiles: Choose your preferred chat persona
 -   Minimize model columns in multi-model chat with sidebar management and auto-minimize on empty responses
+-   Move model responses around in their row, changing the order they are displayed to you in
+-   Ability to customize default models (multi-model chat and ambient chat)
+-   Set app and project specific default prompt profiles
 
 > **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
 > Alternatively, remove the quarantine flag via Terminal: `xattr -d com.apple.quarantine Chorus.app`
