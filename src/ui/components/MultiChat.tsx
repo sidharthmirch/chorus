@@ -1611,6 +1611,34 @@ function ToolsBlockView({
     );
     const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
 
+    // Track which models finished streaming and in what order, so we can sort
+    // finished models to the left (first finished = leftmost slot) when no
+    // custom drag-and-drop order is set. We use refs updated synchronously
+    // during render to avoid a one-frame lag from useEffect.
+    const finishedModelsOrderRef = useRef<string[]>([]);
+    const prevMessageStatesRef = useRef<Map<string, string>>(new Map());
+    const prevMessageSetIdRef = useRef<string | undefined>(undefined);
+
+    if (prevMessageSetIdRef.current !== messageSetId) {
+        prevMessageSetIdRef.current = messageSetId;
+        finishedModelsOrderRef.current = [];
+        prevMessageStatesRef.current = new Map();
+    }
+    for (const message of toolsBlock.chatMessages) {
+        const prev = prevMessageStatesRef.current.get(message.model);
+        if (
+            prev === "streaming" &&
+            message.state !== "streaming" &&
+            !finishedModelsOrderRef.current.includes(message.model)
+        ) {
+            finishedModelsOrderRef.current = [
+                ...finishedModelsOrderRef.current,
+                message.model,
+            ];
+        }
+        prevMessageStatesRef.current.set(message.model, message.state);
+    }
+
     const getDisplayName = useCallback(
         (modelId: string) =>
             modelConfigsQuery.data?.find((m) => m.id === modelId)
@@ -1657,12 +1685,28 @@ function ToolsBlockView({
     const activeMessages = [...toolsBlock.chatMessages]
         .filter((m) => !minimizedModels.has(m.model))
         .sort((a, b) => {
+            // Respect explicit drag-and-drop ordering if the user has set one.
             if (customOrder) {
                 const aIdx = customOrder.indexOf(a.model);
                 const bIdx = customOrder.indexOf(b.model);
                 if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
                 if (aIdx !== -1) return -1;
                 if (bIdx !== -1) return 1;
+            }
+            // Default: finished (idle) models go left of still-streaming/loading
+            // models, sorted by completion order (first finished = leftmost slot).
+            const aIdle = a.state === "idle";
+            const bIdle = b.state === "idle";
+            if (aIdle !== bIdle) return aIdle ? -1 : 1;
+            if (aIdle && bIdle) {
+                const aFinishIdx = finishedModelsOrderRef.current.indexOf(
+                    a.model,
+                );
+                const bFinishIdx = finishedModelsOrderRef.current.indexOf(
+                    b.model,
+                );
+                if (aFinishIdx !== -1 && bFinishIdx !== -1)
+                    return aFinishIdx - bFinishIdx;
             }
             return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
         });
