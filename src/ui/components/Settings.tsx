@@ -1130,6 +1130,10 @@ const TABS: Record<SettingsTabId, TabConfig> = {
     docs: { label: "Documentation", icon: BookOpen },
 } as const;
 
+function isSettingsTabId(tab: string): tab is SettingsTabId {
+    return Object.prototype.hasOwnProperty.call(TABS, tab);
+}
+
 /** Sidebar order (explicit — Record iteration order is not the product source of truth). */
 const SETTINGS_TAB_ORDER: SettingsTabId[] = [
     "general",
@@ -1173,8 +1177,8 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const normalizedTab =
         rawTab === "quick-chat"
             ? "defaults"
-            : rawTab && Object.prototype.hasOwnProperty.call(TABS, rawTab)
-              ? (rawTab as SettingsTabId)
+            : rawTab && isSettingsTabId(rawTab)
+              ? rawTab
               : null;
     const defaultTab = normalizedTab ?? "general";
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
