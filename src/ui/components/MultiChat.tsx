@@ -1040,11 +1040,13 @@ function ToolsAIMessageViewInner({
     isQuickChatWindow,
     selected,
     showReorderOverlay,
+    isReply = false,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
     selected: boolean;
     showReorderOverlay: boolean;
+    isReply?: boolean;
 }) {
     // combine tool calls with tool results
     const messagePartsSandwiched: MessagePartWithResults[] = message.parts
@@ -1088,7 +1090,7 @@ function ToolsAIMessageViewInner({
                     isQuickChatWindow
                         ? "py-2.5 border !border-special max-w-full inline-block break-words px-3.5 rounded-xl"
                         : "p-4 pb-6"
-                } ${selected && !isQuickChatWindow ? "blur-[1.5px]" : ""}`}
+                } ${selected && !isQuickChatWindow && !isReply ? "blur-[1.5px]" : ""}`}
             >
                 {(message.parts.length === 0 ||
                     _.every(message.parts.map((p) => !p.content))) &&
@@ -1535,6 +1537,7 @@ export function ToolsMessageView({
                             isQuickChatWindow={isQuickChatWindow}
                             selected={message.selected}
                             showReorderOverlay={showReorderOverlay}
+                            isReply={isReply}
                         />
 
                         {/* Reply button at bottom overlapping border (only show if there are no replies) */}
