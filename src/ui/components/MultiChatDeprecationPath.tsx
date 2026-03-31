@@ -7,6 +7,7 @@ import {
     Draggable,
     DropResult,
 } from "@hello-pangea/dnd";
+import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import { Button } from "./ui/button";
 import {
@@ -25,7 +26,7 @@ import {
     InfoIcon,
     UndoIcon,
 } from "lucide-react";
-import { XIcon, PlusIcon, GripVerticalIcon } from "lucide-react";
+import { XIcon, PlusIcon } from "lucide-react";
 import RetroSpinner from "./ui/retro-spinner";
 import { TooltipContent } from "./ui/tooltip";
 import { Tooltip } from "./ui/tooltip";
@@ -324,6 +325,7 @@ function AIMessageView({
     isSynthesis,
     onMinimize,
     onStop,
+    dragHandleProps,
 }: {
     message: Message;
     blockType: BlockType;
@@ -333,6 +335,7 @@ function AIMessageView({
     isSynthesis?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
+    dragHandleProps?: DraggableProvidedDragHandleProps | null;
 }) {
     const [raw, setRaw] = useState(false);
     const [streamStartTime, setStreamStartTime] = useState<Date>();
@@ -435,7 +438,7 @@ function AIMessageView({
                         </div>
                     ) : (
                         // compare mode: model name, always visible
-                        <div className={`ml-2 px-2.5 bg-background`}>
+                        <div className={`ml-2 px-2.5 bg-background flex items-center`}>
                             <span className="print-model-name text-sm font-[400] text-gray-800 rounded-full py-1 inline-flex items-center gap-1">
                                 {isSynthesis ? (
                                     <MergeIcon className="w-3 h-3 inline-block mb-0.5 mr-1" />
@@ -443,16 +446,26 @@ function AIMessageView({
                                     modelName
                                 )}
                             </span>
-                            {shortcutNumber !== undefined && isLastRow && (
+                            {!isSynthesis && message.selected ? (
                                 <span
-                                    className={`no-print ml-1 text-sm ${
-                                        !message.selected
-                                            ? "text-muted-foreground/30"
-                                            : "text-muted-foreground"
-                                    }`}
+                                    {...(dragHandleProps ?? {})}
+                                    className="no-print ml-1 text-xs text-accent-600 font-geist-mono uppercase tracking-wider animate-brief-flash cursor-grab active:cursor-grabbing select-none"
                                 >
-                                    ⌘{shortcutNumber}
+                                    Drag to move
                                 </span>
+                            ) : (
+                                shortcutNumber !== undefined &&
+                                isLastRow && (
+                                    <span
+                                        className={`no-print ml-1 text-sm ${
+                                            !message.selected
+                                                ? "text-muted-foreground/30"
+                                                : "text-muted-foreground"
+                                        }`}
+                                    >
+                                        ⌘{shortcutNumber}
+                                    </span>
+                                )
                             )}
                         </div>
                     )}
@@ -1058,8 +1071,12 @@ function CompareBlockView({
                                             key={message.model}
                                             draggableId={message.model}
                                             index={index}
+                                            isDragDisabled={
+                                                !message.selected ||
+                                                isMinimized
+                                            }
                                         >
-                                            {(dragProvided, dragSnapshot) => (
+                                            {(dragProvided) => (
                                                 <div
                                                     ref={dragProvided.innerRef}
                                                     {...dragProvided.draggableProps}
@@ -1075,19 +1092,6 @@ function CompareBlockView({
                                                               : "flex-1 w-full min-w-[400px] max-w-[550px]"
                                                     } w-full max-w-prose`}
                                                 >
-                                                    {/* Drag handle — only shown on hover, hidden for quick chat */}
-                                                    {!isQuickChatWindow && (
-                                                        <div
-                                                            {...dragProvided.dragHandleProps}
-                                                            className={`flex justify-center h-4 mb-1 cursor-grab active:cursor-grabbing transition-opacity ${
-                                                                dragSnapshot.isDragging
-                                                                    ? "opacity-100"
-                                                                    : "opacity-0 hover:opacity-100"
-                                                            }`}
-                                                        >
-                                                            <GripVerticalIcon className="w-4 h-4 text-muted-foreground" />
-                                                        </div>
-                                                    )}
                                                     <motion.div
                                                         layoutId={`compare-col-${message.model}-${messageSetId}`}
                                                         transition={{
@@ -1133,6 +1137,9 @@ function CompareBlockView({
                                                                     onModelStopped(
                                                                         message.model,
                                                                     )
+                                                                }
+                                                                dragHandleProps={
+                                                                    dragProvided.dragHandleProps
                                                                 }
                                                             />
                                                         )}

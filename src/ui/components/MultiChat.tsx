@@ -97,6 +97,13 @@ import {
     useMinimizedModelsStore,
 } from "@core/infra/MinimizedModelsStore";
 import { useModelOrderStore } from "@core/infra/ModelOrderStore";
+import {
+    DragDropContext,
+    Droppable,
+    Draggable,
+    DropResult,
+} from "@hello-pangea/dnd";
+import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 import {
     getToolsetIcon,
@@ -1152,6 +1159,7 @@ export function ToolsMessageView({
     isReply = false,
     onMinimize,
     onStop,
+    dragHandleProps,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
@@ -1160,6 +1168,7 @@ export function ToolsMessageView({
     isReply?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
+    dragHandleProps?: DraggableProvidedDragHandleProps | null;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1297,11 +1306,16 @@ export function ToolsMessageView({
                                 </div>
                                 {!isOnlyMessage && (
                                     <div
+                                        {...(message.selected
+                                            ? (dragHandleProps ?? {})
+                                            : {})}
                                         className={`text-accent-600 px-2 flex text-sm tracking-wider font-[350]
                                         ${isQuickChatWindow ? "bg-gray-200" : "bg-background"} animate-brief-flash font-geist-mono uppercase
-                                        ${message.selected ? "opacity-100" : "opacity-0"}`}
+                                        ${message.selected ? "opacity-100 cursor-grab active:cursor-grabbing select-none" : "opacity-0"}`}
                                     >
-                                        In Chat
+                                        {message.selected
+                                            ? "Drag to move"
+                                            : "In Chat"}
                                     </div>
                                 )}
                             </div>
@@ -1591,17 +1605,11 @@ function ToolsBlockView({
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
         chatId!,
     );
-    const handleAddModel = (modelId: string) => {
-        // First add the model to the selected models list
-        addModelToCompareConfigs.mutate({
-            newSelectedModelConfigId: modelId,
-        });
-        // Then add it to the current message set
-        addMessageToToolsBlock.mutate({
-            messageSetId,
-            modelId,
-        });
-    };
+
+    const customOrder = useModelOrderStore(
+        (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
+    );
+    const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
 
     const getDisplayName = useCallback(
         (modelId: string) =>
@@ -1648,9 +1656,42 @@ function ToolsBlockView({
 
     const activeMessages = [...toolsBlock.chatMessages]
         .filter((m) => !minimizedModels.has(m.model))
-        .sort((a, b) =>
-            getDisplayName(a.model).localeCompare(getDisplayName(b.model)),
-        );
+        .sort((a, b) => {
+            if (customOrder) {
+                const aIdx = customOrder.indexOf(a.model);
+                const bIdx = customOrder.indexOf(b.model);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
+            return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
+        });
+
+    const handleAddModel = (modelId: string) => {
+        addModelToCompareConfigs.mutate({
+            newSelectedModelConfigId: modelId,
+        });
+        addMessageToToolsBlock.mutate({
+            messageSetId,
+            modelId,
+        });
+        if (chatId) {
+            const current = customOrder ?? activeMessages.map((m) => m.model);
+            setModelOrder(chatId, [...current, modelId]);
+        }
+    };
+
+    function onDragEnd(result: DropResult) {
+        if (
+            !result.destination ||
+            result.source.index === result.destination.index
+        )
+            return;
+        const newOrder = activeMessages.map((m) => m.model);
+        const [moved] = newOrder.splice(result.source.index, 1);
+        newOrder.splice(result.destination.index, 0, moved);
+        if (chatId) setModelOrder(chatId, newOrder);
+    }
 
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
@@ -1666,34 +1707,84 @@ function ToolsBlockView({
                 ${shouldShowScrollbar ? "is-scrolling" : ""}
                 ${!isQuickChatWindow ? "px-10" : ""}`}
                 >
-                    {activeMessages.map((message) => (
-                        <motion.div
-                            key={message.id}
-                            layout
-                            layoutId={`tools-col-${message.model}-${messageSetId}`}
-                            transition={{ duration: 0.3, ease: "easeInOut" }}
-                            className={
-                                isQuickChatWindow
-                                    ? "w-full max-w-prose"
-                                    : `w-full flex-1 min-w-[450px] max-w-[550px]`
-                            }
+                    <DragDropContext onDragEnd={onDragEnd}>
+                        <Droppable
+                            droppableId={`tools-cols-${messageSetId}`}
+                            direction="horizontal"
                         >
-                            <ToolsMessageView
-                                message={message}
-                                isLastRow={isLastRow}
-                                isQuickChatWindow={isQuickChatWindow}
-                                isOnlyMessage={
-                                    toolsBlock.chatMessages.length === 1
-                                }
-                                onMinimize={
-                                    toolsBlock.chatMessages.length > 1
-                                        ? () => onMinimize(message.model)
-                                        : undefined
-                                }
-                                onStop={() => onMinimize(message.model)}
-                            />
-                        </motion.div>
-                    ))}
+                            {(provided) => (
+                                <div
+                                    ref={provided.innerRef}
+                                    {...provided.droppableProps}
+                                    className="flex flex-1 gap-2"
+                                >
+                                    {activeMessages.map((message, index) => (
+                                        <Draggable
+                                            key={message.model}
+                                            draggableId={`tools-${message.model}`}
+                                            index={index}
+                                            isDragDisabled={!message.selected}
+                                        >
+                                            {(dragProvided) => (
+                                                <div
+                                                    ref={dragProvided.innerRef}
+                                                    {...dragProvided.draggableProps}
+                                                    className={
+                                                        isQuickChatWindow
+                                                            ? "w-full max-w-prose"
+                                                            : "w-full flex-1 min-w-[450px] max-w-[550px]"
+                                                    }
+                                                >
+                                                    <motion.div
+                                                        layoutId={`tools-col-${message.model}-${messageSetId}`}
+                                                        transition={{
+                                                            duration: 0.3,
+                                                            ease: "easeInOut",
+                                                        }}
+                                                    >
+                                                        <ToolsMessageView
+                                                            message={message}
+                                                            isLastRow={
+                                                                isLastRow
+                                                            }
+                                                            isQuickChatWindow={
+                                                                isQuickChatWindow
+                                                            }
+                                                            isOnlyMessage={
+                                                                toolsBlock
+                                                                    .chatMessages
+                                                                    .length ===
+                                                                1
+                                                            }
+                                                            onMinimize={
+                                                                toolsBlock
+                                                                    .chatMessages
+                                                                    .length > 1
+                                                                    ? () =>
+                                                                          onMinimize(
+                                                                              message.model,
+                                                                          )
+                                                                    : undefined
+                                                            }
+                                                            onStop={() =>
+                                                                onMinimize(
+                                                                    message.model,
+                                                                )
+                                                            }
+                                                            dragHandleProps={
+                                                                dragProvided.dragHandleProps
+                                                            }
+                                                        />
+                                                    </motion.div>
+                                                </div>
+                                            )}
+                                        </Draggable>
+                                    ))}
+                                    {provided.placeholder}
+                                </div>
+                            )}
+                        </Droppable>
+                    </DragDropContext>
                     {isLastRow && !isQuickChatWindow && (
                         <div className="flex items-end gap-2 self-end">
                             {pendingModelConfigs.length > 0 && (
