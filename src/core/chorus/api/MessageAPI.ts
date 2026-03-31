@@ -2088,6 +2088,36 @@ export function useSelectMessage() {
     });
 }
 
+export function useDeselectToolsMessages() {
+    const queryClient = useQueryClient();
+    const markProjectContextSummaryAsStale =
+        useMarkProjectContextSummaryAsStale();
+
+    return useMutation({
+        mutationKey: ["deselectToolsMessages"] as const,
+        mutationFn: async ({
+            messageSetId,
+        }: {
+            chatId: string;
+            messageSetId: string;
+        }) => {
+            await db.execute(
+                "UPDATE messages SET selected = 0 WHERE message_set_id = ? AND block_type = 'tools'",
+                [messageSetId],
+            );
+        },
+        onSuccess: async (_data, variables) => {
+            await queryClient.invalidateQueries({
+                queryKey: messageKeys.messageSets(variables.chatId),
+            });
+
+            await markProjectContextSummaryAsStale.mutateAsync({
+                chatId: variables.chatId,
+            });
+        },
+    });
+}
+
 /**
  * Updates the selected_block_type field in a message set,
  * and also the current_block_type field in app_metadata
@@ -2922,10 +2952,11 @@ function usePopulateToolsBlock(chatId: string) {
                 return { skipped: true };
             }
 
-            // we do this in two phases so that we can ensure that if the tools block
-            // contains any message, it always contains a selected message
+            // Create all tool messages with selected = false by default.
+            // Note: a DB trigger auto-selects the first inserted message in a set,
+            // so we explicitly clear selection right after creating the first one.
 
-            // phase 1: create the first message (which will be selected)
+            // phase 1: create the first message
             const firstModelConfig = modelConfigs[0];
             const firstCreateMessageResult = await createMessage.mutateAsync({
                 message: createAIMessage({
@@ -2933,10 +2964,15 @@ function usePopulateToolsBlock(chatId: string) {
                     messageSetId,
                     blockType: "tools",
                     model: firstModelConfig.id,
-                    selected: true,
+                    selected: false,
                     level: 0, // explicitly set level for first message
                 }),
             });
+            if (firstCreateMessageResult) {
+                await db.execute("UPDATE messages SET selected = 0 WHERE id = ?", [
+                    firstCreateMessageResult.messageId,
+                ]);
+            }
 
             // phase 2: create the rest of the messages and stream all
             await Promise.all(

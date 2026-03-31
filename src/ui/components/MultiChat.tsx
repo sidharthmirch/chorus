@@ -106,7 +106,7 @@ import {
     useDraggable,
     closestCenter,
 } from "@dnd-kit/core";
-import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent, DragOverEvent } from "@dnd-kit/core";
 type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableColumnItem } from "./SortableColumnItem";
@@ -1023,9 +1023,13 @@ function DeepResearchNotificationButton({ message }: { message: Message }) {
 function ToolsAIMessageViewInner({
     message,
     isQuickChatWindow,
+    selected,
+    showReorderOverlay,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
+    selected: boolean;
+    showReorderOverlay: boolean;
 }) {
     // combine tool calls with tool results
     const messagePartsSandwiched: MessagePartWithResults[] = message.parts
@@ -1063,56 +1067,67 @@ function ToolsAIMessageViewInner({
         })
         .filter((p) => p !== undefined);
     return (
-        <div
-            className={`relative overflow-y-auto select-text ${
-                isQuickChatWindow
-                    ? "py-2.5 border !border-special max-w-full inline-block break-words px-3.5 rounded-xl"
-                    : "p-4 pb-6"
-            }`}
-        >
-            {(message.parts.length === 0 ||
-                _.every(message.parts.map((p) => !p.content))) &&
-            message.state === "idle" ? (
-                <div className="text-sm text-muted-foreground/50 uppercase font-[350] font-geist-mono tracking-wider">
-                    <ErrorView message={message} />
-                </div>
-            ) : (
-                <>
-                    {messagePartsSandwiched.map((part) => (
-                        <MessagePartView
-                            key={part.level}
-                            part={part}
-                            messageState={message.state}
-                        />
-                    ))}
-                    {message.state === "streaming" && (
-                        <RetroSpinner className="mt-2" />
-                    )}
-                    <DeepResearchNotificationHandler message={message} />
-                    <DeepResearchNotificationButton message={message} />
-                    {message.errorMessage && (
-                        <div className="text-md rounded-md my-1 items-center justify-between font-[350]">
-                            <div className="flex items-center text-destructive font-medium">
-                                {message.errorMessage}
+        <div className="relative">
+            <div
+                className={`relative overflow-y-auto select-text transition-[filter] duration-200 ${
+                    isQuickChatWindow
+                        ? "py-2.5 border !border-special max-w-full inline-block break-words px-3.5 rounded-xl"
+                        : "p-4 pb-6"
+                } ${selected && !isQuickChatWindow ? "blur-[1.5px]" : ""}`}
+            >
+                {(message.parts.length === 0 ||
+                    _.every(message.parts.map((p) => !p.content))) &&
+                message.state === "idle" ? (
+                    <div className="text-sm text-muted-foreground/50 uppercase font-[350] font-geist-mono tracking-wider">
+                        <ErrorView message={message} />
+                    </div>
+                ) : (
+                    <>
+                        {messagePartsSandwiched.map((part) => (
+                            <MessagePartView
+                                key={part.level}
+                                part={part}
+                                messageState={message.state}
+                            />
+                        ))}
+                        {message.state === "streaming" && (
+                            <RetroSpinner className="mt-2" />
+                        )}
+                        <DeepResearchNotificationHandler message={message} />
+                        <DeepResearchNotificationButton message={message} />
+                        {message.errorMessage && (
+                            <div className="text-md rounded-md my-1 items-center justify-between font-[350]">
+                                <div className="flex items-center text-destructive font-medium">
+                                    {message.errorMessage}
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </>
+                        )}
+                    </>
+                )}
+                {/* // {streamStartTime && !isQuickChatWindow && (
+                                    //     <Metrics
+                                    //         text={message.text}
+                                    //         startTime={streamStartTime}
+                                    //         isStreaming={message.state === "streaming"}
+                                    //     />
+                                    // )} */}
+                <MessageCostDisplay
+                    costUsd={message.costUsd}
+                    promptTokens={message.promptTokens}
+                    completionTokens={message.completionTokens}
+                    isStreaming={message.state === "streaming"}
+                    isQuickChatWindow={isQuickChatWindow}
+                />
+            </div>
+            {showReorderOverlay && (
+                <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none">
+                    <div
+                        className="select-none rounded-md border border-border-accent/60 bg-background/85 px-3 py-1 text-[11px] font-geist-mono uppercase tracking-[0.16em] text-accent-700 shadow-sm backdrop-blur-sm"
+                    >
+                        Drag to reorder
+                    </div>
+                </div>
             )}
-            {/* // {streamStartTime && !isQuickChatWindow && (
-                                //     <Metrics
-                                //         text={message.text}
-                                //         startTime={streamStartTime}
-                                //         isStreaming={message.state === "streaming"}
-                                //     />
-                                // )} */}
-            <MessageCostDisplay
-                costUsd={message.costUsd}
-                promptTokens={message.promptTokens}
-                completionTokens={message.completionTokens}
-                isStreaming={message.state === "streaming"}
-                isQuickChatWindow={isQuickChatWindow}
-            />
         </div>
     );
 }
@@ -1236,6 +1251,10 @@ export function ToolsMessageView({
     ]
         .filter(Boolean)
         .join(" ");
+    const showReorderOverlay =
+        message.selected && !isQuickChatWindow && !isOnlyMessage;
+    const dragAnywhereProps =
+        showReorderOverlay && dragHandleProps ? dragHandleProps : {};
 
     function onReplyClick() {
         if (message.replyChatId) {
@@ -1254,6 +1273,7 @@ export function ToolsMessageView({
                         style={{
                             overflowWrap: "anywhere", // tailwind doesn't support this yet
                         }}
+                        {...dragAnywhereProps}
                         onClick={(e) => {
                             if (message.selected) return;
                             // Don't trigger selection if user is selecting text
@@ -1310,20 +1330,6 @@ export function ToolsMessageView({
                                         </div>
                                     )}
                                 </div>
-                                {!isOnlyMessage && (
-                                    <div
-                                        {...(message.selected && dragHandleProps
-                                            ? dragHandleProps
-                                            : {})}
-                                        className={`text-accent-600 px-2 flex text-sm tracking-wider font-[350]
-                                        ${isQuickChatWindow ? "bg-gray-200" : "bg-background"} animate-brief-flash font-geist-mono uppercase
-                                        ${message.selected ? "opacity-100 cursor-grab active:cursor-grabbing select-none" : "opacity-0"}`}
-                                    >
-                                        {message.selected
-                                            ? "Drag to move"
-                                            : "In Chat"}
-                                    </div>
-                                )}
                             </div>
                             <div
                                 className={`no-print mr-3 flex items-center h-6 gap-2
@@ -1510,6 +1516,8 @@ export function ToolsMessageView({
                         <ToolsAIMessageViewInner
                             message={message}
                             isQuickChatWindow={isQuickChatWindow}
+                            selected={message.selected}
+                            showReorderOverlay={showReorderOverlay}
                         />
 
                         {/* Reply button at bottom overlapping border (only show if there are no replies) */}
@@ -1611,6 +1619,7 @@ function ToolsBlockView({
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
         chatId!,
     );
+    const deselectToolsMessages = MessageAPI.useDeselectToolsMessages();
 
     const customOrder = useModelOrderStore(
         (state) => (chatId ? state.modelOrderByChatId.get(chatId) : undefined),
@@ -1667,6 +1676,28 @@ function ToolsBlockView({
                 !minimizedModels.has(modelConfig.id),
         );
     }, [selectedModelConfigs, currentModelIds, minimizedModels]);
+    const hasNormalizedInitialSelectionRef = useRef(false);
+
+    // New behavior: tools chats should start with no selected message.
+    // For existing chats that still have legacy selection state, clear it once.
+    useEffect(() => {
+        if (!chatId) return;
+        if (hasNormalizedInitialSelectionRef.current) return;
+        if (toolsBlock.chatMessages.length === 0) return;
+        hasNormalizedInitialSelectionRef.current = true;
+
+        if (toolsBlock.chatMessages.some((m) => m.selected)) {
+            deselectToolsMessages.mutate({
+                chatId,
+                messageSetId,
+            });
+        }
+    }, [
+        chatId,
+        messageSetId,
+        toolsBlock.chatMessages,
+        deselectToolsMessages,
+    ]);
 
     // Auto-minimize models that returned no response or errored
     useEffect(() => {
@@ -1732,6 +1763,7 @@ function ToolsBlockView({
     };
 
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [overId, setOverId] = useState<string | null>(null);
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: { distance: 8 },
@@ -1742,8 +1774,13 @@ function ToolsBlockView({
         setActiveDragId(active.id as string);
     }
 
+    function onDragOver({ over }: DragOverEvent) {
+        setOverId(over ? (over.id as string) : null);
+    }
+
     function onDragEnd({ active, over }: DragEndEvent) {
         setActiveDragId(null);
+        setOverId(null);
         if (!over || active.id === over.id) return;
         const oldIndex = activeMessages.findIndex((m) => m.model === active.id);
         const newIndex = activeMessages.findIndex((m) => m.model === over.id);
@@ -1773,6 +1810,7 @@ function ToolsBlockView({
                         collisionDetection={closestCenter}
                         modifiers={[restrictToHorizontalAxis]}
                         onDragStart={onDragStart}
+                        onDragOver={onDragOver}
                         onDragEnd={onDragEnd}
                     >
                         <div className="flex flex-1 gap-2">
@@ -1781,6 +1819,9 @@ function ToolsBlockView({
                                     key={message.model}
                                     id={message.model}
                                     disabled={!message.selected}
+                                    activeDragId={activeDragId}
+                                    overId={overId}
+                                    itemOrder={activeMessages.map((m) => m.model)}
                                     className={
                                         isQuickChatWindow
                                             ? "w-full max-w-prose"

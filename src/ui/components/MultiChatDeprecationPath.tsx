@@ -10,7 +10,7 @@ import {
     useDraggable,
     closestCenter,
 } from "@dnd-kit/core";
-import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent, DragOverEvent } from "@dnd-kit/core";
 type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableColumnItem } from "./SortableColumnItem";
@@ -962,6 +962,7 @@ function CompareBlockView({
     };
 
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [overId, setOverId] = useState<string | null>(null);
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: { distance: 8 },
@@ -972,8 +973,13 @@ function CompareBlockView({
         setActiveDragId(active.id as string);
     }
 
+    function onDragOver({ over }: DragOverEvent) {
+        setOverId(over ? (over.id as string) : null);
+    }
+
     function onDragEnd({ active, over }: DragEndEvent) {
         setActiveDragId(null);
+        setOverId(null);
         if (!over || active.id === over.id) return;
         const oldIndex = sortedMessages.findIndex((m) => m.model === active.id);
         const newIndex = sortedMessages.findIndex((m) => m.model === over.id);
@@ -1069,6 +1075,7 @@ function CompareBlockView({
                     collisionDetection={closestCenter}
                     modifiers={[restrictToHorizontalAxis]}
                     onDragStart={onDragStart}
+                    onDragOver={onDragOver}
                     onDragEnd={onDragEnd}
                 >
                     <div className="flex">
@@ -1086,6 +1093,9 @@ function CompareBlockView({
                                     key={message.model}
                                     id={message.model}
                                     disabled={!message.selected || isMinimized}
+                                    activeDragId={activeDragId}
+                                    overId={overId}
+                                    itemOrder={sortedMessages.map((m) => m.model)}
                                     className={`mr-2 ${
                                         isQuickChatWindow ? "pt-0" : "pt-2"
                                     } ${
