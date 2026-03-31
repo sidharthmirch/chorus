@@ -112,10 +112,17 @@ const isNewModel = (newUntil: string | undefined): boolean => {
 
 type ModelPickerMode =
     | {
-          type: "default"; // multiselect for updating selectedModelConfigs (deprecated)
+          type: "default";
           onToggleModelConfig: (id: string) => void;
           onClearModelConfigs: () => void;
           onSelectAllModelConfigs: (modelConfigs: ModelConfig[]) => void;
+          /** ⌘⇧A: add all visible models without removing current selection */
+          onUnionSelectAllVisibleModelConfigs?: (
+              modelConfigs: ModelConfig[],
+          ) => void;
+          /** When set, UI reflects this list instead of global compare metadata */
+          selectedModelConfigsForChat?: ModelConfig[];
+          onReorderSelectedModelConfigs?: (modelConfigs: ModelConfig[]) => void;
       }
     | {
           type: "add"; // used for adding to an existing set
@@ -375,10 +382,15 @@ export function ManageModelsBox({
 
     const selectedModelConfigsCompareResult =
         ModelsAPI.useSelectedModelConfigsCompare();
-    const selectedModelConfigsCompare = useMemo(
+    const selectedModelConfigsCompareGlobal = useMemo(
         () => selectedModelConfigsCompareResult.data ?? [],
         [selectedModelConfigsCompareResult.data],
     );
+
+    const selectedModelConfigsCompare =
+        mode.type === "default" && mode.selectedModelConfigsForChat
+            ? mode.selectedModelConfigsForChat
+            : selectedModelConfigsCompareGlobal;
 
     const updateSelectedModelConfigsCompare =
         MessageAPI.useUpdateSelectedModelConfigsCompare();
@@ -431,9 +443,13 @@ export function ManageModelsBox({
         const items = [...selectedModelConfigsCompare];
         const [moved] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, moved);
-        await updateSelectedModelConfigsCompare.mutateAsync({
-            modelConfigs: items,
-        });
+        if (mode.type === "default" && mode.onReorderSelectedModelConfigs) {
+            mode.onReorderSelectedModelConfigs(items);
+        } else {
+            await updateSelectedModelConfigsCompare.mutateAsync({
+                modelConfigs: items,
+            });
+        }
     }
 
     // Helper function to render model pills for dragging
@@ -608,11 +624,31 @@ export function ManageModelsBox({
         });
     }, [modelGroups, showOpenRouter, apiKeys]);
 
+    /** Profile models the user can actually select (API keys, list visibility). */
+    const profileSelectableConfigs = useMemo(() => {
+        if (!activeProfile) return [];
+        const selectableIds = new Set(selectableVisibleModels.map((m) => m.id));
+        const byId = new Map((modelConfigs.data ?? []).map((m) => [m.id, m]));
+        const ordered: ModelConfig[] = [];
+        for (const configId of activeProfile.modelConfigIds) {
+            if (!selectableIds.has(configId)) continue;
+            const c = byId.get(configId);
+            if (c) ordered.push(c);
+        }
+        return ordered;
+    }, [activeProfile, selectableVisibleModels, modelConfigs.data]);
+
     useShortcut(
         ["meta", "shift", "a"],
         () => {
             if (mode.type === "default") {
-                mode.onSelectAllModelConfigs(selectableVisibleModels);
+                if (mode.onUnionSelectAllVisibleModelConfigs) {
+                    mode.onUnionSelectAllVisibleModelConfigs(
+                        selectableVisibleModels,
+                    );
+                } else {
+                    mode.onSelectAllModelConfigs(selectableVisibleModels);
+                }
             }
         },
         {
@@ -711,27 +747,49 @@ export function ManageModelsBox({
                             setSearchQuery(value);
                         }}
                         autoFocus
+                        trailing={
+                            mode.type === "default" ? (
+                                <>
+                                    <span className="select-none">
+                                        Select All
+                                    </span>
+                                    <span className="text-[10px] inline-flex items-center gap-0.5 bg-muted-foreground/10 rounded px-1 py-0.5 font-sans">
+                                        <span>⌘</span>
+                                        <span>⇧</span>
+                                        <span>A</span>
+                                    </span>
+                                </>
+                            ) : undefined
+                        }
                     />
                     <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
                         <ProfileSelector />
                         {mode.type === "default" && (
-                            <button
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 flex-shrink-0 px-3 text-xs font-medium"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     mode.onSelectAllModelConfigs(
-                                        selectableVisibleModels,
+                                        profileSelectableConfigs,
                                     );
                                 }}
-                                className="text-sm text-muted-foreground hover:text-foreground flex-shrink-0 flex items-center gap-1"
-                                title="Select all visible models"
+                                disabled={
+                                    !activeProfile ||
+                                    profileSelectableConfigs.length === 0
+                                }
+                                title={
+                                    !activeProfile
+                                        ? "Choose a profile to replace the selection with its models"
+                                        : profileSelectableConfigs.length === 0
+                                          ? "No models from this profile are available with your current keys and filters"
+                                          : "Replace selection with this profile's models (deselects others)"
+                                }
                             >
-                                Select All{" "}
-                                <span className="text-[10px] inline-flex items-center gap-0.5 bg-muted-foreground/10 rounded px-1 py-0.5">
-                                    <span>⌘</span>
-                                    <span>⇧</span>
-                                    <span>A</span>
-                                </span>
-                            </button>
+                                Apply
+                            </Button>
                         )}
                     </div>
                 </div>

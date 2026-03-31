@@ -58,23 +58,39 @@ const CommandDialog = ({
     );
 };
 
+type CommandInputProps = React.ComponentPropsWithoutRef<
+    typeof CommandPrimitive.Input
+> & {
+    /** Shown at the end of the search row (e.g. keyboard hints). */
+    trailing?: React.ReactNode;
+};
+
 const CommandInput = React.forwardRef<
     React.ElementRef<typeof CommandPrimitive.Input>,
-    React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
+    CommandInputProps
+>(({ className, trailing, ...props }, ref) => (
     <div
-        className="flex items-center border-b px-3 bg-background"
+        className="relative flex items-center border-b px-3 bg-background min-w-0"
         cmdk-input-wrapper=""
     >
         <Search className="mr-2 !h-4 !w-4 shrink-0 opacity-50" />
         <CommandPrimitive.Input
             ref={ref}
             className={cn(
-                "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground placeholder:text-base disabled:cursor-not-allowed disabled:opacity-50 bg-background",
+                "flex h-11 min-w-0 flex-1 rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground placeholder:text-base disabled:cursor-not-allowed disabled:opacity-50 bg-background",
+                trailing && "pr-[10.5rem]",
                 className,
             )}
             {...props}
         />
+        {trailing ? (
+            <div
+                className="pointer-events-none absolute inset-y-0 right-3 z-[1] flex items-center justify-end gap-1.5 text-xs text-muted-foreground whitespace-nowrap"
+                aria-hidden
+            >
+                {trailing}
+            </div>
+        ) : null}
     </div>
 ));
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { motion, LayoutGroup } from "framer-motion";
 import {
@@ -70,6 +71,9 @@ import * as Brainstorms from "@core/chorus/brainstorm";
 import Markdown from "react-markdown";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import { Skeleton } from "./ui/skeleton";
+import { fetchSavedModelConfigChat } from "@core/chorus/api/ModelConfigChatAPI";
+import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
+import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import { useWaitForAppMetadata } from "@ui/hooks/useWaitForAppMetadata";
 import { ProviderName } from "@core/chorus/Models";
@@ -912,10 +916,12 @@ function CompareBlockView({
     onModelStopped: (modelId: string) => void;
 }) {
     const { chatId } = useParams();
+    const queryClient = useQueryClient();
     const addMessageToCompareBlock = MessageAPI.useAddMessageToCompareBlock(
         chatId!,
     );
-    const addModelToCompareConfigs = MessageAPI.useAddModelToCompareConfigs();
+    const appendModelToChatCompare =
+        ModelConfigChatAPI.useAppendModelConfigToChatCompare(chatId!);
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
 
     const getDisplayName = (modelId: string) =>
@@ -953,18 +959,30 @@ function CompareBlockView({
     const deselectSynthesis = MessageAPI.useDeselectSynthesis();
 
     const handleAddModel = (modelId: string) => {
-        addModelToCompareConfigs.mutate({
-            newSelectedModelConfigId: modelId,
-        });
-        addMessageToCompareBlock.mutate({
-            messageSetId,
-            modelId,
-        });
-        // Append new model to end of custom order
-        if (chatId) {
-            const current = customOrder ?? sortedMessages.map((m) => m.model);
-            setModelOrder(chatId, [...current, modelId]);
-        }
+        void (async () => {
+            try {
+                await appendModelToChatCompare.mutateAsync(modelId);
+                const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
+                await syncGlobalCompareMetadataToConfigIds(
+                    ids,
+                    modelConfigsQuery.data ?? [],
+                );
+                void queryClient.invalidateQueries(
+                    ModelsAPI.modelConfigQueries.compare(),
+                );
+                addMessageToCompareBlock.mutate({
+                    messageSetId,
+                    modelId,
+                });
+                if (chatId) {
+                    const current =
+                        customOrder ?? sortedMessages.map((m) => m.model);
+                    setModelOrder(chatId, [...current, modelId]);
+                }
+            } catch (error) {
+                console.error("Failed to add model to chat compare", error);
+            }
+        })();
     };
 
     const [activeDragId, setActiveDragId] = useState<string | null>(null);

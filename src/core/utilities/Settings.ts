@@ -24,6 +24,8 @@ export interface Settings {
     lmStudioBaseUrl?: string;
     cautiousEnter?: boolean;
     titleGenerationModelConfigId?: string;
+    /** Model config ids for new regular chats; null/undefined = use ambient compare list */
+    defaultChatModels?: string[] | null;
 }
 
 export class SettingsManager {
