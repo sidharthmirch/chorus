@@ -45,6 +45,8 @@ export type Project = {
     isImported: boolean;
     // Cost tracking
     totalCostUsd?: number;
+    /** Per-project default prompt profile; overrides the global default when set. */
+    defaultPromptProfileId?: string;
 };
 
 export type Projects = {
@@ -63,6 +65,7 @@ type ProjectDBRow = {
     context_text?: string;
     is_imported: number;
     total_cost_usd: number | null;
+    default_prompt_profile_id: string | null;
 };
 
 function readProject(row: ProjectDBRow): Project {
@@ -76,13 +79,14 @@ function readProject(row: ProjectDBRow): Project {
         magicProjectsEnabled: row.magic_projects_enabled === 1,
         isImported: row.is_imported === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
+        defaultPromptProfileId: row.default_prompt_profile_id ?? undefined,
     };
 }
 
 export async function fetchProjects(): Promise<Project[]> {
     return await db
         .select<ProjectDBRow[]>(
-            `SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, is_imported, total_cost_usd
+            `SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, is_imported, total_cost_usd, default_prompt_profile_id
             FROM projects
             ORDER BY updated_at DESC`,
         )
@@ -115,7 +119,7 @@ export async function fetchProjectContextAttachments(
 
 export async function fetchProject(projectId: string) {
     const rows = await db.select<ProjectDBRow[]>(
-        "SELECT * FROM projects WHERE id = ?",
+        "SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, context_text, is_imported, total_cost_usd, default_prompt_profile_id FROM projects WHERE id = ?",
         [projectId],
     );
     if (rows.length === 0) {
@@ -636,6 +640,31 @@ export function useFinalizeAttachmentForProject() {
             // TODOJDC do an optimistic update instead
             await queryClient.invalidateQueries(
                 projectContextQueries.attachments(variables.projectId),
+            );
+        },
+    });
+}
+
+export function useSetProjectDefaultPromptProfile() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationKey: ["setProjectDefaultPromptProfile"] as const,
+        mutationFn: async ({
+            projectId,
+            profileId,
+        }: {
+            projectId: string;
+            profileId: string | null;
+        }) => {
+            await db.execute(
+                "UPDATE projects SET default_prompt_profile_id = ? WHERE id = ?",
+                [profileId, projectId],
+            );
+        },
+        onSuccess: async (_data, variables) => {
+            await queryClient.invalidateQueries(projectQueries.list());
+            await queryClient.invalidateQueries(
+                projectQueries.detail(variables.projectId),
             );
         },
     });

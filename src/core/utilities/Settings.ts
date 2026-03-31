@@ -1,5 +1,6 @@
 import { getStore } from "@core/infra/Store";
 import { emit } from "@tauri-apps/api/event";
+import { buildFreshInstallModelAndPromptDefaults } from "./ChorusDefaultPreferences";
 
 export interface Settings {
     defaultEditor: string;
@@ -26,6 +27,14 @@ export interface Settings {
     titleGenerationModelConfigId?: string;
     /** Model config ids for new regular chats; null/undefined = use ambient compare list */
     defaultChatModels?: string[] | null;
+    /** Default prompt profile for new regular chats */
+    defaultPromptProfileId?: string | null;
+    /** Single fallback model config when no other selection applies. */
+    defaultFallbackModel?: string | null;
+    /** Optional model profile whose allowed configs must include the fallback model config id. */
+    defaultFallbackModelProfileId?: string | null;
+    /** Vision-capable model config for ambient / quick chat. */
+    defaultAmbientChatModel?: string | null;
 }
 
 export class SettingsManager {
@@ -45,7 +54,9 @@ export class SettingsManager {
         try {
             const store = await getStore(this.storeName);
             const settings = await store.get("settings");
-            const defaultSettings = {
+            const { quickChatModelConfigId, ...modelPreferenceFields } =
+                buildFreshInstallModelAndPromptDefaults();
+            const defaultSettings: Settings = {
                 defaultEditor: "default",
                 sansFont: "Geist",
                 monoFont: "Geist Mono",
@@ -55,9 +66,10 @@ export class SettingsManager {
                 apiKeys: {},
                 quickChat: {
                     enabled: true,
-                    modelConfigId: "anthropic::claude-sonnet-4-5-20250929",
+                    modelConfigId: quickChatModelConfigId,
                     shortcut: "Alt+Space",
                 },
+                ...modelPreferenceFields,
             };
 
             // If no settings exist yet, save the defaults
@@ -69,6 +81,8 @@ export class SettingsManager {
             return (settings as Settings) || defaultSettings;
         } catch (error) {
             console.error("Failed to get settings:", error);
+            const { quickChatModelConfigId: qcId, ...modelFields } =
+                buildFreshInstallModelAndPromptDefaults();
             return {
                 defaultEditor: "default",
                 sansFont: "Geist",
@@ -79,9 +93,10 @@ export class SettingsManager {
                 apiKeys: {},
                 quickChat: {
                     enabled: true,
-                    modelConfigId: "anthropic::claude-3-5-sonnet-latest",
+                    modelConfigId: qcId,
                     shortcut: "Alt+Space",
                 },
+                ...modelFields,
             };
         }
     }

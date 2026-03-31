@@ -1,5 +1,5 @@
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
-import { SettingsManager } from "@core/utilities/Settings";
+import { SettingsManager, type Settings } from "@core/utilities/Settings";
 import { db } from "./DB";
 import { fetchModelConfigs, fetchModelConfigsCompare } from "./api/ModelsAPI";
 import { fetchProviderVisibleModels } from "./api/ProviderVisibilityAPI";
@@ -34,9 +34,35 @@ export async function fetchVisibleModelConfigsForSelection(): Promise<
     return getFilteredModelConfigs(all, map, active);
 }
 
+async function resolveDefaultFallbackConfigId(
+    settings: Settings,
+    visibleIds: Set<string>,
+): Promise<string | undefined> {
+    const fallbackId = settings.defaultFallbackModel ?? undefined;
+    if (!fallbackId || !visibleIds.has(fallbackId)) {
+        return undefined;
+    }
+    const profileId = settings.defaultFallbackModelProfileId;
+    if (profileId) {
+        const profiles = await fetchModelProfiles();
+        const prof = profiles.find((p) => p.id === profileId);
+        if (prof && prof.modelConfigIds.includes(fallbackId)) {
+            return fallbackId;
+        }
+        return undefined;
+    }
+    return fallbackId;
+}
+
 /**
- * Priority: user-configured defaults → ambient (global compare) → first visible.
- * All lists are filtered to visible/enabled model configs only.
+ * Priority for new regular chats (no explicit default chat models):
+ * 1. defaultChatModels (multi, when non-empty after visibility filter)
+ * 2. defaultFallbackModel (single baseline — used before global ambient compare)
+ * 3. ambient (global compare picker / ⌘J list)
+ * 4. first visible model
+ *
+ * Fallback was previously evaluated only after ambient; that meant any non-empty
+ * ambient list hid the fallback entirely.
  */
 export async function computeInitialChatCompareModelConfigIds(): Promise<
     string[]
@@ -50,6 +76,14 @@ export async function computeInitialChatCompareModelConfigIds(): Promise<
     );
     if (configured.length > 0) {
         return configured;
+    }
+
+    const fallbackId = await resolveDefaultFallbackConfigId(
+        settings,
+        visibleIds,
+    );
+    if (fallbackId) {
+        return [fallbackId];
     }
 
     const ambient = await fetchModelConfigsCompare();

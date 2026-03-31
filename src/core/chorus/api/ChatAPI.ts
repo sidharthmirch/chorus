@@ -6,6 +6,7 @@ import { db } from "../DB";
 import { getVersion } from "@tauri-apps/api/app";
 import { usePostHog } from "posthog-js/react";
 import { updateSavedModelConfigChat } from "./ModelConfigChatAPI";
+import { applyCreationDefaultsForNewChatRow } from "../chatCreationDefaults";
 
 const chatKeys = {
     all: () => ["chats"] as const,
@@ -233,6 +234,8 @@ export function useCreateNewChat() {
             posthog?.capture("chat_created", {
                 version,
             });
+
+            await applyCreationDefaultsForNewChatRow(chatId, queryClient);
         },
     });
 }

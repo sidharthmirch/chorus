@@ -2640,6 +2640,14 @@ You have full access to bash commands on the user''''s computer. If you write a 
             "#,
         },
         Migration {
+            version: 144,
+            description: "add default_prompt_profile_id to projects",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE projects ADD COLUMN default_prompt_profile_id TEXT DEFAULT NULL;
+            "#,
+        },
+        Migration {
             version: 143,
             description: "add gemini 2.5 flash lite and update ambient to use it",
             kind: MigrationKind::Up,

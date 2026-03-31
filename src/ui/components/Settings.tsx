@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Select,
     SelectContent,
@@ -28,7 +28,6 @@ import {
     Plus,
     ExternalLinkIcon,
     LinkIcon,
-    Fullscreen,
     ShieldCheckIcon,
 } from "lucide-react";
 import {
@@ -43,11 +42,11 @@ import {
     Eye,
     Layers,
     UserCircle,
+    SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { config } from "@core/config";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
 import { Switch } from "@ui/components/ui/switch";
 import {
     Tabs,
@@ -61,7 +60,6 @@ import ApiKeysForm from "./ApiKeysForm";
 import Database from "@tauri-apps/plugin-sql";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { useDatabase } from "@ui/hooks/useDatabase";
 import {
     Collapsible,
@@ -69,7 +67,6 @@ import {
     CollapsibleTrigger,
 } from "@ui/components/ui/collapsible";
 import { InfoCircledIcon } from "@radix-ui/react-icons";
-import { AccessibilitySettings } from "./AccessibilityCheck";
 import { UNIVERSAL_SYSTEM_PROMPT_DEFAULT } from "@core/chorus/prompts/prompts";
 import { CustomToolsetConfig, getEnvFromJSON } from "@core/chorus/Toolsets";
 import * as ToolsetsAPI from "@core/chorus/api/ToolsetsAPI";
@@ -83,22 +80,19 @@ import { SiStripe } from "react-icons/si";
 import { SiElevenlabs } from "react-icons/si";
 import { ToolsetsManager } from "@core/chorus/ToolsetsManager";
 import { getToolsetIcon } from "@core/chorus/Toolsets";
-import ShortcutRecorder from "./ShortcutRecorder";
 import FeedbackButton from "./FeedbackButton";
 import { SiOpenai } from "react-icons/si";
 import ImportChatDialog from "./ImportChatDialog";
 import { dialogActions } from "@core/infra/DialogStore";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { PermissionsTab } from "./PermissionsTab";
-import { useActiveModelProfile } from "@core/chorus/api/ModelProfilesAPI";
 import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
-import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
-import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { cn } from "@ui/lib/utils";
 
 import { VisibleModelsTab } from "./VisibleModelsTab";
 import { ModelProfilesTab } from "./ModelProfilesTab";
 import { PromptProfilesTab } from "./PromptProfilesTab";
+import { DefaultsTab } from "./DefaultsTab";
 
 type ToolsetFormProps = {
     toolset: CustomToolsetConfig;
@@ -1110,7 +1104,7 @@ export type SettingsTabId =
     | "visible-models"
     | "model-profiles"
     | "prompt-profiles"
-    | "quick-chat"
+    | "defaults"
     | "connections"
     | "permissions"
     | "base-url"
@@ -1129,18 +1123,32 @@ const TABS: Record<SettingsTabId, TabConfig> = {
     "visible-models": { label: "Visible Models", icon: Eye },
     "model-profiles": { label: "Model Profiles", icon: Layers },
     "prompt-profiles": { label: "Prompt Profiles", icon: UserCircle },
-    "quick-chat": { label: "Ambient Chat", icon: Fullscreen },
+    defaults: { label: "Defaults", icon: SlidersHorizontal },
     connections: { label: "Connections", icon: PlugIcon },
     permissions: { label: "Tool Permissions", icon: ShieldCheckIcon },
     "base-url": { label: "Base URL", icon: Globe },
     docs: { label: "Documentation", icon: BookOpen },
 } as const;
 
-interface QuickChatSettings {
-    enabled: boolean;
-    modelConfigId?: string;
-    shortcut?: string;
+function isSettingsTabId(tab: string): tab is SettingsTabId {
+    return Object.prototype.hasOwnProperty.call(TABS, tab);
 }
+
+/** Sidebar order (explicit — Record iteration order is not the product source of truth). */
+const SETTINGS_TAB_ORDER: SettingsTabId[] = [
+    "general",
+    "import",
+    "api-keys",
+    "system-prompt",
+    "prompt-profiles",
+    "visible-models",
+    "model-profiles",
+    "defaults",
+    "connections",
+    "permissions",
+    "base-url",
+    "docs",
+];
 
 interface Settings {
     apiKeys: Record<string, string>;
@@ -1148,13 +1156,11 @@ interface Settings {
     monoFont?: string;
     autoConvertLongText: boolean;
     showCost: boolean;
-    quickChat: QuickChatSettings;
     lmStudioBaseUrl?: string;
     autoScrapeUrls: boolean;
     cautiousEnter?: boolean;
     customToolsets?: CustomToolsetConfig[];
     titleGenerationModelConfigId?: string;
-    defaultChatModels?: string[] | null;
 }
 
 export default function Settings({ tab = "general" }: SettingsProps) {
@@ -1167,27 +1173,19 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const [showCost, setShowCost] = useState(false);
     const { db } = useDatabase();
     const [searchParams] = useSearchParams();
-    const defaultTab =
-        tab || (searchParams.get("tab") as SettingsTabId) || "general";
-    const [quickChatEnabled, setQuickChatEnabled] = useState(true);
-    const [quickChatShortcut, setQuickChatShortcut] = useState("Alt+Space");
+    // Resolve the URL param first; redirect legacy "quick-chat" to "defaults".
+    const tabParam = searchParams.get("tab");
+    const resolvedTabParam =
+        tabParam === "quick-chat"
+            ? "defaults"
+            : tabParam && isSettingsTabId(tabParam)
+              ? tabParam
+              : null;
+    const normalizedTab = tab ?? resolvedTabParam;
+    const defaultTab = normalizedTab ?? "general";
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
         useState<string | undefined>(undefined);
-    const [defaultChatModels, setDefaultChatModels] = useState<string[] | null>(
-        null,
-    );
     const modelConfigsQuery = useModelConfigs();
-    const providerVisibilityMap = useProviderVisibilityMap();
-    const activeProfile = useActiveModelProfile();
-    const visibleModelConfigsForDefaults = useMemo(
-        () =>
-            getFilteredModelConfigs(
-                modelConfigsQuery.data ?? [],
-                providerVisibilityMap,
-                activeProfile,
-            ),
-        [modelConfigsQuery.data, providerVisibilityMap, activeProfile],
-    );
     const cheapOpenRouterModelOptions = useMemo(
         () =>
             (modelConfigsQuery.data ?? [])
@@ -1294,8 +1292,6 @@ export default function Settings({ tab = "general" }: SettingsProps) {
             setSansFont(settings.sansFont ?? "Geist");
             setMonoFont(settings.monoFont ?? "Fira Code");
             setApiKeys(settings.apiKeys ?? {});
-            setQuickChatEnabled(settings.quickChat?.enabled ?? true);
-            setQuickChatShortcut(settings.quickChat?.shortcut ?? "Alt+Space");
             setAutoConvertLongText(settings.autoConvertLongText ?? true);
             setAutoScrapeUrls(settings.autoScrapeUrls ?? true);
             setCautiousEnter(settings.cautiousEnter ?? false);
@@ -1306,73 +1302,10 @@ export default function Settings({ tab = "general" }: SettingsProps) {
             setTitleGenerationModelConfigId(
                 settings.titleGenerationModelConfigId,
             );
-            setDefaultChatModels(settings.defaultChatModels ?? null);
         };
 
         void loadSettings();
     }, [db, setMonoFont, setSansFont, settingsManager]);
-
-    const handleToggleDefaultChatModel = useCallback(
-        async (configId: string) => {
-            const visibleIds = new Set(
-                visibleModelConfigsForDefaults.map((c) => c.id),
-            );
-            if (!visibleIds.has(configId)) return;
-
-            let next: string[] | null;
-            if (!defaultChatModels || defaultChatModels.length === 0) {
-                next = [configId];
-            } else if (defaultChatModels.includes(configId)) {
-                const filtered = defaultChatModels.filter(
-                    (id) => id !== configId,
-                );
-                next = filtered.length === 0 ? null : filtered;
-            } else {
-                next = [...defaultChatModels, configId];
-            }
-
-            setDefaultChatModels(next);
-            const currentSettings = await settingsManager.get();
-            void settingsManager.set({
-                ...currentSettings,
-                defaultChatModels: next,
-            });
-        },
-        [defaultChatModels, settingsManager, visibleModelConfigsForDefaults],
-    );
-
-    const handleClearDefaultChatModels = useCallback(async () => {
-        setDefaultChatModels(null);
-        const currentSettings = await settingsManager.get();
-        void settingsManager.set({
-            ...currentSettings,
-            defaultChatModels: null,
-        });
-    }, [settingsManager]);
-
-    const handleQuickChatShortcutChange = async (value: string) => {
-        setQuickChatShortcut(value);
-        const currentSettings = await settingsManager.get();
-        void settingsManager.set({
-            ...currentSettings,
-            quickChat: {
-                ...currentSettings.quickChat,
-                shortcut: value,
-            },
-        });
-    };
-
-    const handleQuickChatEnabledChange = async (enabled: boolean) => {
-        setQuickChatEnabled(enabled);
-        const currentSettings = await settingsManager.get();
-        void settingsManager.set({
-            ...currentSettings,
-            quickChat: {
-                ...currentSettings.quickChat,
-                enabled,
-            },
-        });
-    };
 
     const handleTitleGenerationModelChange = async (
         value: string | undefined,
@@ -1429,20 +1362,6 @@ export default function Settings({ tab = "general" }: SettingsProps) {
         void settingsManager.set({
             ...currentSettings,
             showCost: enabled,
-        });
-    };
-
-    const onDefaultQcShortcutClick = async () => {
-        setQuickChatShortcut("Alt+Space");
-        setQuickChatEnabled(true);
-        const currentSettings = await settingsManager.get();
-        void settingsManager.set({
-            ...currentSettings,
-            quickChat: {
-                ...currentSettings.quickChat,
-                shortcut: "Alt+Space",
-                enabled: true,
-            },
         });
     };
 
@@ -1504,8 +1423,9 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                 {/* Settings Sidebar */}
                 <div className="w-52 bg-sidebar p-4 overflow-y-auto border-r">
                     <div className="flex flex-col gap-1">
-                        {Object.entries(TABS).map(
-                            ([id, { label, icon: Icon }]) => (
+                        {SETTINGS_TAB_ORDER.map((id) => {
+                            const { label, icon: Icon } = TABS[id];
+                            return (
                                 <button
                                     key={id}
                                     onClick={() => {
@@ -1514,7 +1434,7 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                                 "https://docs.chorus.sh",
                                             );
                                         } else {
-                                            setActiveTab(id as SettingsTabId);
+                                            setActiveTab(id);
                                         }
                                     }}
                                     className={cn(
@@ -1534,8 +1454,8 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                         )}
                                     </span>
                                 </button>
-                            ),
-                        )}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -1720,66 +1640,6 @@ export default function Settings({ tab = "general" }: SettingsProps) {
                                             )}
                                         </SelectContent>
                                     </Select>
-                                </div>
-
-                                <div>
-                                    <label className="block font-semibold mb-1">
-                                        Default models for new chats
-                                    </label>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        When set, new regular chats start with
-                                        these models. Otherwise Chorus uses your
-                                        current ambient compare selection (the
-                                        same list managed with ⌘J in chat).
-                                    </p>
-                                    <div className="border rounded-md max-h-52 overflow-y-auto p-3 space-y-2 mb-2">
-                                        {visibleModelConfigsForDefaults.length ===
-                                        0 ? (
-                                            <p className="text-sm text-muted-foreground">
-                                                No visible models. Adjust
-                                                visible models or your profile.
-                                            </p>
-                                        ) : (
-                                            visibleModelConfigsForDefaults.map(
-                                                (m) => (
-                                                    <label
-                                                        key={m.id}
-                                                        className="flex items-center gap-2 cursor-pointer"
-                                                    >
-                                                        <Checkbox
-                                                            checked={
-                                                                defaultChatModels?.includes(
-                                                                    m.id,
-                                                                ) ?? false
-                                                            }
-                                                            onCheckedChange={() =>
-                                                                void handleToggleDefaultChatModel(
-                                                                    m.id,
-                                                                )
-                                                            }
-                                                        />
-                                                        <span className="text-sm">
-                                                            {m.displayName}
-                                                        </span>
-                                                    </label>
-                                                ),
-                                            )
-                                        )}
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                            void handleClearDefaultChatModels()
-                                        }
-                                        disabled={
-                                            defaultChatModels === null ||
-                                            defaultChatModels.length === 0
-                                        }
-                                    >
-                                        Use ambient selection
-                                    </Button>
                                 </div>
 
                                 <div className="flex items-center justify-between pt-6">
@@ -2009,96 +1869,12 @@ export default function Settings({ tab = "general" }: SettingsProps) {
 
                     {activeTab === "prompt-profiles" && <PromptProfilesTab />}
 
-                    {activeTab === "quick-chat" && (
-                        <div className="space-y-6 max-w-2xl">
-                            <div>
-                                <h2 className="text-2xl font-semibold mb-2">
-                                    Ambient Chat
-                                </h2>
-                            </div>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <label className="font-semibold">
-                                            Ambient Chat
-                                        </label>
-                                        <p className="text-sm text-muted-foreground">
-                                            Start an ambient chat with{" "}
-                                            <span className="font-mono">
-                                                {typeof quickChatShortcut ===
-                                                "string"
-                                                    ? quickChatShortcut
-                                                    : "Alt+Space"}
-                                            </span>
-                                        </p>
-                                    </div>
-                                    <Switch
-                                        checked={quickChatEnabled}
-                                        onCheckedChange={(enabled) =>
-                                            void handleQuickChatEnabledChange(
-                                                enabled,
-                                            )
-                                        }
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="font-semibold">
-                                        Keyboard Shortcut
-                                    </label>
-                                    <p className="text-sm text-muted-foreground">
-                                        Enter the shortcut you want to use to
-                                        start an ambient chat.
-                                    </p>
-                                    <ShortcutRecorder
-                                        value={quickChatShortcut}
-                                        onChange={(shortcut) =>
-                                            void handleQuickChatShortcutChange(
-                                                shortcut,
-                                            )
-                                        }
-                                    />
-                                    <div className="flex justify-end gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                                void onDefaultQcShortcutClick()
-                                            }
-                                        >
-                                            Set to default
-                                        </Button>
-                                        <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={() => {
-                                                if (!quickChatShortcut.trim()) {
-                                                    toast.error(
-                                                        "Invalid shortcut",
-                                                        {
-                                                            description:
-                                                                "Shortcut cannot be empty",
-                                                        },
-                                                    );
-                                                    return;
-                                                }
-                                                void relaunch().catch(
-                                                    console.error,
-                                                );
-                                            }}
-                                        >
-                                            Save and restart
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                <Separator />
-
-                                <div className="space-y-4">
-                                    <AccessibilitySettings />
-                                </div>
-                            </div>
-                        </div>
+                    {activeTab === "defaults" && (
+                        <DefaultsTab
+                            onOpenVisibleModels={() =>
+                                setActiveTab("visible-models")
+                            }
+                        />
                     )}
 
                     {activeTab === "connections" && (
