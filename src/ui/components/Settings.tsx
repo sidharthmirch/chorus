@@ -1173,13 +1173,15 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const [showCost, setShowCost] = useState(false);
     const { db } = useDatabase();
     const [searchParams] = useSearchParams();
-    const rawTab = tab || searchParams.get("tab");
-    const normalizedTab =
-        rawTab === "quick-chat"
+    // Resolve the URL param first; redirect legacy "quick-chat" to "defaults".
+    const tabParam = searchParams.get("tab");
+    const resolvedTabParam =
+        tabParam === "quick-chat"
             ? "defaults"
-            : rawTab && isSettingsTabId(rawTab)
-              ? rawTab
+            : tabParam && isSettingsTabId(tabParam)
+              ? tabParam
               : null;
+    const normalizedTab = tab ?? resolvedTabParam;
     const defaultTab = normalizedTab ?? "general";
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
         useState<string | undefined>(undefined);
