@@ -25,10 +25,14 @@ const useModelOrderStore = create<ModelOrderStore>((set, get) => ({
 
     clearChat: (chatId) =>
         set((state) => {
-            if (!state.modelOrderByChatId.has(chatId)) return state;
-            const next = new Map(state.modelOrderByChatId);
-            next.delete(chatId);
-            return { modelOrderByChatId: next };
+            const nextModelOrder = new Map(state.modelOrderByChatId);
+            nextModelOrder.delete(chatId);
+            const nextVisualOrder = new Map(state.currentVisualOrderByChatId);
+            nextVisualOrder.delete(chatId);
+            return {
+                modelOrderByChatId: nextModelOrder,
+                currentVisualOrderByChatId: nextVisualOrder,
+            };
         }),
 
     currentVisualOrderByChatId: new Map(),

@@ -1770,32 +1770,42 @@ function ToolsBlockView({
         }
     }, [toolsBlock.chatMessages, minimizedModels, onMinimize]);
 
-    const activeMessages = [...toolsBlock.chatMessages]
-        .filter((m) => !minimizedModels.has(m.model))
-        .sort((a, b) => {
-            // Respect explicit drag-and-drop ordering if the user has set one.
-            if (customOrder) {
-                const aIdx = customOrder.indexOf(a.model);
-                const bIdx = customOrder.indexOf(b.model);
-                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-                if (aIdx !== -1) return -1;
-                if (bIdx !== -1) return 1;
-            }
-            // Default: finished (idle) models go left of still-streaming/loading
-            // models, sorted by completion order (first finished = leftmost slot).
-            const aIdle = a.state === "idle";
-            const bIdle = b.state === "idle";
-            if (aIdle !== bIdle) return aIdle ? -1 : 1;
-            if (aIdle && bIdle) {
-                const aFinishIdx = finishedModelsOrder.indexOf(a.model);
-                const bFinishIdx = finishedModelsOrder.indexOf(b.model);
-                if (aFinishIdx !== -1 && bFinishIdx !== -1)
-                    return aFinishIdx - bFinishIdx;
-            }
-            return getDisplayName(a.model).localeCompare(
-                getDisplayName(b.model),
-            );
-        });
+    const activeMessages = useMemo(
+        () =>
+            [...toolsBlock.chatMessages]
+                .filter((m) => !minimizedModels.has(m.model))
+                .sort((a, b) => {
+                    // Respect explicit drag-and-drop ordering if the user has set one.
+                    if (customOrder) {
+                        const aIdx = customOrder.indexOf(a.model);
+                        const bIdx = customOrder.indexOf(b.model);
+                        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                        if (aIdx !== -1) return -1;
+                        if (bIdx !== -1) return 1;
+                    }
+                    // Default: finished (idle) models go left of still-streaming/loading
+                    // models, sorted by completion order (first finished = leftmost slot).
+                    const aIdle = a.state === "idle";
+                    const bIdle = b.state === "idle";
+                    if (aIdle !== bIdle) return aIdle ? -1 : 1;
+                    if (aIdle && bIdle) {
+                        const aFinishIdx = finishedModelsOrder.indexOf(a.model);
+                        const bFinishIdx = finishedModelsOrder.indexOf(b.model);
+                        if (aFinishIdx !== -1 && bFinishIdx !== -1)
+                            return aFinishIdx - bFinishIdx;
+                    }
+                    return getDisplayName(a.model).localeCompare(
+                        getDisplayName(b.model),
+                    );
+                }),
+        [
+            toolsBlock.chatMessages,
+            minimizedModels,
+            customOrder,
+            finishedModelsOrder,
+            getDisplayName,
+        ],
+    );
     const toolsItemOrder = useMemo(
         () => activeMessages.map((m) => m.model),
         [activeMessages],
@@ -2732,6 +2742,7 @@ export default function MultiChat() {
                         ?.scrollIntoView({
                             behavior: "smooth",
                             inline: "nearest",
+                            block: "nearest",
                         });
                 }
             } else if (e.metaKey && e.key === "s" && !e.shiftKey) {
