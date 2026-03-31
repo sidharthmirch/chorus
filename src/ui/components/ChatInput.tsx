@@ -494,6 +494,34 @@ export function ChatInput({
         [persistMainChatCompareIds, posthog, visibleModelConfigs],
     );
 
+    const unionSelectAllCompareModelConfigs = useCallback(
+        (visibleSelectable: ModelConfig[]) => {
+            void (async () => {
+                const orderedIds: string[] = [];
+                const seen = new Set<string>();
+                for (const m of chatCompareModelConfigs) {
+                    if (!seen.has(m.id)) {
+                        orderedIds.push(m.id);
+                        seen.add(m.id);
+                    }
+                }
+                for (const m of visibleSelectable) {
+                    if (!seen.has(m.id)) {
+                        orderedIds.push(m.id);
+                        seen.add(m.id);
+                    }
+                }
+                const persistedIds =
+                    await persistMainChatCompareIds(orderedIds);
+                void posthog?.capture("selected_model_configs_updated", {
+                    selectedModelConfigs: persistedIds,
+                    viaUnionSelectAll: true,
+                });
+            })();
+        },
+        [chatCompareModelConfigs, persistMainChatCompareIds, posthog],
+    );
+
     const reorderMainChatCompare = useCallback(
         (ordered: ModelConfig[]) => {
             void persistMainChatCompareIds(ordered.map((m) => m.id));
@@ -741,6 +769,8 @@ export function ChatInput({
                             onClearModelConfigs: clearCompareModelConfigs,
                             onSelectAllModelConfigs:
                                 selectAllCompareModelConfigs,
+                            onUnionSelectAllVisibleModelConfigs:
+                                unionSelectAllCompareModelConfigs,
                             selectedModelConfigsForChat:
                                 chatCompareModelConfigs,
                             onReorderSelectedModelConfigs:
