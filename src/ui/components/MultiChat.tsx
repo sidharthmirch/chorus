@@ -1193,6 +1193,7 @@ export function ToolsMessageView({
     isReply = false,
     onMinimize,
     onStop,
+    onDeselect,
     dragHandleProps,
 }: {
     message: Message;
@@ -1202,6 +1203,7 @@ export function ToolsMessageView({
     isReply?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
+    onDeselect?: () => void;
     dragHandleProps?: DragListeners;
 }) {
     const navigate = useNavigate();
@@ -1257,9 +1259,7 @@ export function ToolsMessageView({
         !isQuickChatWindow && (message.selected || isReply)
             ? "!border-special"
             : "",
-        isLastRow && !isQuickChatWindow && !message.selected
-            ? "cursor-pointer"
-            : "",
+        isLastRow && !isQuickChatWindow ? "cursor-pointer" : "",
         !message.selected ? "opacity-70 hover:opacity-100" : "",
     ]
         .filter(Boolean)
@@ -1288,6 +1288,10 @@ export function ToolsMessageView({
                         }}
                         {...dragAnywhereProps}
                         onClick={(e) => {
+                            if (message.selected && isLastRow) {
+                                onDeselect?.();
+                                return;
+                            }
                             if (message.selected) return;
                             // Don't trigger selection if user is selecting text
                             if (window.getSelection()?.toString()) {
@@ -1634,6 +1638,7 @@ function ToolsBlockView({
         chatId!,
     );
     const deselectToolsMessages = MessageAPI.useDeselectToolsMessages();
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const customOrder = useModelOrderStore((state) =>
         chatId ? state.modelOrderByChatId.get(chatId) : undefined,
@@ -1712,6 +1717,33 @@ function ToolsBlockView({
             });
         }
     }, [chatId, messageSetId, toolsBlock.chatMessages, deselectToolsMessages]);
+
+    // Deselect when the user clicks outside the tools block while a model is selected
+    const anyMessageSelected = useMemo(
+        () => toolsBlock.chatMessages.some((m) => m.selected),
+        [toolsBlock.chatMessages],
+    );
+    useEffect(() => {
+        if (!isLastRow || !anyMessageSelected || !chatId) return;
+
+        function handleClick(e: MouseEvent) {
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(e.target as Node)
+            ) {
+                deselectToolsMessages.mutate({ chatId: chatId!, messageSetId });
+            }
+        }
+
+        document.addEventListener("click", handleClick);
+        return () => document.removeEventListener("click", handleClick);
+    }, [
+        isLastRow,
+        anyMessageSelected,
+        chatId,
+        messageSetId,
+        deselectToolsMessages,
+    ]);
 
     // Auto-minimize models that returned no response or errored
     useEffect(() => {
@@ -1820,9 +1852,13 @@ function ToolsBlockView({
         if (chatId) setModelOrder(chatId, newOrder);
     }
 
+    const handleDeselect = useCallback(() => {
+        if (chatId) deselectToolsMessages.mutate({ chatId, messageSetId });
+    }, [chatId, messageSetId, deselectToolsMessages]);
+
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
-            <div className="flex w-full h-fit">
+            <div ref={containerRef} className="flex w-full h-fit">
                 {/* Main scrollable area: active (non-minimized) models only */}
                 <div
                     ref={elementRef}
@@ -1884,6 +1920,7 @@ function ToolsBlockView({
                                                 onStop={() =>
                                                     onMinimize(message.model)
                                                 }
+                                                onDeselect={handleDeselect}
                                                 dragHandleProps={listeners}
                                             />
                                         )}
