@@ -1288,16 +1288,16 @@ export function ToolsMessageView({
                         }}
                         {...dragAnywhereProps}
                         onClick={(e) => {
+                            // Don't trigger selection changes if user is selecting text
+                            if (window.getSelection()?.toString()) {
+                                e.stopPropagation();
+                                return;
+                            }
                             if (message.selected && isLastRow) {
                                 onDeselect?.();
                                 return;
                             }
                             if (message.selected) return;
-                            // Don't trigger selection if user is selecting text
-                            if (window.getSelection()?.toString()) {
-                                e.stopPropagation();
-                                return;
-                            }
                             if (isLastRow) {
                                 selectMessage.mutate({
                                     chatId: message.chatId,
@@ -1727,9 +1727,11 @@ function ToolsBlockView({
         if (!isLastRow || !anyMessageSelected || !chatId) return;
 
         function handleClick(e: MouseEvent) {
+            if (!(e.target instanceof Node)) return;
+            if (deselectToolsMessages.isPending) return;
             if (
                 containerRef.current &&
-                !containerRef.current.contains(e.target as Node)
+                !containerRef.current.contains(e.target)
             ) {
                 deselectToolsMessages.mutate({ chatId: chatId!, messageSetId });
             }
