@@ -5,6 +5,10 @@ interface ModelOrderStore {
     setModelOrder: (chatId: string, modelIds: string[]) => void;
     getModelOrder: (chatId: string) => string[] | undefined;
     clearChat: (chatId: string) => void;
+    // The resolved visual order (after applying finish-time sorting, custom order, etc.)
+    // Written by ToolsBlockView so keybinding handlers can use the correct visual index.
+    currentVisualOrderByChatId: Map<string, string[]>;
+    setCurrentVisualOrder: (chatId: string, modelIds: string[]) => void;
 }
 
 const useModelOrderStore = create<ModelOrderStore>((set, get) => ({
@@ -21,10 +25,23 @@ const useModelOrderStore = create<ModelOrderStore>((set, get) => ({
 
     clearChat: (chatId) =>
         set((state) => {
-            if (!state.modelOrderByChatId.has(chatId)) return state;
-            const next = new Map(state.modelOrderByChatId);
-            next.delete(chatId);
-            return { modelOrderByChatId: next };
+            const nextModelOrder = new Map(state.modelOrderByChatId);
+            nextModelOrder.delete(chatId);
+            const nextVisualOrder = new Map(state.currentVisualOrderByChatId);
+            nextVisualOrder.delete(chatId);
+            return {
+                modelOrderByChatId: nextModelOrder,
+                currentVisualOrderByChatId: nextVisualOrder,
+            };
+        }),
+
+    currentVisualOrderByChatId: new Map(),
+
+    setCurrentVisualOrder: (chatId, modelIds) =>
+        set((state) => {
+            const next = new Map(state.currentVisualOrderByChatId);
+            next.set(chatId, modelIds);
+            return { currentVisualOrderByChatId: next };
         }),
 }));
 

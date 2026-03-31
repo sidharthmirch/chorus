@@ -1647,6 +1647,9 @@ function ToolsBlockView({
         chatId ? state.modelOrderByChatId.get(chatId) : undefined,
     );
     const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
+    const setCurrentVisualOrder = useModelOrderStore(
+        (state) => state.setCurrentVisualOrder,
+    );
 
     // Track which models finished streaming and in what order, so we can sort
     // finished models to the left (first finished = leftmost slot) when no
@@ -1770,36 +1773,54 @@ function ToolsBlockView({
         }
     }, [toolsBlock.chatMessages, minimizedModels, onMinimize]);
 
-    const activeMessages = [...toolsBlock.chatMessages]
-        .filter((m) => !minimizedModels.has(m.model))
-        .sort((a, b) => {
-            // Respect explicit drag-and-drop ordering if the user has set one.
-            if (customOrder) {
-                const aIdx = customOrder.indexOf(a.model);
-                const bIdx = customOrder.indexOf(b.model);
-                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-                if (aIdx !== -1) return -1;
-                if (bIdx !== -1) return 1;
-            }
-            // Default: finished (idle) models go left of still-streaming/loading
-            // models, sorted by completion order (first finished = leftmost slot).
-            const aIdle = a.state === "idle";
-            const bIdle = b.state === "idle";
-            if (aIdle !== bIdle) return aIdle ? -1 : 1;
-            if (aIdle && bIdle) {
-                const aFinishIdx = finishedModelsOrder.indexOf(a.model);
-                const bFinishIdx = finishedModelsOrder.indexOf(b.model);
-                if (aFinishIdx !== -1 && bFinishIdx !== -1)
-                    return aFinishIdx - bFinishIdx;
-            }
-            return getDisplayName(a.model).localeCompare(
-                getDisplayName(b.model),
-            );
-        });
+    const activeMessages = useMemo(
+        () =>
+            [...toolsBlock.chatMessages]
+                .filter((m) => !minimizedModels.has(m.model))
+                .sort((a, b) => {
+                    // Respect explicit drag-and-drop ordering if the user has set one.
+                    if (customOrder) {
+                        const aIdx = customOrder.indexOf(a.model);
+                        const bIdx = customOrder.indexOf(b.model);
+                        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                        if (aIdx !== -1) return -1;
+                        if (bIdx !== -1) return 1;
+                    }
+                    // Default: finished (idle) models go left of still-streaming/loading
+                    // models, sorted by completion order (first finished = leftmost slot).
+                    const aIdle = a.state === "idle";
+                    const bIdle = b.state === "idle";
+                    if (aIdle !== bIdle) return aIdle ? -1 : 1;
+                    if (aIdle && bIdle) {
+                        const aFinishIdx = finishedModelsOrder.indexOf(a.model);
+                        const bFinishIdx = finishedModelsOrder.indexOf(b.model);
+                        if (aFinishIdx !== -1 && bFinishIdx !== -1)
+                            return aFinishIdx - bFinishIdx;
+                    }
+                    return getDisplayName(a.model).localeCompare(
+                        getDisplayName(b.model),
+                    );
+                }),
+        [
+            toolsBlock.chatMessages,
+            minimizedModels,
+            customOrder,
+            finishedModelsOrder,
+            getDisplayName,
+        ],
+    );
     const toolsItemOrder = useMemo(
         () => activeMessages.map((m) => m.model),
         [activeMessages],
     );
+
+    // Keep the store in sync with the current visual order so cmd+number
+    // keybindings can index into the same order the user sees on screen.
+    useEffect(() => {
+        if (chatId) {
+            setCurrentVisualOrder(chatId, toolsItemOrder);
+        }
+    }, [chatId, toolsItemOrder, setCurrentVisualOrder]);
 
     const handleAddModel = (modelId: string) => {
         void (async () => {
@@ -1889,6 +1910,7 @@ function ToolsBlockView({
                                     key={message.model}
                                     layout
                                     layoutId={`tools-col-${message.model}-${messageSetId}`}
+                                    data-tools-message-id={message.id}
                                 >
                                     <SortableColumnItem
                                         id={message.model}
@@ -2414,6 +2436,9 @@ export default function MultiChat() {
     const customCompareOrder = useModelOrderStore((state) =>
         chatId ? state.modelOrderByChatId.get(chatId) : undefined,
     );
+    const currentVisualOrder = useModelOrderStore((state) =>
+        chatId ? state.currentVisualOrderByChatId.get(chatId) : undefined,
+    );
     const sortedCompareMessages = useMemo(() => {
         if (!currentCompareBlock) return [];
         return [...currentCompareBlock.messages].sort((a, b) => {
@@ -2662,31 +2687,67 @@ export default function MultiChat() {
             if (e.metaKey && /^[1-8]$/.test(e.key)) {
                 // cmd + 1-8: select message at index
                 e.preventDefault();
-                if (currentMessageSet?.selectedBlockType !== "compare") {
-                    console.warn(
-                        "skipping cmd+1-8 because we're not in compare mode",
-                    );
-                    return;
-                }
-                // Get message at index (1-based)
                 const index = parseInt(e.key) - 1;
-                if (
-                    !currentCompareBlock ||
-                    sortedCompareMessages.length <= index
-                ) {
-                    console.warn(
-                        `couldn't select message at ${index} from cmd+${index + 1}`,
-                    );
-                    return;
+                if (currentMessageSet?.selectedBlockType === "compare") {
+                    if (
+                        !currentCompareBlock ||
+                        sortedCompareMessages.length <= index
+                    ) {
+                        console.warn(
+                            `couldn't select message at ${index} from cmd+${index + 1}`,
+                        );
+                        return;
+                    }
+                    selectMessage.mutate({
+                        chatId: chatId!,
+                        messageSetId: currentMessageSet.id,
+                        messageId: sortedCompareMessages[index].id,
+                        blockType: "compare",
+                    });
+                } else if (currentMessageSet?.selectedBlockType === "tools") {
+                    // Use the resolved visual order so cmd+1 selects the
+                    // leftmost column regardless of streaming completion order.
+                    const allMsgs = currentMessageSet.toolsBlock.chatMessages;
+                    const orderedMsgs = currentVisualOrder
+                        ? currentVisualOrder
+                              .map((id) => allMsgs.find((m) => m.model === id))
+                              .filter((m) => m !== undefined)
+                        : allMsgs;
+                    if (orderedMsgs.length <= index) {
+                        console.warn(
+                            `couldn't select message at ${index} from cmd+${index + 1}`,
+                        );
+                        return;
+                    }
+                    selectMessage.mutate({
+                        chatId: chatId!,
+                        messageSetId: currentMessageSet.id,
+                        messageId: orderedMsgs[index].id,
+                        blockType: "tools",
+                    });
                 }
-                const message = sortedCompareMessages[index];
-
-                selectMessage.mutate({
-                    chatId: chatId!,
-                    messageSetId: currentMessageSet.id,
-                    messageId: message.id,
-                    blockType: "compare",
-                });
+            } else if (
+                (e.metaKey || e.ctrlKey) &&
+                e.shiftKey &&
+                e.key === " "
+            ) {
+                // cmd/ctrl + shift + space: scroll selected chat column into view
+                e.preventDefault();
+                const selectedMsg =
+                    currentMessageSet?.toolsBlock?.chatMessages.find(
+                        (m) => m.selected,
+                    );
+                if (selectedMsg) {
+                    document
+                        .querySelector(
+                            `[data-tools-message-id="${selectedMsg.id}"]`,
+                        )
+                        ?.scrollIntoView({
+                            behavior: "smooth",
+                            inline: "nearest",
+                            block: "nearest",
+                        });
+                }
             } else if (e.metaKey && e.key === "s" && !e.shiftKey) {
                 e.preventDefault();
                 if (!currentMessageSet) return;
@@ -2746,6 +2807,7 @@ export default function MultiChat() {
         setVisionModeEnabled,
         // nextTools,
         handleToggleVisionMode,
+        currentVisualOrder,
     ]);
 
     const scrollToLatestMessageSet = useCallback(() => {
