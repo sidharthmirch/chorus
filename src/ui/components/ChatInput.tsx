@@ -329,6 +329,9 @@ export function ChatInput({
                 setIsAnimatingToBottom(true);
             }
 
+            const applyChatCreationModelDefaults =
+                !isReply && isNewChat === true;
+
             // Convert attachments
             await convertDraftAttachmentsToMessageAttachments.mutateAsync({
                 chatId,
@@ -361,6 +364,7 @@ export function ChatInput({
                 blockType: BLOCK_TYPE,
                 replyToModelId: replyToModelConfig?.modelId,
                 excludedModelIds: minimizedModels,
+                applyChatCreationModelDefaults,
             });
         },
     });

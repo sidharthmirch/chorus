@@ -64,6 +64,11 @@ import { SettingsManager } from "@core/utilities/Settings";
 import { Attachment, AttachmentDBRow, readAttachment } from "./AttachmentsAPI";
 import { fetchChatPromptProfileSystemPrompt } from "./PromptProfilesAPI";
 import { toolsDisabledActions } from "@core/infra/ToolsDisabledStore";
+import {
+    buildProviderVisibilityMap,
+    isModelConfigEffectivelyVisible,
+    modelConfigSupportsVision,
+} from "../chatCreationDefaults";
 
 // Query keys objects are based on https://tkdodo.eu/blog/effective-react-query-keys
 // although also consider this approach: https://tkdodo.eu/blog/leveraging-the-query-function-context
@@ -2918,12 +2923,15 @@ function usePopulateToolsBlock(chatId: string) {
             isQuickChatWindow,
             replyToModelId,
             excludedModelIds,
+            applyChatCreationModelDefaults,
         }: {
             messageSetId: string;
             previousMessageSets: MessageSetDetail[];
             isQuickChatWindow: boolean;
             replyToModelId?: string;
             excludedModelIds?: Set<string>;
+            /** First user message in a new chat: apply Defaults settings to model selection. */
+            applyChatCreationModelDefaults?: boolean;
         }) => {
             // BTBL: do we need to protect against double-population here by ensuring
             // it's empty before we populate?
@@ -2940,8 +2948,44 @@ function usePopulateToolsBlock(chatId: string) {
                     return { skipped: true };
                 }
                 modelConfigs = [modelConfig];
+            } else if (
+                applyChatCreationModelDefaults &&
+                isQuickChatWindow
+            ) {
+                const settings = await SettingsManager.getInstance().get();
+                let next = await getSelectedModelConfigs(true, chatId);
+                if (settings.defaultAmbientChatModel) {
+                    const all = await queryClient.ensureQueryData(
+                        modelConfigQueries.listConfigs(),
+                    );
+                    const visibilityMap = await buildProviderVisibilityMap();
+                    const amb = all.find(
+                        (c) => c.id === settings.defaultAmbientChatModel,
+                    );
+                    if (
+                        amb &&
+                        isModelConfigEffectivelyVisible(amb, visibilityMap) &&
+                        modelConfigSupportsVision(amb)
+                    ) {
+                        next = [amb];
+                        await db.execute(
+                            "INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('quick_chat_model_config_id', ?)",
+                            [amb.id],
+                        );
+                        queryClient.setQueryData(
+                            modelConfigQueries.quickChat().queryKey,
+                            amb,
+                        );
+                    }
+                }
+                modelConfigs = next;
+                if (excludedModelIds && excludedModelIds.size > 0) {
+                    modelConfigs = modelConfigs.filter(
+                        (m) => !excludedModelIds.has(m.id),
+                    );
+                }
             } else {
-                // Normal flow: per-chat compare selection (not global app_metadata)
+                // Normal flow: per-chat compare selection (saved row + ambient fallback)
                 modelConfigs = await getSelectedModelConfigs(
                     isQuickChatWindow,
                     chatId,
@@ -3056,11 +3100,13 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
             blockType,
             replyToModelId,
             excludedModelIds,
+            applyChatCreationModelDefaults,
         }: {
             messageSetId: string;
             blockType: BlockType;
             replyToModelId?: string;
             excludedModelIds?: Set<string>;
+            applyChatCreationModelDefaults?: boolean;
         }) => {
             const messageSets = await getMessageSets(chatId);
             const messageSet = messageSets.find((m) => m.id === messageSetId);
@@ -3087,6 +3133,7 @@ export function usePopulateBlock(chatId: string, isQuickChatWindow: boolean) {
                         isQuickChatWindow,
                         replyToModelId,
                         excludedModelIds,
+                        applyChatCreationModelDefaults,
                     });
                 }
                 default: {

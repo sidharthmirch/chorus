@@ -762,10 +762,14 @@ function AppContent() {
             "open_settings",
             (event: {
                 payload: {
-                    tab: SettingsTabId;
+                    tab: SettingsTabId | "quick-chat";
                 };
             }) => {
-                setDefaultSettingsTab(event.payload.tab);
+                setDefaultSettingsTab(
+                    event.payload.tab === "quick-chat"
+                        ? "defaults"
+                        : event.payload.tab,
+                );
                 dialogActions.openDialog(SETTINGS_DIALOG_ID);
             },
         );

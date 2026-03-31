@@ -160,6 +160,7 @@ import {
     syncGlobalCompareMetadataToConfigIds,
 } from "@core/chorus/ChatCompareSelection";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
+import { applyDefaultPromptProfileForChat } from "@core/chorus/chatCreationDefaults";
 import {
     isPermissionGranted,
     requestPermission,
@@ -2229,6 +2230,39 @@ export default function MultiChat() {
             }
         };
     }, [chatId]);
+
+    const queryClient = useQueryClient();
+    const newChatDefaultsSyncRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        newChatDefaultsSyncRef.current = null;
+    }, [chatId]);
+
+    useEffect(() => {
+        if (!chatId || isQuickChatWindow || !chatQuery.data?.isNewChat) {
+            return;
+        }
+        if (!messageSetsQuery.data || messageSetsQuery.data.length > 0) {
+            return;
+        }
+        if (newChatDefaultsSyncRef.current === chatId) {
+            return;
+        }
+        newChatDefaultsSyncRef.current = chatId;
+
+        void (async () => {
+            await applyDefaultPromptProfileForChat(chatId);
+            await queryClient.invalidateQueries({
+                queryKey: ["promptProfiles"],
+            });
+        })();
+    }, [
+        chatId,
+        isQuickChatWindow,
+        chatQuery.data?.isNewChat,
+        messageSetsQuery.data,
+        queryClient,
+    ]);
 
     const handleMinimize = useCallback(
         (modelId: string) => {
