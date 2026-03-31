@@ -18,7 +18,10 @@ import {
     SelectValue,
 } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
-import { SettingsManager, type Settings as CoreSettings } from "@core/utilities/Settings";
+import {
+    SettingsManager,
+    type Settings as CoreSettings,
+} from "@core/utilities/Settings";
 import { usePromptProfiles } from "@core/chorus/api/PromptProfilesAPI";
 import { useModelProfiles } from "@core/chorus/api/ModelProfilesAPI";
 import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
@@ -106,6 +109,9 @@ export function DefaultsTab({
     const { data: allConfigs = [] } = useModelConfigs();
     const providerVisibilityMap = useProviderVisibilityMap();
 
+    // Defaults are global (not profile-scoped), so we intentionally skip active
+    // model profile filtering here. Selected defaults may be filtered out at
+    // chat creation time if they fall outside the active profile.
     const visibleModels = useMemo(
         () =>
             getFilteredModelConfigs(
@@ -137,9 +143,9 @@ export function DefaultsTab({
     const [defaultAmbientChatModel, setDefaultAmbientChatModel] = useState<
         string | null
     >(null);
-    const [defaultChatModels, setDefaultChatModels] = useState<
-        string[] | null
-    >(null);
+    const [defaultChatModels, setDefaultChatModels] = useState<string[] | null>(
+        null,
+    );
 
     const [quickChatEnabled, setQuickChatEnabled] = useState(true);
     const [quickChatShortcut, setQuickChatShortcut] = useState("Alt+Space");
@@ -176,10 +182,7 @@ export function DefaultsTab({
     const fallbackSelectValue = useMemo(() => {
         if (!defaultFallbackModel) return NONE;
         const c = visibleModels.find((m) => m.id === defaultFallbackModel);
-        if (
-            c &&
-            isModelConfigEffectivelyVisible(c, visibilityMap)
-        ) {
+        if (c && isModelConfigEffectivelyVisible(c, visibilityMap)) {
             return defaultFallbackModel;
         }
         return NONE;
@@ -202,6 +205,22 @@ export function DefaultsTab({
         !!defaultFallbackModel && fallbackSelectValue === NONE;
     const staleAmbient =
         !!defaultAmbientChatModel && ambientSelectValue === NONE;
+
+    const compatibleFallbackProfiles = useMemo(
+        () =>
+            (modelProfiles ?? []).filter(
+                (p) =>
+                    !!defaultFallbackModel &&
+                    p.modelConfigIds.includes(defaultFallbackModel),
+            ),
+        [modelProfiles, defaultFallbackModel],
+    );
+
+    const fallbackProfileIncompatible =
+        !!defaultFallbackModelProfileId &&
+        !compatibleFallbackProfiles.some(
+            (p) => p.id === defaultFallbackModelProfileId,
+        );
 
     const onDefaultQcShortcutClick = async () => {
         setQuickChatShortcut("Alt+Space");
@@ -343,12 +362,11 @@ export function DefaultsTab({
                         </label>
                         <p className="text-sm text-muted-foreground">
                             When set, the fallback model must belong to this
-                            profile.
+                            profile. Only profiles that include the selected
+                            fallback model are shown.
                         </p>
                         <Select
-                            value={
-                                defaultFallbackModelProfileId ?? NONE
-                            }
+                            value={defaultFallbackModelProfileId ?? NONE}
                             onValueChange={(v) => {
                                 const next = v === NONE ? null : v;
                                 setDefaultFallbackModelProfileId(next);
@@ -362,13 +380,20 @@ export function DefaultsTab({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE}>None</SelectItem>
-                                {(modelProfiles ?? []).map((p) => (
+                                {compatibleFallbackProfiles.map((p) => (
                                     <SelectItem key={p.id} value={p.id}>
                                         {p.name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
+                        {fallbackProfileIncompatible && (
+                            <p className="text-xs text-destructive">
+                                The saved profile no longer includes the
+                                selected fallback model. Clear it to avoid
+                                conflicts.
+                            </p>
+                        )}
                     </div>
                 )}
 
@@ -457,8 +482,7 @@ export function DefaultsTab({
                 </div>
                 <p className="text-sm text-muted-foreground">
                     Optional explicit list: every new regular chat starts with
-                    exactly these models (in order). When cleared, new chats
-                    use{" "}
+                    exactly these models (in order). When cleared, new chats use{" "}
                     <span className="font-medium text-foreground/90">
                         Default Fallback Model
                     </span>{" "}

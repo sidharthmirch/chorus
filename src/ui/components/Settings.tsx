@@ -1173,7 +1173,7 @@ export default function Settings({ tab = "general" }: SettingsProps) {
     const normalizedTab =
         rawTab === ("quick-chat" as string)
             ? "defaults"
-            : rawTab && rawTab in TABS
+            : rawTab && Object.prototype.hasOwnProperty.call(TABS, rawTab)
               ? (rawTab as SettingsTabId)
               : null;
     const defaultTab = normalizedTab ?? "general";

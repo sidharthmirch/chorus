@@ -11,19 +11,13 @@ export const CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE =
 export const CHORUS_DEFAULT_OPENROUTER_GEMINI_25_FLASH_LITE =
     "openrouter::google/gemini-2.5-flash-lite";
 
-type ApiKeys = NonNullable<Settings["apiKeys"]>;
-
 /**
  * Fresh-install defaults for model-related settings + prompt profile.
- * Ambient and fallback use the same single config: Google when a Google key is
- * present or when no OpenRouter key; otherwise OpenRouter Flash Lite.
- *
- * Default chat models: always include Google Flash Lite; add OpenRouter Flash
- * Lite when an OpenRouter API key is set (typical “Google + free/low-cost OR” setup).
+ * Always seeds Google Flash Lite as the ambient, fallback, and default chat
+ * model, since no API keys are present at first install. Users can update
+ * their defaults in Settings > Defaults after adding keys.
  */
-export function buildFreshInstallModelAndPromptDefaults(
-    apiKeys: ApiKeys | undefined,
-): Pick<
+export function buildFreshInstallModelAndPromptDefaults(): Pick<
     Settings,
     | "defaultPromptProfileId"
     | "defaultFallbackModelProfileId"
@@ -31,25 +25,12 @@ export function buildFreshInstallModelAndPromptDefaults(
     | "defaultFallbackModel"
     | "defaultChatModels"
 > & { quickChatModelConfigId: string } {
-    const hasGoogle = !!apiKeys?.google?.trim();
-    const hasOpenRouter = !!apiKeys?.openrouter?.trim();
-
-    const ambientAndFallback =
-        hasGoogle || !hasOpenRouter
-            ? CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE
-            : CHORUS_DEFAULT_OPENROUTER_GEMINI_25_FLASH_LITE;
-
-    const defaultChatModels: string[] = [CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE];
-    if (hasOpenRouter) {
-        defaultChatModels.push(CHORUS_DEFAULT_OPENROUTER_GEMINI_25_FLASH_LITE);
-    }
-
     return {
         defaultPromptProfileId: null,
         defaultFallbackModelProfileId: null,
-        defaultAmbientChatModel: ambientAndFallback,
-        defaultFallbackModel: ambientAndFallback,
-        defaultChatModels,
-        quickChatModelConfigId: ambientAndFallback,
+        defaultAmbientChatModel: CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE,
+        defaultFallbackModel: CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE,
+        defaultChatModels: [CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE],
+        quickChatModelConfigId: CHORUS_DEFAULT_GOOGLE_GEMINI_25_FLASH_LITE,
     };
 }

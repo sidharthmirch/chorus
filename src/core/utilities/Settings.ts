@@ -55,7 +55,7 @@ export class SettingsManager {
             const store = await getStore(this.storeName);
             const settings = await store.get("settings");
             const { quickChatModelConfigId, ...modelPreferenceFields } =
-                buildFreshInstallModelAndPromptDefaults({});
+                buildFreshInstallModelAndPromptDefaults();
             const defaultSettings: Settings = {
                 defaultEditor: "default",
                 sansFont: "Geist",
@@ -82,7 +82,7 @@ export class SettingsManager {
         } catch (error) {
             console.error("Failed to get settings:", error);
             const { quickChatModelConfigId: qcId, ...modelFields } =
-                buildFreshInstallModelAndPromptDefaults({});
+                buildFreshInstallModelAndPromptDefaults();
             return {
                 defaultEditor: "default",
                 sansFont: "Geist",

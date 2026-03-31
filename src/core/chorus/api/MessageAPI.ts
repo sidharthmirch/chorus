@@ -2930,7 +2930,7 @@ function usePopulateToolsBlock(chatId: string) {
             isQuickChatWindow: boolean;
             replyToModelId?: string;
             excludedModelIds?: Set<string>;
-            /** First user message in a new chat: apply Defaults settings to model selection. */
+            /** First user message in a new quick/ambient chat: apply the default ambient model from Defaults settings. Has no effect for regular chats. */
             applyChatCreationModelDefaults?: boolean;
         }) => {
             // BTBL: do we need to protect against double-population here by ensuring
@@ -2948,10 +2948,7 @@ function usePopulateToolsBlock(chatId: string) {
                     return { skipped: true };
                 }
                 modelConfigs = [modelConfig];
-            } else if (
-                applyChatCreationModelDefaults &&
-                isQuickChatWindow
-            ) {
+            } else if (applyChatCreationModelDefaults && isQuickChatWindow) {
                 const settings = await SettingsManager.getInstance().get();
                 let next = await getSelectedModelConfigs(true, chatId);
                 if (settings.defaultAmbientChatModel) {
