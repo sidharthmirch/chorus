@@ -211,9 +211,16 @@ export function useCreateNewChat() {
             }
             const chatId = result[0].id;
             if (projectId !== "quick-chat") {
-                const compareIds =
-                    await computeInitialChatCompareModelConfigIds();
-                await updateSavedModelConfigChat(chatId, compareIds);
+                try {
+                    const compareIds =
+                        await computeInitialChatCompareModelConfigIds();
+                    await updateSavedModelConfigChat(chatId, compareIds);
+                } catch (err) {
+                    console.error(
+                        "Failed to initialize compare selection for chat",
+                        { chatId, projectId, error: err },
+                    );
+                }
             }
             return chatId;
         },
@@ -248,8 +255,16 @@ export function useCreateGroupChat() {
                 throw new Error("Failed to create group chat");
             }
             const chatId = result[0].id;
-            const compareIds = await computeInitialChatCompareModelConfigIds();
-            await updateSavedModelConfigChat(chatId, compareIds);
+            try {
+                const compareIds =
+                    await computeInitialChatCompareModelConfigIds();
+                await updateSavedModelConfigChat(chatId, compareIds);
+            } catch (error) {
+                console.error(
+                    "Failed to initialize group chat compare model configs",
+                    error,
+                );
+            }
             return chatId;
         },
         onSuccess: async (chatId: string) => {

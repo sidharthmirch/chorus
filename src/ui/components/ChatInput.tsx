@@ -391,7 +391,7 @@ export function ChatInput({
     // --------------------------------------------------------------------------
 
     const persistMainChatCompareIds = useCallback(
-        async (configIds: string[]) => {
+        async (configIds: string[]): Promise<string[]> => {
             const visibleIds = new Set(visibleModelConfigs.map((c) => c.id));
             let next = configIds.filter((id) => visibleIds.has(id));
             if (next.length === 0 && visibleModelConfigs[0]) {
@@ -406,6 +406,7 @@ export function ChatInput({
                 modelConfigs.data ?? [],
             );
             void queryClient.invalidateQueries(modelConfigQueries.compare());
+            return next;
         },
         [
             chatId,
@@ -430,10 +431,10 @@ export function ChatInput({
             const newIds = chatCompareModelConfigs
                 .filter((m) => m.id !== modelConfigId)
                 .map((m) => m.id);
-            await persistMainChatCompareIds(newIds);
+            const persistedIds = await persistMainChatCompareIds(newIds);
 
             posthog?.capture("selected_model_configs_updated", {
-                selectedModelConfigs: newIds,
+                selectedModelConfigs: persistedIds,
                 modelConfigRemoved: modelConfigId,
             });
         },
@@ -468,9 +469,9 @@ export function ChatInput({
 
     const clearCompareModelConfigs = useCallback(() => {
         void (async () => {
-            await persistMainChatCompareIds([]);
+            const persistedIds = await persistMainChatCompareIds([]);
             void posthog?.capture("selected_model_configs_updated", {
-                selectedModelConfigs: [],
+                selectedModelConfigs: persistedIds,
             });
         })();
     }, [persistMainChatCompareIds, posthog]);
@@ -484,9 +485,9 @@ export function ChatInput({
                 const ids = picked
                     .filter((m) => visibleIds.has(m.id))
                     .map((m) => m.id);
-                await persistMainChatCompareIds(ids);
+                const persistedIds = await persistMainChatCompareIds(ids);
                 void posthog?.capture("selected_model_configs_updated", {
-                    selectedModelConfigs: ids,
+                    selectedModelConfigs: persistedIds,
                 });
             })();
         },

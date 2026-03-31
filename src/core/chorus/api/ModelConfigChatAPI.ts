@@ -98,6 +98,7 @@ export function useUpdateSavedModelConfigChat() {
  */
 export function useChatCompareModelConfigs(chatId: string) {
     const savedModelConfig = useSavedModelConfigChat(chatId);
+    const ambientCompareQuery = ModelsAPI.useSelectedModelConfigsCompare();
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
     const providerVisibilityMap = useProviderVisibilityMap();
     const activeProfile = useActiveModelProfile();
@@ -112,15 +113,25 @@ export function useChatCompareModelConfigs(chatId: string) {
         [modelConfigsQuery.data, providerVisibilityMap, activeProfile],
     );
 
-    return useMemo(
-        () =>
-            resolveOrderedCompareConfigs(
-                savedModelConfig.data,
-                modelConfigsQuery.data ?? [],
-                visibleConfigs,
-            ),
-        [savedModelConfig.data, modelConfigsQuery.data, visibleConfigs],
-    );
+    return useMemo(() => {
+        const fromSaved = resolveOrderedCompareConfigs(
+            savedModelConfig.data,
+            modelConfigsQuery.data ?? [],
+            visibleConfigs,
+        );
+        if (fromSaved.length > 0) {
+            return fromSaved;
+        }
+        const visibleIds = new Set(visibleConfigs.map((c) => c.id));
+        return (ambientCompareQuery.data ?? []).filter((m) =>
+            visibleIds.has(m.id),
+        );
+    }, [
+        savedModelConfig.data,
+        ambientCompareQuery.data,
+        modelConfigsQuery.data,
+        visibleConfigs,
+    ]);
 }
 
 export function useAppendModelConfigToChatCompare(chatId: string) {

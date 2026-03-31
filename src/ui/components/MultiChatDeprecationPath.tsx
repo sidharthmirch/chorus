@@ -2,6 +2,23 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { motion, LayoutGroup } from "framer-motion";
+import {
+    DndContext,
+    DragOverlay,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    useDraggable,
+    closestCenter,
+} from "@dnd-kit/core";
+import type {
+    DragStartEvent,
+    DragEndEvent,
+    DragOverEvent,
+} from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { SortableColumnItem } from "./SortableColumnItem";
+import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import { Button } from "./ui/button";
 import {
     Maximize2Icon,
@@ -63,6 +80,8 @@ import { ProviderName } from "@core/chorus/Models";
 import { dialogActions } from "@core/infra/DialogStore";
 import * as MessageAPI from "@core/chorus/api/MessageAPI";
 import SimpleCopyButton from "./unused/CopyButton";
+
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 
 function getReviewerLongName(
     model: string,
@@ -321,6 +340,7 @@ function AIMessageView({
     isSynthesis,
     onMinimize,
     onStop,
+    dragHandleProps,
 }: {
     message: Message;
     blockType: BlockType;
@@ -330,6 +350,7 @@ function AIMessageView({
     isSynthesis?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
+    dragHandleProps?: DragListeners;
 }) {
     const [raw, setRaw] = useState(false);
     const [streamStartTime, setStreamStartTime] = useState<Date>();
@@ -432,7 +453,9 @@ function AIMessageView({
                         </div>
                     ) : (
                         // compare mode: model name, always visible
-                        <div className={`ml-2 px-2.5 bg-background`}>
+                        <div
+                            className={`ml-2 px-2.5 bg-background flex items-center`}
+                        >
                             <span className="print-model-name text-sm font-[400] text-gray-800 rounded-full py-1 inline-flex items-center gap-1">
                                 {isSynthesis ? (
                                     <MergeIcon className="w-3 h-3 inline-block mb-0.5 mr-1" />
@@ -440,16 +463,27 @@ function AIMessageView({
                                     modelName
                                 )}
                             </span>
-                            {shortcutNumber !== undefined && isLastRow && (
+                            {!isSynthesis && message.selected ? (
                                 <span
-                                    className={`no-print ml-1 text-sm ${
-                                        !message.selected
-                                            ? "text-muted-foreground/30"
-                                            : "text-muted-foreground"
-                                    }`}
+                                    {...(dragHandleProps ?? {})}
+                                    className="no-print ml-1 text-xs text-accent-600 font-geist-mono uppercase tracking-wider animate-brief-flash cursor-grab active:cursor-grabbing select-none"
+                                    // dragHandleProps are @dnd-kit listeners (onPointerDown etc.)
                                 >
-                                    ⌘{shortcutNumber}
+                                    Drag to move
                                 </span>
+                            ) : (
+                                shortcutNumber !== undefined &&
+                                isLastRow && (
+                                    <span
+                                        className={`no-print ml-1 text-sm ${
+                                            !message.selected
+                                                ? "text-muted-foreground/30"
+                                                : "text-muted-foreground"
+                                        }`}
+                                    >
+                                        ⌘{shortcutNumber}
+                                    </span>
+                                )
                             )}
                         </div>
                     )}
@@ -894,8 +928,20 @@ function CompareBlockView({
         modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
         modelId;
 
-    // Sort: streaming first, then non-moved-right, then explicitly stopped/moved-right, all alphabetical by display name within groups
+    const customOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
+    );
+    const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
+
+    // Sort: custom order when set, else streaming first → non-moved-right → alphabetical
     const sortedMessages = [...compareBlock.messages].sort((a, b) => {
+        if (customOrder) {
+            const aIdx = customOrder.indexOf(a.model);
+            const bIdx = customOrder.indexOf(b.model);
+            if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+            if (aIdx !== -1) return -1;
+            if (bIdx !== -1) return 1;
+        }
         const aActive = a.state === "streaming";
         const bActive = b.state === "streaming";
         const aMoved = movedRightModels.has(a.model);
@@ -908,89 +954,77 @@ function CompareBlockView({
 
     const synthesisMessage = compareBlock.synthesis;
     const isSynthesisSelected = synthesisMessage?.selected ?? false;
-    const aiMessagesToDisplay = [
-        ...(synthesisMessage && synthesisMessage.selected
-            ? [synthesisMessage]
-            : []),
-        ...sortedMessages,
-    ];
 
     const selectSynthesis = MessageAPI.useSelectSynthesis();
     const deselectSynthesis = MessageAPI.useDeselectSynthesis();
 
     const handleAddModel = (modelId: string) => {
         void (async () => {
-            await appendModelToChatCompare.mutateAsync(modelId);
-            const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
-            await syncGlobalCompareMetadataToConfigIds(
-                ids,
-                modelConfigsQuery.data ?? [],
-            );
-            void queryClient.invalidateQueries(
-                ModelsAPI.modelConfigQueries.compare(),
-            );
-            addMessageToCompareBlock.mutate({
-                messageSetId,
-                modelId,
-            });
+            try {
+                await appendModelToChatCompare.mutateAsync(modelId);
+                const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
+                await syncGlobalCompareMetadataToConfigIds(
+                    ids,
+                    modelConfigsQuery.data ?? [],
+                );
+                void queryClient.invalidateQueries(
+                    ModelsAPI.modelConfigQueries.compare(),
+                );
+                addMessageToCompareBlock.mutate({
+                    messageSetId,
+                    modelId,
+                });
+                if (chatId) {
+                    const current =
+                        customOrder ?? sortedMessages.map((m) => m.model);
+                    setModelOrder(chatId, [...current, modelId]);
+                }
+            } catch (error) {
+                console.error("Failed to add model to chat compare", error);
+            }
         })();
     };
 
-    function renderMessage(message: Message, index: number) {
-        const isSynthesis = message.model === "chorus::synthesize";
-        const isMinimized = !isSynthesis && minimizedModels.has(message.model);
-        const shortcutNumber = isLastRow ? index + 1 : undefined;
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [overId, setOverId] = useState<string | null>(null);
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 },
+        }),
+    );
 
-        if (isMinimized) {
-            return (
-                <motion.div
-                    key={message.id}
-                    layout
-                    layoutId={`compare-col-${message.model}-${messageSetId}`}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="mr-2 pt-2 flex-none"
-                >
-                    <MinimizedColumnView
-                        message={message}
-                        onExpand={() => onToggleMinimize(message.model)}
-                    />
-                </motion.div>
-            );
-        }
-
-        return (
-            <motion.div
-                key={message.id}
-                layout
-                layoutId={`compare-col-${message.model}-${messageSetId}`}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-                className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} ${
-                    isQuickChatWindow
-                        ? ""
-                        : "flex-1 w-full min-w-[400px] max-w-[550px]"
-                } w-full max-w-prose`}
-            >
-                <AIMessageView
-                    message={message}
-                    blockType="compare"
-                    shortcutNumber={shortcutNumber}
-                    isLastRow={isLastRow}
-                    isQuickChatWindow={isQuickChatWindow}
-                    isSynthesis={isSynthesis}
-                    onMinimize={
-                        !isSynthesis
-                            ? () => onToggleMinimize(message.model)
-                            : undefined
-                    }
-                    onStop={
-                        !isSynthesis
-                            ? () => onModelStopped(message.model)
-                            : undefined
-                    }
-                />
-            </motion.div>
-        );
+    function onDragStart({ active }: DragStartEvent) {
+        setActiveDragId(active.id as string);
     }
+
+    function onDragOver({ over }: DragOverEvent) {
+        setOverId(over ? (over.id as string) : null);
+    }
+
+    function onDragEnd({ active, over }: DragEndEvent) {
+        setActiveDragId(null);
+        setOverId(null);
+        if (!over || active.id === over.id) return;
+        const oldIndex = sortedMessages.findIndex((m) => m.model === active.id);
+        const newIndex = sortedMessages.findIndex((m) => m.model === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
+        const newOrder = sortedMessages.map((m) => m.model);
+        newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, active.id as string);
+        if (chatId) setModelOrder(chatId, newOrder);
+    }
+
+    // Total visible items for shortcut numbering: synthesis (if shown) + model columns
+    const synthesisShortcut = isLastRow ? 1 : undefined;
+    const modelShortcutOffset = isLastRow
+        ? isSynthesisSelected
+            ? 2
+            : 1
+        : undefined;
+
+    const totalVisibleCount =
+        (isSynthesisSelected ? 1 : 0) + sortedMessages.length;
+    const compareItemOrder = sortedMessages.map((m) => m.model);
 
     return (
         <LayoutGroup id={`compare-${messageSetId}`}>
@@ -1002,7 +1036,7 @@ function CompareBlockView({
                 }`}
             >
                 <div className="flex-none w-10 mt-1">
-                    {isLastRow && aiMessagesToDisplay.length > 1 && (
+                    {isLastRow && totalVisibleCount > 1 && (
                         <Tooltip>
                             {/* synthesis button */}
                             <TooltipTrigger asChild>
@@ -1040,9 +1074,122 @@ function CompareBlockView({
                         </Tooltip>
                     )}
                 </div>
-                {aiMessagesToDisplay.map((message, index) => {
-                    return renderMessage(message, index);
-                })}
+
+                {/* Synthesis message (pinned, not draggable) */}
+                {synthesisMessage && isSynthesisSelected && (
+                    <motion.div
+                        key={synthesisMessage.id}
+                        layout
+                        layoutId={`compare-col-${synthesisMessage.model}-${messageSetId}`}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} w-full max-w-prose`}
+                    >
+                        <AIMessageView
+                            message={synthesisMessage}
+                            blockType="compare"
+                            shortcutNumber={synthesisShortcut}
+                            isLastRow={isLastRow}
+                            isQuickChatWindow={isQuickChatWindow}
+                            isSynthesis={true}
+                        />
+                    </motion.div>
+                )}
+
+                {/* Draggable model columns */}
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    modifiers={[restrictToHorizontalAxis]}
+                    onDragStart={onDragStart}
+                    onDragOver={onDragOver}
+                    onDragEnd={onDragEnd}
+                >
+                    <div className="flex">
+                        {sortedMessages.map((message, index) => {
+                            const isMinimized = minimizedModels.has(
+                                message.model,
+                            );
+                            const shortcutNumber =
+                                modelShortcutOffset !== undefined
+                                    ? modelShortcutOffset + index
+                                    : undefined;
+
+                            return (
+                                <motion.div
+                                    key={message.model}
+                                    layout
+                                    layoutId={`compare-col-${message.model}-${messageSetId}`}
+                                >
+                                    <SortableColumnItem
+                                        id={message.model}
+                                        disabled={
+                                            !message.selected || isMinimized
+                                        }
+                                        activeDragId={activeDragId}
+                                        overId={overId}
+                                        itemOrder={compareItemOrder}
+                                        className={`mr-2 ${
+                                            isQuickChatWindow ? "pt-0" : "pt-2"
+                                        } ${
+                                            isMinimized
+                                                ? "flex-none"
+                                                : isQuickChatWindow
+                                                  ? ""
+                                                  : "flex-1 w-full min-w-[400px] max-w-[550px]"
+                                        } w-full max-w-prose`}
+                                    >
+                                        {(listeners) =>
+                                            isMinimized ? (
+                                                <MinimizedColumnView
+                                                    message={message}
+                                                    onExpand={() =>
+                                                        onToggleMinimize(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                />
+                                            ) : (
+                                                <AIMessageView
+                                                    message={message}
+                                                    blockType="compare"
+                                                    shortcutNumber={
+                                                        shortcutNumber
+                                                    }
+                                                    isLastRow={isLastRow}
+                                                    isQuickChatWindow={
+                                                        isQuickChatWindow
+                                                    }
+                                                    isSynthesis={false}
+                                                    onMinimize={() =>
+                                                        onToggleMinimize(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                    onStop={() =>
+                                                        onModelStopped(
+                                                            message.model,
+                                                        )
+                                                    }
+                                                    dragHandleProps={listeners}
+                                                />
+                                            )
+                                        }
+                                    </SortableColumnItem>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                    <DragOverlay>
+                        {activeDragId && (
+                            <div className="bg-background border rounded-md shadow-lg px-4 py-2 cursor-grabbing opacity-90">
+                                <span className="text-sm">
+                                    {getDisplayName(activeDragId)}
+                                </span>
+                            </div>
+                        )}
+                    </DragOverlay>
+                </DndContext>
+
                 {isLastRow && (
                     <>
                         <button

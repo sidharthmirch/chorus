@@ -16,7 +16,7 @@ import {
 } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
-import { motion, LayoutGroup } from "framer-motion";
+import { LayoutGroup, motion } from "framer-motion";
 import {
     FileTextIcon,
     ExternalLinkIcon,
@@ -96,6 +96,26 @@ import {
     minimizedModelsActions,
     useMinimizedModelsStore,
 } from "@core/infra/MinimizedModelsStore";
+import {
+    modelOrderActions,
+    useModelOrderStore,
+} from "@core/infra/ModelOrderStore";
+import {
+    DndContext,
+    DragOverlay,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    useDraggable,
+    closestCenter,
+} from "@dnd-kit/core";
+import type {
+    DragStartEvent,
+    DragEndEvent,
+    DragOverEvent,
+} from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { SortableColumnItem } from "./SortableColumnItem";
 import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 import {
     getToolsetIcon,
@@ -144,6 +164,8 @@ import {
     isPermissionGranted,
     requestPermission,
 } from "@tauri-apps/plugin-notification";
+
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
 
 // ----------------------------------
 // Sub-components
@@ -1015,9 +1037,13 @@ function DeepResearchNotificationButton({ message }: { message: Message }) {
 function ToolsAIMessageViewInner({
     message,
     isQuickChatWindow,
+    selected,
+    showReorderOverlay,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
+    selected: boolean;
+    showReorderOverlay: boolean;
 }) {
     // combine tool calls with tool results
     const messagePartsSandwiched: MessagePartWithResults[] = message.parts
@@ -1055,56 +1081,65 @@ function ToolsAIMessageViewInner({
         })
         .filter((p) => p !== undefined);
     return (
-        <div
-            className={`relative overflow-y-auto select-text ${
-                isQuickChatWindow
-                    ? "py-2.5 border !border-special max-w-full inline-block break-words px-3.5 rounded-xl"
-                    : "p-4 pb-6"
-            }`}
-        >
-            {(message.parts.length === 0 ||
-                _.every(message.parts.map((p) => !p.content))) &&
-            message.state === "idle" ? (
-                <div className="text-sm text-muted-foreground/50 uppercase font-[350] font-geist-mono tracking-wider">
-                    <ErrorView message={message} />
-                </div>
-            ) : (
-                <>
-                    {messagePartsSandwiched.map((part) => (
-                        <MessagePartView
-                            key={part.level}
-                            part={part}
-                            messageState={message.state}
-                        />
-                    ))}
-                    {message.state === "streaming" && (
-                        <RetroSpinner className="mt-2" />
-                    )}
-                    <DeepResearchNotificationHandler message={message} />
-                    <DeepResearchNotificationButton message={message} />
-                    {message.errorMessage && (
-                        <div className="text-md rounded-md my-1 items-center justify-between font-[350]">
-                            <div className="flex items-center text-destructive font-medium">
-                                {message.errorMessage}
+        <div className="relative">
+            <div
+                className={`relative overflow-y-auto select-text transition-[filter] duration-200 ${
+                    isQuickChatWindow
+                        ? "py-2.5 border !border-special max-w-full inline-block break-words px-3.5 rounded-xl"
+                        : "p-4 pb-6"
+                } ${selected && !isQuickChatWindow ? "blur-[1.5px]" : ""}`}
+            >
+                {(message.parts.length === 0 ||
+                    _.every(message.parts.map((p) => !p.content))) &&
+                message.state === "idle" ? (
+                    <div className="text-sm text-muted-foreground/50 uppercase font-[350] font-geist-mono tracking-wider">
+                        <ErrorView message={message} />
+                    </div>
+                ) : (
+                    <>
+                        {messagePartsSandwiched.map((part) => (
+                            <MessagePartView
+                                key={part.level}
+                                part={part}
+                                messageState={message.state}
+                            />
+                        ))}
+                        {message.state === "streaming" && (
+                            <RetroSpinner className="mt-2" />
+                        )}
+                        <DeepResearchNotificationHandler message={message} />
+                        <DeepResearchNotificationButton message={message} />
+                        {message.errorMessage && (
+                            <div className="text-md rounded-md my-1 items-center justify-between font-[350]">
+                                <div className="flex items-center text-destructive font-medium">
+                                    {message.errorMessage}
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </>
+                        )}
+                    </>
+                )}
+                {/* // {streamStartTime && !isQuickChatWindow && (
+                                    //     <Metrics
+                                    //         text={message.text}
+                                    //         startTime={streamStartTime}
+                                    //         isStreaming={message.state === "streaming"}
+                                    //     />
+                                    // )} */}
+                <MessageCostDisplay
+                    costUsd={message.costUsd}
+                    promptTokens={message.promptTokens}
+                    completionTokens={message.completionTokens}
+                    isStreaming={message.state === "streaming"}
+                    isQuickChatWindow={isQuickChatWindow}
+                />
+            </div>
+            {showReorderOverlay && (
+                <div className="absolute inset-0 z-[4] flex items-center justify-center pointer-events-none">
+                    <div className="select-none rounded-md border border-border-accent/60 bg-background/85 px-3 py-1 text-[11px] font-geist-mono uppercase tracking-[0.16em] text-accent-700 shadow-sm backdrop-blur-sm">
+                        Drag to reorder
+                    </div>
+                </div>
             )}
-            {/* // {streamStartTime && !isQuickChatWindow && (
-                                //     <Metrics
-                                //         text={message.text}
-                                //         startTime={streamStartTime}
-                                //         isStreaming={message.state === "streaming"}
-                                //     />
-                                // )} */}
-            <MessageCostDisplay
-                costUsd={message.costUsd}
-                promptTokens={message.promptTokens}
-                completionTokens={message.completionTokens}
-                isStreaming={message.state === "streaming"}
-                isQuickChatWindow={isQuickChatWindow}
-            />
         </div>
     );
 }
@@ -1157,6 +1192,7 @@ export function ToolsMessageView({
     isReply = false,
     onMinimize,
     onStop,
+    dragHandleProps,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
@@ -1165,6 +1201,7 @@ export function ToolsMessageView({
     isReply?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
+    dragHandleProps?: DragListeners;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1226,6 +1263,10 @@ export function ToolsMessageView({
     ]
         .filter(Boolean)
         .join(" ");
+    const showReorderOverlay =
+        message.selected && !isQuickChatWindow && !isOnlyMessage;
+    const dragAnywhereProps =
+        showReorderOverlay && dragHandleProps ? dragHandleProps : {};
 
     function onReplyClick() {
         if (message.replyChatId) {
@@ -1244,6 +1285,7 @@ export function ToolsMessageView({
                         style={{
                             overflowWrap: "anywhere", // tailwind doesn't support this yet
                         }}
+                        {...dragAnywhereProps}
                         onClick={(e) => {
                             if (message.selected) return;
                             // Don't trigger selection if user is selecting text
@@ -1300,15 +1342,6 @@ export function ToolsMessageView({
                                         </div>
                                     )}
                                 </div>
-                                {!isOnlyMessage && (
-                                    <div
-                                        className={`text-accent-600 px-2 flex text-sm tracking-wider font-[350]
-                                        ${isQuickChatWindow ? "bg-gray-200" : "bg-background"} animate-brief-flash font-geist-mono uppercase
-                                        ${message.selected ? "opacity-100" : "opacity-0"}`}
-                                    >
-                                        In Chat
-                                    </div>
-                                )}
                             </div>
                             <div
                                 className={`no-print mr-3 flex items-center h-6 gap-2
@@ -1495,6 +1528,8 @@ export function ToolsMessageView({
                         <ToolsAIMessageViewInner
                             message={message}
                             isQuickChatWindow={isQuickChatWindow}
+                            selected={message.selected}
+                            showReorderOverlay={showReorderOverlay}
                         />
 
                         {/* Reply button at bottom overlapping border (only show if there are no replies) */}
@@ -1597,23 +1632,21 @@ function ToolsBlockView({
     const addMessageToToolsBlock = MessageAPI.useAddMessageToToolsBlock(
         chatId!,
     );
-    const handleAddModel = (modelId: string) => {
-        void (async () => {
-            await appendModelToChatCompare.mutateAsync(modelId);
-            const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
-            await syncGlobalCompareMetadataToConfigIds(
-                ids,
-                modelConfigsQuery.data ?? [],
-            );
-            void queryClient.invalidateQueries(
-                ModelsAPI.modelConfigQueries.compare(),
-            );
-            addMessageToToolsBlock.mutate({
-                messageSetId,
-                modelId,
-            });
-        })();
-    };
+    const deselectToolsMessages = MessageAPI.useDeselectToolsMessages();
+
+    const customOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
+    );
+    const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
+
+    // Track which models finished streaming and in what order, so we can sort
+    // finished models to the left (first finished = leftmost slot) when no
+    // custom drag-and-drop order is set.
+    const [finishedModelsOrder, setFinishedModelsOrder] = useState<string[]>(
+        [],
+    );
+    const prevMessageStatesRef = useRef<Map<string, string>>(new Map());
+    const trackedMessageSetIdRef = useRef<string | undefined>(undefined);
 
     const getDisplayName = useCallback(
         (modelId: string) =>
@@ -1634,6 +1667,50 @@ function ToolsBlockView({
                 !minimizedModels.has(modelConfig.id),
         );
     }, [selectedModelConfigs, currentModelIds, minimizedModels]);
+    const hasNormalizedInitialSelectionRef = useRef(false);
+
+    useLayoutEffect(() => {
+        if (trackedMessageSetIdRef.current !== messageSetId) {
+            trackedMessageSetIdRef.current = messageSetId;
+            prevMessageStatesRef.current = new Map();
+            setFinishedModelsOrder([]);
+        }
+
+        const nextFinishedModelsOrder = [...finishedModelsOrder];
+        let didChange = false;
+        for (const message of toolsBlock.chatMessages) {
+            const prev = prevMessageStatesRef.current.get(message.model);
+            if (
+                prev === "streaming" &&
+                message.state !== "streaming" &&
+                !nextFinishedModelsOrder.includes(message.model)
+            ) {
+                nextFinishedModelsOrder.push(message.model);
+                didChange = true;
+            }
+            prevMessageStatesRef.current.set(message.model, message.state);
+        }
+
+        if (didChange) {
+            setFinishedModelsOrder(nextFinishedModelsOrder);
+        }
+    }, [toolsBlock.chatMessages, messageSetId, finishedModelsOrder]);
+
+    // New behavior: tools chats should start with no selected message.
+    // For existing chats that still have legacy selection state, clear it once.
+    useEffect(() => {
+        if (!chatId) return;
+        if (hasNormalizedInitialSelectionRef.current) return;
+        if (toolsBlock.chatMessages.length === 0) return;
+        hasNormalizedInitialSelectionRef.current = true;
+
+        if (toolsBlock.chatMessages.some((m) => m.selected)) {
+            deselectToolsMessages.mutate({
+                chatId,
+                messageSetId,
+            });
+        }
+    }, [chatId, messageSetId, toolsBlock.chatMessages, deselectToolsMessages]);
 
     // Auto-minimize models that returned no response or errored
     useEffect(() => {
@@ -1657,9 +1734,90 @@ function ToolsBlockView({
 
     const activeMessages = [...toolsBlock.chatMessages]
         .filter((m) => !minimizedModels.has(m.model))
-        .sort((a, b) =>
-            getDisplayName(a.model).localeCompare(getDisplayName(b.model)),
-        );
+        .sort((a, b) => {
+            // Respect explicit drag-and-drop ordering if the user has set one.
+            if (customOrder) {
+                const aIdx = customOrder.indexOf(a.model);
+                const bIdx = customOrder.indexOf(b.model);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
+            // Default: finished (idle) models go left of still-streaming/loading
+            // models, sorted by completion order (first finished = leftmost slot).
+            const aIdle = a.state === "idle";
+            const bIdle = b.state === "idle";
+            if (aIdle !== bIdle) return aIdle ? -1 : 1;
+            if (aIdle && bIdle) {
+                const aFinishIdx = finishedModelsOrder.indexOf(a.model);
+                const bFinishIdx = finishedModelsOrder.indexOf(b.model);
+                if (aFinishIdx !== -1 && bFinishIdx !== -1)
+                    return aFinishIdx - bFinishIdx;
+            }
+            return getDisplayName(a.model).localeCompare(
+                getDisplayName(b.model),
+            );
+        });
+    const toolsItemOrder = useMemo(
+        () => activeMessages.map((m) => m.model),
+        [activeMessages],
+    );
+
+    const handleAddModel = (modelId: string) => {
+        void (async () => {
+            try {
+                await appendModelToChatCompare.mutateAsync(modelId);
+                const ids = (await fetchSavedModelConfigChat(chatId!)) ?? [];
+                await syncGlobalCompareMetadataToConfigIds(
+                    ids,
+                    modelConfigsQuery.data ?? [],
+                );
+                void queryClient.invalidateQueries(
+                    ModelsAPI.modelConfigQueries.compare(),
+                );
+                addMessageToToolsBlock.mutate({
+                    messageSetId,
+                    modelId,
+                });
+                if (chatId) {
+                    const current =
+                        customOrder ?? activeMessages.map((m) => m.model);
+                    setModelOrder(chatId, [...current, modelId]);
+                }
+            } catch (error) {
+                console.error("Failed to add model to chat compare", error);
+            }
+        })();
+    };
+
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [overId, setOverId] = useState<string | null>(null);
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 },
+        }),
+    );
+
+    function onDragStart({ active }: DragStartEvent) {
+        setActiveDragId(active.id as string);
+    }
+
+    function onDragOver({ over }: DragOverEvent) {
+        setOverId(over ? (over.id as string) : null);
+    }
+
+    function onDragEnd({ active, over }: DragEndEvent) {
+        setActiveDragId(null);
+        setOverId(null);
+        if (!over || active.id === over.id) return;
+        const oldIndex = activeMessages.findIndex((m) => m.model === active.id);
+        const newIndex = activeMessages.findIndex((m) => m.model === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
+        const newOrder = activeMessages.map((m) => m.model);
+        newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, active.id as string);
+        if (chatId) setModelOrder(chatId, newOrder);
+    }
 
     return (
         <LayoutGroup id={`tools-${messageSetId}`}>
@@ -1675,34 +1833,73 @@ function ToolsBlockView({
                 ${shouldShowScrollbar ? "is-scrolling" : ""}
                 ${!isQuickChatWindow ? "px-10" : ""}`}
                 >
-                    {activeMessages.map((message) => (
-                        <motion.div
-                            key={message.id}
-                            layout
-                            layoutId={`tools-col-${message.model}-${messageSetId}`}
-                            transition={{ duration: 0.3, ease: "easeInOut" }}
-                            className={
-                                isQuickChatWindow
-                                    ? "w-full max-w-prose"
-                                    : `w-full flex-1 min-w-[450px] max-w-[550px]`
-                            }
-                        >
-                            <ToolsMessageView
-                                message={message}
-                                isLastRow={isLastRow}
-                                isQuickChatWindow={isQuickChatWindow}
-                                isOnlyMessage={
-                                    toolsBlock.chatMessages.length === 1
-                                }
-                                onMinimize={
-                                    toolsBlock.chatMessages.length > 1
-                                        ? () => onMinimize(message.model)
-                                        : undefined
-                                }
-                                onStop={() => onMinimize(message.model)}
-                            />
-                        </motion.div>
-                    ))}
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        modifiers={[restrictToHorizontalAxis]}
+                        onDragStart={onDragStart}
+                        onDragOver={onDragOver}
+                        onDragEnd={onDragEnd}
+                    >
+                        <div className="flex flex-1 gap-2">
+                            {activeMessages.map((message) => (
+                                <motion.div
+                                    key={message.model}
+                                    layout
+                                    layoutId={`tools-col-${message.model}-${messageSetId}`}
+                                >
+                                    <SortableColumnItem
+                                        id={message.model}
+                                        disabled={!message.selected}
+                                        activeDragId={activeDragId}
+                                        overId={overId}
+                                        itemOrder={toolsItemOrder}
+                                        className={
+                                            isQuickChatWindow
+                                                ? "w-full max-w-prose"
+                                                : "w-full flex-1 min-w-[450px] max-w-[550px]"
+                                        }
+                                    >
+                                        {(listeners) => (
+                                            <ToolsMessageView
+                                                message={message}
+                                                isLastRow={isLastRow}
+                                                isQuickChatWindow={
+                                                    isQuickChatWindow
+                                                }
+                                                isOnlyMessage={
+                                                    toolsBlock.chatMessages
+                                                        .length === 1
+                                                }
+                                                onMinimize={
+                                                    toolsBlock.chatMessages
+                                                        .length > 1
+                                                        ? () =>
+                                                              onMinimize(
+                                                                  message.model,
+                                                              )
+                                                        : undefined
+                                                }
+                                                onStop={() =>
+                                                    onMinimize(message.model)
+                                                }
+                                                dragHandleProps={listeners}
+                                            />
+                                        )}
+                                    </SortableColumnItem>
+                                </motion.div>
+                            ))}
+                        </div>
+                        <DragOverlay>
+                            {activeDragId && (
+                                <div className="bg-background border rounded-md shadow-lg px-4 py-2 cursor-grabbing opacity-90">
+                                    <span className="text-sm">
+                                        {getDisplayName(activeDragId)}
+                                    </span>
+                                </div>
+                            )}
+                        </DragOverlay>
+                    </DndContext>
                     {isLastRow && !isQuickChatWindow && (
                         <div className="flex items-end gap-2 self-end">
                             {pendingModelConfigs.length > 0 && (
@@ -2013,11 +2210,24 @@ export default function MultiChat() {
     const [movedRightModels, setMovedRightModels] = useState<Set<string>>(
         new Set(),
     );
+    const previousLayoutStateChatIdRef = useRef<string | undefined>(undefined);
 
     // Reset per-chat layout state when navigating between chats
     useEffect(() => {
-        if (chatId) minimizedModelsActions.clearChat(chatId);
+        const previousChatId = previousLayoutStateChatIdRef.current;
+        if (previousChatId && previousChatId !== chatId) {
+            minimizedModelsActions.clearChat(previousChatId);
+            modelOrderActions.clearChat(previousChatId);
+        }
+        previousLayoutStateChatIdRef.current = chatId;
         setMovedRightModels(new Set());
+
+        return () => {
+            if (chatId) {
+                minimizedModelsActions.clearChat(chatId);
+                modelOrderActions.clearChat(chatId);
+            }
+        };
     }, [chatId]);
 
     const handleMinimize = useCallback(
@@ -2125,9 +2335,19 @@ export default function MultiChat() {
                 ?.displayName ?? modelId,
         [modelConfigsQuery.data],
     );
+    const customCompareOrder = useModelOrderStore((state) =>
+        chatId ? state.modelOrderByChatId.get(chatId) : undefined,
+    );
     const sortedCompareMessages = useMemo(() => {
         if (!currentCompareBlock) return [];
         return [...currentCompareBlock.messages].sort((a, b) => {
+            if (customCompareOrder) {
+                const aIdx = customCompareOrder.indexOf(a.model);
+                const bIdx = customCompareOrder.indexOf(b.model);
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+            }
             const aActive = a.state === "streaming";
             const bActive = b.state === "streaming";
             const aMoved = movedRightModels.has(a.model);
@@ -2139,7 +2359,12 @@ export default function MultiChat() {
                 getCompareDisplayName(b.model),
             );
         });
-    }, [currentCompareBlock, getCompareDisplayName, movedRightModels]);
+    }, [
+        currentCompareBlock,
+        getCompareDisplayName,
+        movedRightModels,
+        customCompareOrder,
+    ]);
 
     // ----------------------
     // Effects
