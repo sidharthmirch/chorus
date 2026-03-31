@@ -2,12 +2,18 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { motion, LayoutGroup } from "framer-motion";
 import {
-    DragDropContext,
-    Droppable,
-    Draggable,
-    DropResult,
-} from "@hello-pangea/dnd";
-import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+    DndContext,
+    DragOverlay,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    useDraggable,
+    closestCenter,
+} from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { SortableColumnItem } from "./SortableColumnItem";
 import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import { Button } from "./ui/button";
 import {
@@ -335,7 +341,7 @@ function AIMessageView({
     isSynthesis?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
-    dragHandleProps?: DraggableProvidedDragHandleProps | null;
+    dragHandleProps?: DragListeners;
 }) {
     const [raw, setRaw] = useState(false);
     const [streamStartTime, setStreamStartTime] = useState<Date>();
@@ -450,6 +456,7 @@ function AIMessageView({
                                 <span
                                     {...(dragHandleProps ?? {})}
                                     className="no-print ml-1 text-xs text-accent-600 font-geist-mono uppercase tracking-wider animate-brief-flash cursor-grab active:cursor-grabbing select-none"
+                                    // dragHandleProps are @dnd-kit listeners (onPointerDown etc.)
                                 >
                                     Drag to move
                                 </span>
@@ -954,15 +961,26 @@ function CompareBlockView({
         }
     };
 
-    function onDragEnd(result: DropResult) {
-        if (
-            !result.destination ||
-            result.source.index === result.destination.index
-        )
-            return;
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 },
+        }),
+    );
+
+    function onDragStart({ active }: DragStartEvent) {
+        setActiveDragId(active.id as string);
+    }
+
+    function onDragEnd({ active, over }: DragEndEvent) {
+        setActiveDragId(null);
+        if (!over || active.id === over.id) return;
+        const oldIndex = sortedMessages.findIndex((m) => m.model === active.id);
+        const newIndex = sortedMessages.findIndex((m) => m.model === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
         const newOrder = sortedMessages.map((m) => m.model);
-        const [moved] = newOrder.splice(result.source.index, 1);
-        newOrder.splice(result.destination.index, 0, moved);
+        newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, active.id as string);
         if (chatId) setModelOrder(chatId, newOrder);
     }
 
@@ -1046,114 +1064,84 @@ function CompareBlockView({
                 )}
 
                 {/* Draggable model columns */}
-                <DragDropContext onDragEnd={onDragEnd}>
-                    <Droppable
-                        droppableId={`compare-cols-${messageSetId}`}
-                        direction="horizontal"
-                    >
-                        {(provided) => (
-                            <div
-                                ref={provided.innerRef}
-                                {...provided.droppableProps}
-                                className="flex"
-                            >
-                                {sortedMessages.map((message, index) => {
-                                    const isMinimized = minimizedModels.has(
-                                        message.model,
-                                    );
-                                    const shortcutNumber =
-                                        modelShortcutOffset !== undefined
-                                            ? modelShortcutOffset + index
-                                            : undefined;
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    modifiers={[restrictToHorizontalAxis]}
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                >
+                    <div className="flex">
+                        {sortedMessages.map((message, index) => {
+                            const isMinimized = minimizedModels.has(
+                                message.model,
+                            );
+                            const shortcutNumber =
+                                modelShortcutOffset !== undefined
+                                    ? modelShortcutOffset + index
+                                    : undefined;
 
-                                    return (
-                                        <Draggable
-                                            key={message.model}
-                                            draggableId={message.model}
-                                            index={index}
-                                            isDragDisabled={
-                                                !message.selected ||
-                                                isMinimized
-                                            }
-                                        >
-                                            {(dragProvided) => (
-                                                <div
-                                                    ref={dragProvided.innerRef}
-                                                    {...dragProvided.draggableProps}
-                                                    className={`mr-2 ${
-                                                        isQuickChatWindow
-                                                            ? "pt-0"
-                                                            : "pt-2"
-                                                    } ${
-                                                        isMinimized
-                                                            ? "flex-none"
-                                                            : isQuickChatWindow
-                                                              ? ""
-                                                              : "flex-1 w-full min-w-[400px] max-w-[550px]"
-                                                    } w-full max-w-prose`}
-                                                >
-                                                    <motion.div
-                                                        layoutId={`compare-col-${message.model}-${messageSetId}`}
-                                                        transition={{
-                                                            duration: 0.3,
-                                                            ease: "easeInOut",
-                                                        }}
-                                                    >
-                                                        {isMinimized ? (
-                                                            <MinimizedColumnView
-                                                                message={
-                                                                    message
-                                                                }
-                                                                onExpand={() =>
-                                                                    onToggleMinimize(
-                                                                        message.model,
-                                                                    )
-                                                                }
-                                                            />
-                                                        ) : (
-                                                            <AIMessageView
-                                                                message={
-                                                                    message
-                                                                }
-                                                                blockType="compare"
-                                                                shortcutNumber={
-                                                                    shortcutNumber
-                                                                }
-                                                                isLastRow={
-                                                                    isLastRow
-                                                                }
-                                                                isQuickChatWindow={
-                                                                    isQuickChatWindow
-                                                                }
-                                                                isSynthesis={
-                                                                    false
-                                                                }
-                                                                onMinimize={() =>
-                                                                    onToggleMinimize(
-                                                                        message.model,
-                                                                    )
-                                                                }
-                                                                onStop={() =>
-                                                                    onModelStopped(
-                                                                        message.model,
-                                                                    )
-                                                                }
-                                                                dragHandleProps={
-                                                                    dragProvided.dragHandleProps
-                                                                }
-                                                            />
-                                                        )}
-                                                    </motion.div>
-                                                </div>
-                                            )}
-                                        </Draggable>
-                                    );
-                                })}
-                                {provided.placeholder}
+                            return (
+                                <SortableColumnItem
+                                    key={message.model}
+                                    id={message.model}
+                                    disabled={!message.selected || isMinimized}
+                                    className={`mr-2 ${
+                                        isQuickChatWindow ? "pt-0" : "pt-2"
+                                    } ${
+                                        isMinimized
+                                            ? "flex-none"
+                                            : isQuickChatWindow
+                                              ? ""
+                                              : "flex-1 w-full min-w-[400px] max-w-[550px]"
+                                    } w-full max-w-prose`}
+                                >
+                                    {(listeners) =>
+                                        isMinimized ? (
+                                            <MinimizedColumnView
+                                                message={message}
+                                                onExpand={() =>
+                                                    onToggleMinimize(
+                                                        message.model,
+                                                    )
+                                                }
+                                            />
+                                        ) : (
+                                            <AIMessageView
+                                                message={message}
+                                                blockType="compare"
+                                                shortcutNumber={shortcutNumber}
+                                                isLastRow={isLastRow}
+                                                isQuickChatWindow={
+                                                    isQuickChatWindow
+                                                }
+                                                isSynthesis={false}
+                                                onMinimize={() =>
+                                                    onToggleMinimize(
+                                                        message.model,
+                                                    )
+                                                }
+                                                onStop={() =>
+                                                    onModelStopped(message.model)
+                                                }
+                                                dragHandleProps={listeners}
+                                            />
+                                        )
+                                    }
+                                </SortableColumnItem>
+                            );
+                        })}
+                    </div>
+                    <DragOverlay>
+                        {activeDragId && (
+                            <div className="bg-background border rounded-md shadow-lg px-4 py-2 cursor-grabbing opacity-90">
+                                <span className="text-sm">
+                                    {getDisplayName(activeDragId)}
+                                </span>
                             </div>
                         )}
-                    </Droppable>
-                </DragDropContext>
+                    </DragOverlay>
+                </DndContext>
 
                 {isLastRow && (
                     <>

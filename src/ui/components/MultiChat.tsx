@@ -16,7 +16,7 @@ import {
 } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
-import { motion, LayoutGroup } from "framer-motion";
+import { LayoutGroup } from "framer-motion";
 import {
     FileTextIcon,
     ExternalLinkIcon,
@@ -98,12 +98,18 @@ import {
 } from "@core/infra/MinimizedModelsStore";
 import { useModelOrderStore } from "@core/infra/ModelOrderStore";
 import {
-    DragDropContext,
-    Droppable,
-    Draggable,
-    DropResult,
-} from "@hello-pangea/dnd";
-import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+    DndContext,
+    DragOverlay,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    useDraggable,
+    closestCenter,
+} from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+type DragListeners = ReturnType<typeof useDraggable>["listeners"];
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { SortableColumnItem } from "./SortableColumnItem";
 import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 import {
     getToolsetIcon,
@@ -1168,7 +1174,7 @@ export function ToolsMessageView({
     isReply?: boolean;
     onMinimize?: () => void;
     onStop?: () => void;
-    dragHandleProps?: DraggableProvidedDragHandleProps | null;
+    dragHandleProps?: DragListeners;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1306,8 +1312,8 @@ export function ToolsMessageView({
                                 </div>
                                 {!isOnlyMessage && (
                                     <div
-                                        {...(message.selected
-                                            ? (dragHandleProps ?? {})
+                                        {...(message.selected && dragHandleProps
+                                            ? dragHandleProps
                                             : {})}
                                         className={`text-accent-600 px-2 flex text-sm tracking-wider font-[350]
                                         ${isQuickChatWindow ? "bg-gray-200" : "bg-background"} animate-brief-flash font-geist-mono uppercase
@@ -1725,15 +1731,26 @@ function ToolsBlockView({
         }
     };
 
-    function onDragEnd(result: DropResult) {
-        if (
-            !result.destination ||
-            result.source.index === result.destination.index
-        )
-            return;
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 },
+        }),
+    );
+
+    function onDragStart({ active }: DragStartEvent) {
+        setActiveDragId(active.id as string);
+    }
+
+    function onDragEnd({ active, over }: DragEndEvent) {
+        setActiveDragId(null);
+        if (!over || active.id === over.id) return;
+        const oldIndex = activeMessages.findIndex((m) => m.model === active.id);
+        const newIndex = activeMessages.findIndex((m) => m.model === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
         const newOrder = activeMessages.map((m) => m.model);
-        const [moved] = newOrder.splice(result.source.index, 1);
-        newOrder.splice(result.destination.index, 0, moved);
+        newOrder.splice(oldIndex, 1);
+        newOrder.splice(newIndex, 0, active.id as string);
         if (chatId) setModelOrder(chatId, newOrder);
     }
 
@@ -1751,84 +1768,64 @@ function ToolsBlockView({
                 ${shouldShowScrollbar ? "is-scrolling" : ""}
                 ${!isQuickChatWindow ? "px-10" : ""}`}
                 >
-                    <DragDropContext onDragEnd={onDragEnd}>
-                        <Droppable
-                            droppableId={`tools-cols-${messageSetId}`}
-                            direction="horizontal"
-                        >
-                            {(provided) => (
-                                <div
-                                    ref={provided.innerRef}
-                                    {...provided.droppableProps}
-                                    className="flex flex-1 gap-2"
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        modifiers={[restrictToHorizontalAxis]}
+                        onDragStart={onDragStart}
+                        onDragEnd={onDragEnd}
+                    >
+                        <div className="flex flex-1 gap-2">
+                            {activeMessages.map((message) => (
+                                <SortableColumnItem
+                                    key={message.model}
+                                    id={message.model}
+                                    disabled={!message.selected}
+                                    className={
+                                        isQuickChatWindow
+                                            ? "w-full max-w-prose"
+                                            : "w-full flex-1 min-w-[450px] max-w-[550px]"
+                                    }
                                 >
-                                    {activeMessages.map((message, index) => (
-                                        <Draggable
-                                            key={message.model}
-                                            draggableId={`tools-${message.model}`}
-                                            index={index}
-                                            isDragDisabled={!message.selected}
-                                        >
-                                            {(dragProvided) => (
-                                                <div
-                                                    ref={dragProvided.innerRef}
-                                                    {...dragProvided.draggableProps}
-                                                    className={
-                                                        isQuickChatWindow
-                                                            ? "w-full max-w-prose"
-                                                            : "w-full flex-1 min-w-[450px] max-w-[550px]"
-                                                    }
-                                                >
-                                                    <motion.div
-                                                        layoutId={`tools-col-${message.model}-${messageSetId}`}
-                                                        transition={{
-                                                            duration: 0.3,
-                                                            ease: "easeInOut",
-                                                        }}
-                                                    >
-                                                        <ToolsMessageView
-                                                            message={message}
-                                                            isLastRow={
-                                                                isLastRow
-                                                            }
-                                                            isQuickChatWindow={
-                                                                isQuickChatWindow
-                                                            }
-                                                            isOnlyMessage={
-                                                                toolsBlock
-                                                                    .chatMessages
-                                                                    .length ===
-                                                                1
-                                                            }
-                                                            onMinimize={
-                                                                toolsBlock
-                                                                    .chatMessages
-                                                                    .length > 1
-                                                                    ? () =>
-                                                                          onMinimize(
-                                                                              message.model,
-                                                                          )
-                                                                    : undefined
-                                                            }
-                                                            onStop={() =>
-                                                                onMinimize(
-                                                                    message.model,
-                                                                )
-                                                            }
-                                                            dragHandleProps={
-                                                                dragProvided.dragHandleProps
-                                                            }
-                                                        />
-                                                    </motion.div>
-                                                </div>
-                                            )}
-                                        </Draggable>
-                                    ))}
-                                    {provided.placeholder}
+                                    {(listeners) => (
+                                        <ToolsMessageView
+                                            message={message}
+                                            isLastRow={isLastRow}
+                                            isQuickChatWindow={
+                                                isQuickChatWindow
+                                            }
+                                            isOnlyMessage={
+                                                toolsBlock.chatMessages
+                                                    .length === 1
+                                            }
+                                            onMinimize={
+                                                toolsBlock.chatMessages
+                                                    .length > 1
+                                                    ? () =>
+                                                          onMinimize(
+                                                              message.model,
+                                                          )
+                                                    : undefined
+                                            }
+                                            onStop={() =>
+                                                onMinimize(message.model)
+                                            }
+                                            dragHandleProps={listeners}
+                                        />
+                                    )}
+                                </SortableColumnItem>
+                            ))}
+                        </div>
+                        <DragOverlay>
+                            {activeDragId && (
+                                <div className="bg-background border rounded-md shadow-lg px-4 py-2 cursor-grabbing opacity-90">
+                                    <span className="text-sm">
+                                        {getDisplayName(activeDragId)}
+                                    </span>
                                 </div>
                             )}
-                        </Droppable>
-                    </DragDropContext>
+                        </DragOverlay>
+                    </DndContext>
                     {isLastRow && !isQuickChatWindow && (
                         <div className="flex items-end gap-2 self-end">
                             {pendingModelConfigs.length > 0 && (
