@@ -2698,12 +2698,22 @@ export default function MultiChat() {
                         );
                         return;
                     }
+                    const compareMessageId = sortedCompareMessages[index].id;
                     selectMessage.mutate({
                         chatId: chatId!,
                         messageSetId: currentMessageSet.id,
-                        messageId: sortedCompareMessages[index].id,
+                        messageId: compareMessageId,
                         blockType: "compare",
                     });
+                    document
+                        .querySelector(
+                            `[data-compare-message-id="${compareMessageId}"]`,
+                        )
+                        ?.scrollIntoView({
+                            behavior: "smooth",
+                            inline: "nearest",
+                            block: "nearest",
+                        });
                 } else if (currentMessageSet?.selectedBlockType === "tools") {
                     // Use the resolved visual order so cmd+1 selects the
                     // leftmost column regardless of streaming completion order.
@@ -2719,34 +2729,59 @@ export default function MultiChat() {
                         );
                         return;
                     }
+                    const toolsMessageId = orderedMsgs[index].id;
                     selectMessage.mutate({
                         chatId: chatId!,
                         messageSetId: currentMessageSet.id,
-                        messageId: orderedMsgs[index].id,
+                        messageId: toolsMessageId,
                         blockType: "tools",
                     });
-                }
-            } else if (
-                (e.metaKey || e.ctrlKey) &&
-                e.shiftKey &&
-                e.key === " "
-            ) {
-                // cmd/ctrl + shift + space: scroll selected chat column into view
-                e.preventDefault();
-                const selectedMsg =
-                    currentMessageSet?.toolsBlock?.chatMessages.find(
-                        (m) => m.selected,
-                    );
-                if (selectedMsg) {
                     document
                         .querySelector(
-                            `[data-tools-message-id="${selectedMsg.id}"]`,
+                            `[data-tools-message-id="${toolsMessageId}"]`,
                         )
                         ?.scrollIntoView({
                             behavior: "smooth",
                             inline: "nearest",
                             block: "nearest",
                         });
+                }
+            } else if (
+                (e.metaKey || e.ctrlKey) &&
+                e.shiftKey &&
+                e.key === " "
+            ) {
+                // cmd/ctrl + shift + space: pop selected model to first column position
+                e.preventDefault();
+                if (!chatId || !currentMessageSet) return;
+                if (currentMessageSet.selectedBlockType === "tools") {
+                    const allMsgs = currentMessageSet.toolsBlock.chatMessages;
+                    const selectedMsg = allMsgs.find((m) => m.selected);
+                    if (!selectedMsg) return;
+                    const currentOrder =
+                        currentVisualOrder ?? allMsgs.map((m) => m.model);
+                    const rest = currentOrder.filter(
+                        (id) => id !== selectedMsg.model,
+                    );
+                    modelOrderActions.setModelOrder(chatId, [
+                        selectedMsg.model,
+                        ...rest,
+                    ]);
+                } else if (currentMessageSet.selectedBlockType === "compare") {
+                    const selectedMsg = sortedCompareMessages.find(
+                        (m) => m.selected,
+                    );
+                    if (!selectedMsg) return;
+                    const currentOrder = sortedCompareMessages.map(
+                        (m) => m.model,
+                    );
+                    const rest = currentOrder.filter(
+                        (id) => id !== selectedMsg.model,
+                    );
+                    modelOrderActions.setModelOrder(chatId, [
+                        selectedMsg.model,
+                        ...rest,
+                    ]);
                 }
             } else if (e.metaKey && e.key === "s" && !e.shiftKey) {
                 e.preventDefault();
