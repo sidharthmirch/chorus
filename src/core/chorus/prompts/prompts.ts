@@ -604,9 +604,15 @@ export function injectSystemPrompts(
         }[];
         isInProject?: boolean;
         universalSystemPrompt?: string;
+        promptProfileSystemPrompt?: string;
     },
 ): ModelConfig {
-    const { toolsetInfo, isInProject, universalSystemPrompt } = options ?? {
+    const {
+        toolsetInfo,
+        isInProject,
+        universalSystemPrompt,
+        promptProfileSystemPrompt,
+    } = options ?? {
         isInProject: false,
     };
 
@@ -615,6 +621,7 @@ export function injectSystemPrompts(
         systemPrompt: [
             CHORUS_SYSTEM_PROMPT,
             universalSystemPrompt || UNIVERSAL_SYSTEM_PROMPT_DEFAULT,
+            ...(promptProfileSystemPrompt ? [promptProfileSystemPrompt] : []),
             ...(toolsetInfo ? [TOOLS_MODE_SYSTEM_PROMPT(toolsetInfo)] : []),
             ...(isInProject ? [PROJECTS_SYSTEM_PROMPT] : []),
             ...(modelConfigIn.systemPrompt
