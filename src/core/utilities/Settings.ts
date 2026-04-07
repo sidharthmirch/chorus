@@ -21,6 +21,7 @@ export interface Settings {
         modelConfigId?: string;
         shortcut?: string;
     };
+    titleGenerationModelConfigId?: string;
     lmStudioBaseUrl?: string;
     cautiousEnter?: boolean;
 }
