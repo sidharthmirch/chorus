@@ -2642,6 +2642,8 @@ export default function MultiChat() {
     }, [doShareChat]);
 
     const selectMessage = MessageAPI.useSelectMessage();
+    const deselectCompareMessages = MessageAPI.useDeselectCompareMessages();
+    const deselectToolsMessages = MessageAPI.useDeselectToolsMessages();
     const selectSynthesis = MessageAPI.useSelectSynthesis();
     const setReviewsEnabled = MessageAPI.useSetReviewsEnabled();
     // const nextTools = API.useNextTools();
@@ -2698,7 +2700,15 @@ export default function MultiChat() {
                         );
                         return;
                     }
-                    const compareMessageId = sortedCompareMessages[index].id;
+                    const compareMessage = sortedCompareMessages[index];
+                    if (compareMessage.selected) {
+                        deselectCompareMessages.mutate({
+                            chatId: chatId!,
+                            messageSetId: currentMessageSet.id,
+                        });
+                        return;
+                    }
+                    const compareMessageId = compareMessage.id;
                     selectMessage.mutate({
                         chatId: chatId!,
                         messageSetId: currentMessageSet.id,
@@ -2729,7 +2739,15 @@ export default function MultiChat() {
                         );
                         return;
                     }
-                    const toolsMessageId = orderedMsgs[index].id;
+                    const toolsMessage = orderedMsgs[index];
+                    if (toolsMessage.selected) {
+                        deselectToolsMessages.mutate({
+                            chatId: chatId!,
+                            messageSetId: currentMessageSet.id,
+                        });
+                        return;
+                    }
+                    const toolsMessageId = toolsMessage.id;
                     selectMessage.mutate({
                         chatId: chatId!,
                         messageSetId: currentMessageSet.id,
@@ -2836,6 +2854,8 @@ export default function MultiChat() {
         handleShareChat,
         handleOpenQuickChatInMainWindow,
         appMetadata,
+        deselectCompareMessages,
+        deselectToolsMessages,
         selectMessage,
         selectSynthesis,
         setReviewsEnabled,
