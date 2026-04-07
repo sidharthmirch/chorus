@@ -35,7 +35,6 @@ const useToolsDisabledStore = create<ToolsDisabledStore>((set) => ({
             }
             return { toolsDisabledByChatId: next };
         }),
-
 }));
 
 export const toolsDisabledActions = {

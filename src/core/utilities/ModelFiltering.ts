@@ -45,4 +45,3 @@ export function getFilteredModelConfigs(
 
     return filtered;
 }
-
