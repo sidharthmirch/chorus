@@ -6,7 +6,6 @@ import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { resolveOrderedCompareConfigs } from "../ChatCompareSelection";
 import { db } from "../DB";
 import * as ModelsAPI from "./ModelsAPI";
-import { useActiveModelProfile } from "./ModelProfilesAPI";
 import { useProviderVisibilityMap } from "./ProviderVisibilityAPI";
 import { v4 as uuidv4 } from "uuid";
 
@@ -101,16 +100,15 @@ export function useChatCompareModelConfigs(chatId: string) {
     const ambientCompareQuery = ModelsAPI.useSelectedModelConfigsCompare();
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
     const providerVisibilityMap = useProviderVisibilityMap();
-    const activeProfile = useActiveModelProfile();
 
     const visibleConfigs = useMemo(
         () =>
             getFilteredModelConfigs(
                 modelConfigsQuery.data ?? [],
                 providerVisibilityMap,
-                activeProfile,
+                null,
             ),
-        [modelConfigsQuery.data, providerVisibilityMap, activeProfile],
+        [modelConfigsQuery.data, providerVisibilityMap],
     );
 
     return useMemo(() => {
@@ -121,6 +119,11 @@ export function useChatCompareModelConfigs(chatId: string) {
         );
         if (fromSaved.length > 0) {
             return fromSaved;
+        }
+        // If there's an explicit saved record (even empty), don't fall back to ambient.
+        // null means "no saved data yet" -> use ambient defaults.
+        if (savedModelConfig.data != null) {
+            return [];
         }
         const visibleIds = new Set(visibleConfigs.map((c) => c.id));
         return (ambientCompareQuery.data ?? []).filter((m) =>

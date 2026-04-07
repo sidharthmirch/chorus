@@ -43,7 +43,6 @@ import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
-import { useActiveModelProfile } from "@core/chorus/api/ModelProfilesAPI";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { PromptProfilePill } from "./PromptProfilePill";
 import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
@@ -99,15 +98,14 @@ export function ChatInput({
     const queryClient = useQueryClient();
     const modelConfigs = ModelsAPI.useModelConfigs();
     const providerVisibilityMap = useProviderVisibilityMap();
-    const activeProfile = useActiveModelProfile();
     const visibleModelConfigs = useMemo(
         () =>
             getFilteredModelConfigs(
                 modelConfigs.data ?? [],
                 providerVisibilityMap,
-                activeProfile,
+                null,
             ),
-        [modelConfigs.data, providerVisibilityMap, activeProfile],
+        [modelConfigs.data, providerVisibilityMap],
     );
 
     const chatCompareModelConfigs =
@@ -397,10 +395,7 @@ export function ChatInput({
     const persistMainChatCompareIds = useCallback(
         async (configIds: string[]): Promise<string[]> => {
             const visibleIds = new Set(visibleModelConfigs.map((c) => c.id));
-            let next = configIds.filter((id) => visibleIds.has(id));
-            if (next.length === 0 && visibleModelConfigs[0]) {
-                next = [visibleModelConfigs[0].id];
-            }
+            const next = configIds.filter((id) => visibleIds.has(id));
             await updateSavedChatCompare.mutateAsync({
                 chatId,
                 modelIds: next,
