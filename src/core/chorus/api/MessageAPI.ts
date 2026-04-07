@@ -2126,6 +2126,36 @@ export function useDeselectToolsMessages() {
     });
 }
 
+export function useDeselectCompareMessages() {
+    const queryClient = useQueryClient();
+    const markProjectContextSummaryAsStale =
+        useMarkProjectContextSummaryAsStale();
+
+    return useMutation({
+        mutationKey: ["deselectCompareMessages"] as const,
+        mutationFn: async ({
+            messageSetId,
+        }: {
+            chatId: string;
+            messageSetId: string;
+        }) => {
+            await db.execute(
+                "UPDATE messages SET selected = 0 WHERE message_set_id = ? AND block_type = 'compare'",
+                [messageSetId],
+            );
+        },
+        onSuccess: async (_data, variables) => {
+            await queryClient.invalidateQueries({
+                queryKey: messageKeys.messageSets(variables.chatId),
+            });
+
+            await markProjectContextSummaryAsStale.mutateAsync({
+                chatId: variables.chatId,
+            });
+        },
+    });
+}
+
 /**
  * Updates the selected_block_type field in a message set,
  * and also the current_block_type field in app_metadata

@@ -1119,6 +1119,7 @@ function CompareBlockView({
                                     key={message.model}
                                     layout
                                     layoutId={`compare-col-${message.model}-${messageSetId}`}
+                                    data-compare-message-id={message.id}
                                 >
                                     <SortableColumnItem
                                         id={message.model}
