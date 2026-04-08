@@ -37,17 +37,18 @@ export async function checkToolYolo(
     toolsetName: string,
     toolName: string,
 ): Promise<boolean> {
-    const rows = await db.select<ToolYoloDBRow[]>(
-        "SELECT 1 FROM tool_yolo WHERE toolset_name = ? AND tool_name = ?",
+    const rows = await db.select<{ exists: number }[]>(
+        "SELECT 1 AS exists FROM tool_yolo WHERE toolset_name = ? AND tool_name = ?",
         [toolsetName, toolName],
     );
     return rows.length > 0;
 }
 
-export function useAllToolYolo() {
+export function useAllToolYolo(enabled = true) {
     return useQuery({
         queryKey: toolYoloKeys.toolYolos(),
         queryFn: fetchAllToolYolo,
+        enabled,
     });
 }
 

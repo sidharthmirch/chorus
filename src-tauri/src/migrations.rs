@@ -2640,29 +2640,6 @@ You have full access to bash commands on the user''''s computer. If you write a 
             "#,
         },
         Migration {
-            version: 144,
-            description: "add default_prompt_profile_id to projects",
-            kind: MigrationKind::Up,
-            sql: r#"
-                ALTER TABLE projects ADD COLUMN default_prompt_profile_id TEXT DEFAULT NULL;
-            "#,
-        },
-        Migration {
-            version: 145,
-            description: "add tool_yolo table and projects.yolo_mode column",
-            kind: MigrationKind::Up,
-            sql: r#"
-                CREATE TABLE IF NOT EXISTS tool_yolo (
-                    toolset_name TEXT NOT NULL,
-                    tool_name TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (toolset_name, tool_name)
-                );
-
-                ALTER TABLE projects ADD COLUMN yolo_mode INTEGER DEFAULT NULL;
-            "#,
-        },
-        Migration {
             version: 143,
             description: "add gemini 2.5 flash lite and update ambient to use it",
             kind: MigrationKind::Up,
@@ -2684,6 +2661,29 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 -- Update ambient config to use the stable flash-lite model
                 UPDATE model_configs SET model_id = 'google::gemini-2.5-flash-lite'
                 WHERE id = 'google::ambient-gemini-2.5-flash';
+            "#,
+        },
+        Migration {
+            version: 144,
+            description: "add default_prompt_profile_id to projects",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE projects ADD COLUMN default_prompt_profile_id TEXT DEFAULT NULL;
+            "#,
+        },
+        Migration {
+            version: 145,
+            description: "add tool_yolo table and projects.yolo_mode column",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS tool_yolo (
+                    toolset_name TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (toolset_name, tool_name)
+                );
+
+                ALTER TABLE projects ADD COLUMN yolo_mode INTEGER DEFAULT NULL;
             "#,
         },
     ];

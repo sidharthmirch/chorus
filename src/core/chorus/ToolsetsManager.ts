@@ -73,15 +73,14 @@ export class ToolsetsManager {
             }
         }
 
-        // 2. Per-tool YOLO
-        const isToolYolo = await checkToolYolo(toolsetName, toolName);
-        if (isToolYolo) {
+        // 2. Global YOLO — check before per-tool to avoid an extra DB query
+        const appMetadata = await fetchAppMetadata();
+        if (appMetadata?.["yolo_mode"] === "true") {
             return true;
         }
 
-        // 3. Global YOLO
-        const appMetadata = await fetchAppMetadata();
-        return appMetadata?.["yolo_mode"] === "true";
+        // 3. Per-tool YOLO
+        return checkToolYolo(toolsetName, toolName);
     }
 
     /**

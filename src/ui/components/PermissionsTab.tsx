@@ -30,20 +30,20 @@ export const PermissionsTab: React.FC = () => {
     const { data: yoloMode } = AppMetadataAPI.useYoloMode();
     const setYoloMode = AppMetadataAPI.useSetYoloMode();
 
-    const { data: toolYoloEntries } = ToolYoloAPI.useAllToolYolo();
+    const allTools = ToolsetsManager.instance
+        .listToolsets()
+        .flatMap((toolset) =>
+            toolset.listTools().map((tool) => ({
+                toolsetName: tool.toolsetName,
+                toolName: tool.displayNameSuffix,
+            })),
+        );
+
+    const { data: toolYoloEntries } = ToolYoloAPI.useAllToolYolo(
+        yoloMode === false && allTools.length > 0,
+    );
     const setToolYolo = ToolYoloAPI.useSetToolYolo();
     const deleteToolYolo = ToolYoloAPI.useDeleteToolYolo();
-
-    const allTools = React.useMemo(() => {
-        return ToolsetsManager.instance
-            .listToolsets()
-            .flatMap((toolset) =>
-                toolset.listTools().map((tool) => ({
-                    toolsetName: tool.toolsetName,
-                    toolName: tool.displayNameSuffix,
-                })),
-            );
-    }, []);
 
     const groupedPermissions = React.useMemo(() => {
         if (!permissions) return {};
@@ -147,7 +147,7 @@ export const PermissionsTab: React.FC = () => {
                 </Card>
             </div>
 
-            {!yoloMode && allTools.length > 0 && (
+            {yoloMode === false && allTools.length > 0 && (
                 <div className="space-y-2">
                     <div className="space-y-1">
                         <h3 className="text-base font-semibold">
@@ -167,6 +167,7 @@ export const PermissionsTab: React.FC = () => {
                                             e.toolsetName === toolsetName &&
                                             e.toolName === toolName,
                                     ) ?? false;
+                                const switchId = `tool-yolo-${toolsetName}-${toolName}`;
                                 return (
                                     <div
                                         key={`${toolsetName}-${toolName}`}
@@ -174,11 +175,15 @@ export const PermissionsTab: React.FC = () => {
                                     >
                                         <div className="flex items-center gap-2">
                                             {getToolsetIcon(toolsetName)}
-                                            <Label className="font-mono text-sm cursor-pointer">
+                                            <Label
+                                                htmlFor={switchId}
+                                                className="font-mono text-sm cursor-pointer"
+                                            >
                                                 {toolsetName}_{toolName}
                                             </Label>
                                         </div>
                                         <Switch
+                                            id={switchId}
                                             checked={isYolo}
                                             onCheckedChange={(checked) => {
                                                 if (checked) {

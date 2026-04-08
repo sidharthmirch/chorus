@@ -83,8 +83,7 @@ function readProject(row: ProjectDBRow): Project {
         isImported: row.is_imported === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
         defaultPromptProfileId: row.default_prompt_profile_id ?? undefined,
-        yoloMode:
-            row.yolo_mode === null ? undefined : row.yolo_mode === 1,
+        yoloMode: row.yolo_mode === null ? undefined : row.yolo_mode === 1,
     };
 }
 
@@ -699,10 +698,10 @@ export function useSetProjectYoloMode() {
             projectId: string;
             yoloMode: boolean | null;
         }) => {
-            await db.execute(
-                "UPDATE projects SET yolo_mode = ? WHERE id = ?",
-                [yoloMode === null ? null : yoloMode ? 1 : 0, projectId],
-            );
+            await db.execute("UPDATE projects SET yolo_mode = ? WHERE id = ?", [
+                yoloMode === null ? null : yoloMode ? 1 : 0,
+                projectId,
+            ]);
         },
         onSuccess: async (_data, variables) => {
             await queryClient.invalidateQueries(projectQueries.list());
