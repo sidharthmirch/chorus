@@ -691,7 +691,10 @@ export function ChatInput({
                         onKeyDown={(e) => {
                             if (cautiousEnter) {
                                 // Cautious mode: Cmd+Enter to submit
-                                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                if (
+                                    e.key === "Enter" &&
+                                    (e.metaKey || e.ctrlKey)
+                                ) {
                                     e.preventDefault();
                                     handleSubmit(e);
                                 }
@@ -713,7 +716,10 @@ export function ChatInput({
                         onHeightChange={setNaturalHeight}
                         style={
                             isCollapsed
-                                ? { maxHeight: `${COLLAPSED_HEIGHT_PX}px`, overflowY: "hidden" }
+                                ? {
+                                      maxHeight: `${COLLAPSED_HEIGHT_PX}px`,
+                                      overflowY: "hidden",
+                                  }
                                 : undefined
                         }
                     />
@@ -730,9 +736,14 @@ export function ChatInput({
                             className="absolute top-1 right-1 z-10 flex items-center gap-0.5 text-xs text-muted-foreground/50 bg-background/90 backdrop-blur-[1px] rounded-full px-2 py-1 hover:text-muted-foreground"
                         >
                             {isCollapsed ? (
-                                <>Show more <ChevronDownIcon className="w-3 h-3" /></>
+                                <>
+                                    Show more <ChevronUp className="w-3 h-3" />
+                                </>
                             ) : (
-                                <>Collapse <ChevronUp className="w-3 h-3" /></>
+                                <>
+                                    Collapse{" "}
+                                    <ChevronDownIcon className="w-3 h-3" />
+                                </>
                             )}
                         </button>
                     )}
@@ -940,7 +951,10 @@ export function ChatInput({
                     onHeightChange={setNaturalHeight}
                     style={
                         isCollapsed
-                            ? { maxHeight: `${COLLAPSED_HEIGHT_PX}px`, overflowY: "hidden" }
+                            ? {
+                                  maxHeight: `${COLLAPSED_HEIGHT_PX}px`,
+                                  overflowY: "hidden",
+                              }
                             : undefined
                     }
                     tabIndex={1} // should be first item to get focus
@@ -958,9 +972,13 @@ export function ChatInput({
                         className="absolute top-1 right-1 z-10 flex items-center gap-0.5 text-xs text-muted-foreground/50 bg-background/90 backdrop-blur-[1px] rounded-full px-2 py-1 hover:text-muted-foreground"
                     >
                         {isCollapsed ? (
-                            <>Show more <ChevronDownIcon className="w-3 h-3" /></>
+                            <>
+                                Show more <ChevronUp className="w-3 h-3" />
+                            </>
                         ) : (
-                            <>Collapse <ChevronUp className="w-3 h-3" /></>
+                            <>
+                                Collapse <ChevronDownIcon className="w-3 h-3" />
+                            </>
                         )}
                     </button>
                 )}
