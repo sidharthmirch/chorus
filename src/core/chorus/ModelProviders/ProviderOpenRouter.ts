@@ -105,15 +105,18 @@ export class ProviderOpenRouter implements IProvider {
 
         const chunks: OpenAI.ChatCompletionChunk[] = [];
         let generationId: string | undefined;
+        let responseModel: string | undefined;
 
         try {
             const stream = await client.chat.completions.create(params);
 
             for await (const chunk of stream) {
                 chunks.push(chunk);
-                // Capture the generation ID from the first chunk
                 if (!generationId && chunk.id) {
                     generationId = chunk.id;
+                }
+                if (!responseModel && chunk.model) {
+                    responseModel = chunk.model;
                 }
                 if (chunk.choices[0]?.delta?.content) {
                     onChunk(chunk.choices[0].delta.content);
@@ -163,12 +166,17 @@ export class ProviderOpenRouter implements IProvider {
 
         // Extract usage data from the last chunk
         const lastChunk = chunks[chunks.length - 1];
+        const extendedUsage = lastChunk?.usage as
+            | (OpenAI.CompletionUsage & { cost?: number })
+            | undefined;
         let usageData:
             | {
                   prompt_tokens?: number;
                   completion_tokens?: number;
                   total_tokens?: number;
                   generation_id?: string;
+                  model?: string;
+                  cost?: number;
               }
             | undefined;
 
@@ -178,11 +186,13 @@ export class ProviderOpenRouter implements IProvider {
                 completion_tokens: lastChunk.usage.completion_tokens,
                 total_tokens: lastChunk.usage.total_tokens,
                 generation_id: generationId,
+                model: responseModel,
+                cost: extendedUsage?.cost,
             };
-        } else if (generationId) {
-            // Even if no usage data in chunks, pass the generation ID
+        } else if (generationId || responseModel) {
             usageData = {
                 generation_id: generationId,
+                model: responseModel,
             };
         }
 

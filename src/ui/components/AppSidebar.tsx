@@ -301,6 +301,7 @@ function Project({ projectId }: { projectId: string }) {
     const project = projects.find((p) => p.id === projectId)!;
     const isCollapsed = project?.isCollapsed || false;
     const showCost = settings?.showCost ?? false;
+    const projectTotalCostUsd = Number(project?.totalCostUsd ?? 0);
 
     const handleToggleCollapse = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -363,10 +364,10 @@ function Project({ projectId }: { projectId: string }) {
                             {projectDisplayName(project?.name)}
                         </h2>
                         {showCost &&
-                            project?.totalCostUsd !== undefined &&
-                            project.totalCostUsd > 0 && (
+                            Number.isFinite(projectTotalCostUsd) &&
+                            projectTotalCostUsd > 0 && (
                                 <span className="ml-auto pr-8 text-xs text-muted-foreground font-normal flex-shrink-0">
-                                    {formatCost(project.totalCostUsd)}
+                                    {formatCost(projectTotalCostUsd)}
                                 </span>
                             )}
                     </span>
@@ -1210,6 +1211,7 @@ const ChatListItemView = React.memo(
         chatCost,
         showCost,
     }: ChatListItemViewProps) => {
+        const chatTotalCostUsd = Number(chatCost ?? 0);
         return (
             <div
                 key={chatId + "-sidebar"}
@@ -1272,10 +1274,10 @@ const ChatListItemView = React.memo(
                             />
                             <ChatLoadingIndicator chatId={chatId} />
                             {showCost &&
-                                chatCost !== undefined &&
-                                chatCost > 0 && (
+                                Number.isFinite(chatTotalCostUsd) &&
+                                chatTotalCostUsd > 0 && (
                                     <span className="ml-auto pl-2 text-xs text-muted-foreground flex-shrink-0">
-                                        {formatCost(chatCost)}
+                                        {formatCost(chatTotalCostUsd)}
                                     </span>
                                 )}
                         </div>

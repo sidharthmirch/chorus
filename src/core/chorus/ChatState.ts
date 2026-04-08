@@ -33,6 +33,7 @@ export interface Message {
     blockType: BlockType;
     text: string;
     model: string;
+    actualModelId?: string;
     selected: boolean;
     attachments: Attachment[] | undefined;
     isReview: boolean;
