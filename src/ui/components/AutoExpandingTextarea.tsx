@@ -7,23 +7,25 @@ interface AutoExpandingTextareaProps
     value: string;
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
     autoFocus?: boolean;
+    onHeightChange?: (height: number) => void;
 }
 
 const AutoExpandingTextarea = forwardRef<
     HTMLTextAreaElement,
     AutoExpandingTextareaProps
->(({ value, onChange, className, autoFocus, ...props }, ref) => {
+>(({ value, onChange, className, autoFocus, onHeightChange, ...props }, ref) => {
     const adjustHeight = useCallback((element: HTMLTextAreaElement | null) => {
         if (element) {
             const scrollTop = window.scrollY;
 
             element.style.height = "auto";
             element.style.height = `${element.scrollHeight}px`;
+            onHeightChange?.(element.scrollHeight);
 
             // Restore scroll position once state changes
             window.scrollTo(0, scrollTop);
         }
-    }, []);
+    }, [onHeightChange]);
 
     return (
         <Textarea
