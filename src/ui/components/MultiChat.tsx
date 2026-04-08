@@ -1257,7 +1257,7 @@ export function ToolsMessageView({
     );
     const isAutoRoutedModel =
         message.actualModelId !== undefined &&
-        message.actualModelId !== message.model;
+        message.actualModelId !== (modelConfig?.modelId ?? message.model);
     const toolsDisabledForModel =
         toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
