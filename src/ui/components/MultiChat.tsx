@@ -42,6 +42,7 @@ import {
     FolderOpenIcon,
     ReplyIcon,
     Trash2Icon,
+    StarIcon,
 } from "lucide-react";
 import { useAppContext } from "@ui/hooks/useAppContext";
 import { ChevronDownIcon, CopyIcon, CheckIcon, XIcon } from "lucide-react";
@@ -1346,6 +1347,9 @@ export function ToolsMessageView({
                                                     </span>
                                                 )}
                                             </div>
+                                            {!isLastRow && message.selected && (
+                                                <StarIcon className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1407,7 +1411,33 @@ export function ToolsMessageView({
                                                 Regenerate
                                             </TooltipContent>
                                         </Tooltip>
-                                    ) : null}
+                                    ) : (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    className={`hover:text-foreground ${message.selected ? "text-amber-400" : ""}`}
+                                                    onClick={() => {
+                                                        selectMessage.mutate({
+                                                            chatId: message.chatId,
+                                                            messageSetId:
+                                                                message.messageSetId,
+                                                            messageId:
+                                                                message.id,
+                                                        });
+                                                    }}
+                                                >
+                                                    <StarIcon
+                                                        className={`w-3.5 h-3.5 ${message.selected ? "fill-amber-400" : ""}`}
+                                                    />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                {message.selected
+                                                    ? "Best reply"
+                                                    : "Mark as best"}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
 
                                     {!isReply && !isQuickChatWindow && (
                                         <Tooltip>

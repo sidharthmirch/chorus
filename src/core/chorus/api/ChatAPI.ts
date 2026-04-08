@@ -44,6 +44,8 @@ export type Chat = {
 
     // Cost tracking
     totalCostUsd?: number;
+
+    contextWindowSize?: number;
 };
 
 type ChatDBRow = {
@@ -62,6 +64,7 @@ type ChatDBRow = {
     reply_to_id: string | null;
     gc_prototype_chat: number;
     total_cost_usd: number | null;
+    context_window_size: number | null;
 };
 
 function readChat(row: ChatDBRow): Chat {
@@ -82,13 +85,14 @@ function readChat(row: ChatDBRow): Chat {
         replyToId: row.reply_to_id,
         gcPrototype: row.gc_prototype_chat === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
+        contextWindowSize: row.context_window_size ?? undefined,
     };
 }
 
 export async function fetchChat(chatId: string): Promise<Chat> {
     const rows = await db.select<ChatDBRow[]>(
         `SELECT id, title, quick_chat, pinned, project_id, updated_at, created_at, summary, is_new_chat,
-        parent_chat_id, project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd
+        parent_chat_id, project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd, context_window_size
         FROM chats
         WHERE id = $1;`,
         [chatId],
@@ -103,7 +107,7 @@ export async function fetchChats(): Promise<Chat[]> {
     return await db
         .select<ChatDBRow[]>(
             `SELECT id, title, quick_chat, pinned, project_id, updated_at, created_at, summary, is_new_chat, parent_chat_id,
-            project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd
+            project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd, context_window_size
             FROM chats
             WHERE reply_to_id IS NULL
             ORDER BY updated_at DESC`,
@@ -422,6 +426,31 @@ export function useRenameChat() {
             await queryClient.invalidateQueries(
                 chatQueries.detail(variables.chatId),
             );
+        },
+    });
+}
+
+export function useUpdateContextWindowSize() {
+    const cacheUpdateChat = useCacheUpdateChat();
+    return useMutation({
+        mutationKey: ["updateContextWindowSize"] as const,
+        mutationFn: async ({
+            chatId,
+            size,
+        }: {
+            chatId: string;
+            size: number | undefined;
+        }) => {
+            await db.execute(
+                "UPDATE chats SET context_window_size = ? WHERE id = ?",
+                [size ?? null, chatId],
+            );
+            return { chatId, size };
+        },
+        onSuccess: ({ chatId, size }) => {
+            cacheUpdateChat(chatId, (chat) => {
+                chat.contextWindowSize = size;
+            });
         },
     });
 }
