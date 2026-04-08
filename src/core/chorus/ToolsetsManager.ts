@@ -8,6 +8,8 @@ import {
 } from "./Toolsets";
 import { CustomToolset } from "./toolsets/custom";
 import { checkToolPermission } from "./api/ToolPermissionsAPI";
+import { checkToolYolo } from "./api/ToolYoloAPI";
+import { fetchProjectYoloMode } from "./api/ProjectAPI";
 import { fetchAppMetadata } from "./api/AppMetadataAPI";
 import {
     toolPermissionActions,
@@ -55,11 +57,40 @@ export class ToolsetsManager {
     }
 
     /**
+     * Resolves effective YOLO mode for a given tool call using precedence:
+     * per-project override → per-tool YOLO → global YOLO
+     */
+    private async resolveYoloMode(
+        toolsetName: string,
+        toolName: string,
+        projectId?: string,
+    ): Promise<boolean> {
+        // 1. Per-project override (if projectId provided and project has explicit override)
+        if (projectId) {
+            const projectYolo = await fetchProjectYoloMode(projectId);
+            if (projectYolo !== undefined) {
+                return projectYolo;
+            }
+        }
+
+        // 2. Per-tool YOLO
+        const isToolYolo = await checkToolYolo(toolsetName, toolName);
+        if (isToolYolo) {
+            return true;
+        }
+
+        // 3. Global YOLO
+        const appMetadata = await fetchAppMetadata();
+        return appMetadata?.["yolo_mode"] === "true";
+    }
+
+    /**
      * Executes a tool call using the appropriate MCP server
      */
     async executeToolCall(
         toolCall: UserToolCall,
         modelName?: string,
+        projectId?: string,
     ): Promise<UserToolResult> {
         const { toolsetName, displayNameSuffix } = parseUserToolNamespacedName(
             toolCall.namespacedToolName,
@@ -73,9 +104,11 @@ export class ToolsetsManager {
         }
 
         try {
-            // Check if YOLO mode is enabled
-            const appMetadata = await fetchAppMetadata();
-            const yoloMode = appMetadata?.["yolo_mode"] === "true";
+            const yoloMode = await this.resolveYoloMode(
+                toolsetName,
+                displayNameSuffix,
+                projectId,
+            );
 
             if (yoloMode) {
                 // YOLO mode - execute without asking

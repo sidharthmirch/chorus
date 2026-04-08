@@ -6,7 +6,9 @@ import { Badge } from "@ui/components/ui/badge";
 import { Trash2, DoorOpenIcon, BanIcon, CheckIcon } from "lucide-react";
 import { getToolsetIcon } from "@core/chorus/Toolsets";
 import * as ToolPermissionsAPI from "@core/chorus/api/ToolPermissionsAPI";
+import * as ToolYoloAPI from "@core/chorus/api/ToolYoloAPI";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
+import { ToolsetsManager } from "@core/chorus/ToolsetsManager";
 import { Separator } from "@ui/components/ui/separator";
 import { Switch } from "@ui/components/ui/switch";
 import {
@@ -27,6 +29,21 @@ export const PermissionsTab: React.FC = () => {
 
     const { data: yoloMode } = AppMetadataAPI.useYoloMode();
     const setYoloMode = AppMetadataAPI.useSetYoloMode();
+
+    const { data: toolYoloEntries } = ToolYoloAPI.useAllToolYolo();
+    const setToolYolo = ToolYoloAPI.useSetToolYolo();
+    const deleteToolYolo = ToolYoloAPI.useDeleteToolYolo();
+
+    const allTools = React.useMemo(() => {
+        return ToolsetsManager.instance
+            .listToolsets()
+            .flatMap((toolset) =>
+                toolset.listTools().map((tool) => ({
+                    toolsetName: tool.toolsetName,
+                    toolName: tool.displayNameSuffix,
+                })),
+            );
+    }, []);
 
     const groupedPermissions = React.useMemo(() => {
         if (!permissions) return {};
@@ -129,6 +146,69 @@ export const PermissionsTab: React.FC = () => {
                     </CardContent>
                 </Card>
             </div>
+
+            {!yoloMode && allTools.length > 0 && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <h3 className="text-base font-semibold">
+                            Auto-accept specific tools
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                            These tools will execute automatically without
+                            prompting, even when Global YOLO is off.
+                        </p>
+                    </div>
+                    <Card>
+                        <CardContent className="p-4 space-y-3">
+                            {allTools.map(({ toolsetName, toolName }) => {
+                                const isYolo =
+                                    toolYoloEntries?.some(
+                                        (e) =>
+                                            e.toolsetName === toolsetName &&
+                                            e.toolName === toolName,
+                                    ) ?? false;
+                                return (
+                                    <div
+                                        key={`${toolsetName}-${toolName}`}
+                                        className="flex items-center justify-between"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            {getToolsetIcon(toolsetName)}
+                                            <Label className="font-mono text-sm cursor-pointer">
+                                                {toolsetName}_{toolName}
+                                            </Label>
+                                        </div>
+                                        <Switch
+                                            checked={isYolo}
+                                            onCheckedChange={(checked) => {
+                                                if (checked) {
+                                                    setToolYolo.mutate({
+                                                        toolsetName,
+                                                        toolName,
+                                                    });
+                                                } else {
+                                                    deleteToolYolo.mutate({
+                                                        toolsetName,
+                                                        toolName,
+                                                    });
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+            {yoloMode && allTools.length > 0 && (
+                <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                        Global YOLO is enabled — per-tool settings apply when
+                        it&apos;s off.
+                    </p>
+                </div>
+            )}
 
             {yoloMode && Object.keys(groupedPermissions).length > 0 && (
                 <div className="mt-4 p-4 bg-muted rounded-lg flex items-center gap-2">

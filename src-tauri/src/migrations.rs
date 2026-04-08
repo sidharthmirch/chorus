@@ -2648,6 +2648,21 @@ You have full access to bash commands on the user''''s computer. If you write a 
             "#,
         },
         Migration {
+            version: 145,
+            description: "add tool_yolo table and projects.yolo_mode column",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS tool_yolo (
+                    toolset_name TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (toolset_name, tool_name)
+                );
+
+                ALTER TABLE projects ADD COLUMN yolo_mode INTEGER DEFAULT NULL;
+            "#,
+        },
+        Migration {
             version: 143,
             description: "add gemini 2.5 flash lite and update ambient to use it",
             kind: MigrationKind::Up,
