@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
+import { Input } from "./ui/input";
+import {
+    Collapsible,
+    CollapsibleTrigger,
+    CollapsibleContent,
+} from "./ui/collapsible";
 import {
     useProviderVisibleModels,
     useSetModelVisibility,
@@ -12,12 +18,17 @@ import {
     useRefreshOllamaModels,
     useRefreshLMStudioModels,
 } from "@core/chorus/api/ModelsAPI";
-import { ModelConfig } from "@core/chorus/Models";
-import { Loader2, RefreshCcw } from "lucide-react";
+import { ModelConfig, ApiKeys } from "@core/chorus/Models";
+import { Loader2, RefreshCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { getProviderName } from "@core/chorus/Models";
+import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
+import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
 
 const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
 type FetchableProvider = (typeof FETCHABLE_PROVIDERS)[number];
+
+const LOCAL_PROVIDERS = new Set(["ollama", "lmstudio"]);
+const SUB_PROVIDER_SEARCH_THRESHOLD = 10;
 
 const PROVIDER_LABELS: Record<string, string> = {
     openrouter: "OpenRouter",
@@ -43,9 +54,255 @@ function getSubProvider(modelId: string): string | null {
     return modelPart.slice(0, slashIdx);
 }
 
+interface ProviderModelSectionProps {
+    provider: string;
+    providerModels: ModelConfig[];
+    visibleModels: { modelId: string; isVisible: boolean }[] | undefined;
+    isFetchable: boolean;
+    isFetching: boolean;
+    onFetchModels: () => void;
+    onSetVisibility: (args: {
+        providerName: string;
+        modelId: string;
+        isVisible: boolean;
+    }) => void;
+    onSetAllVisibility: (args: {
+        providerName: string;
+        modelIds: string[];
+        isVisible: boolean;
+    }) => void;
+    apiKeys: ApiKeys | undefined;
+}
+
+function ProviderModelSection({
+    provider,
+    providerModels,
+    visibleModels,
+    isFetchable,
+    isFetching,
+    onFetchModels,
+    onSetVisibility,
+    onSetAllVisibility,
+    apiKeys,
+}: ProviderModelSectionProps) {
+    const isLocal = LOCAL_PROVIDERS.has(provider);
+    const providerHasKey =
+        isLocal ||
+        canProceedWithProvider(provider, apiKeys ?? ({} as ApiKeys)).canProceed;
+
+    const [isOpen, setIsOpen] = useState(isLocal || providerHasKey);
+    const [subProviderFilter, setSubProviderFilter] = useState<string | null>(
+        null,
+    );
+    const [subProviderSearch, setSubProviderSearch] = useState("");
+
+    // Auto-expand when an API key is added for this provider
+    useEffect(() => {
+        if (providerHasKey && !isLocal) {
+            setIsOpen(true);
+        }
+    }, [providerHasKey, isLocal]);
+
+    const subProviders = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    providerModels
+                        .map((m) => getSubProvider(m.modelId))
+                        .filter((s): s is string => s !== null),
+                ),
+            ).sort(),
+        [providerModels],
+    );
+
+    const showSubProviderSearch =
+        subProviders.length > SUB_PROVIDER_SEARCH_THRESHOLD;
+
+    const filteredSubProviders = useMemo(() => {
+        if (!subProviderSearch.trim()) return subProviders;
+        const term = subProviderSearch.toLowerCase();
+        return subProviders.filter((s) => s.toLowerCase().includes(term));
+    }, [subProviders, subProviderSearch]);
+
+    const subProviderModelCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+        for (const m of providerModels) {
+            const sub = getSubProvider(m.modelId);
+            if (sub) counts[sub] = (counts[sub] ?? 0) + 1;
+        }
+        return counts;
+    }, [providerModels]);
+
+    const visibleProviderModels: ModelConfig[] =
+        subProviderFilter !== null
+            ? providerModels.filter(
+                  (m) => getSubProvider(m.modelId) === subProviderFilter,
+              )
+            : providerModels;
+
+    const isAllVisible = visibleProviderModels.every((m) => {
+        const v = visibleModels?.find((vm) => vm.modelId === m.modelId);
+        return v ? v.isVisible : true;
+    });
+
+    const hasSubProviders = subProviders.length > 1;
+
+    return (
+        <Collapsible
+            open={isOpen}
+            onOpenChange={setIsOpen}
+            className="border rounded-lg"
+        >
+            <div className="p-4 flex items-center justify-between">
+                <CollapsibleTrigger className="flex items-center gap-2 flex-1 text-left">
+                    {isOpen ? (
+                        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                    ) : (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <h3 className="font-semibold">
+                        {PROVIDER_LABELS[provider] ?? provider}
+                    </h3>
+                    {!isLocal && !providerHasKey && (
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                            No API key
+                        </span>
+                    )}
+                </CollapsibleTrigger>
+                <div className="flex items-center gap-2">
+                    {isFetchable && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isFetching}
+                            onClick={onFetchModels}
+                        >
+                            <RefreshCcw
+                                className={`w-3 h-3 mr-1 ${isFetching ? "animate-spin" : ""}`}
+                            />
+                            {isFetching ? "Fetching..." : "Fetch Models"}
+                        </Button>
+                    )}
+                    {visibleProviderModels.length > 0 && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                                onSetAllVisibility({
+                                    providerName: provider,
+                                    modelIds: visibleProviderModels.map(
+                                        (m) => m.modelId,
+                                    ),
+                                    isVisible: !isAllVisible,
+                                })
+                            }
+                        >
+                            {isAllVisible ? "Hide All" : "Show All"}
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            <CollapsibleContent className="px-4 pb-4 space-y-4">
+                {/* Searchable sub-provider filter (only for large sub-provider lists) */}
+                {hasSubProviders && showSubProviderSearch && (
+                    <Input
+                        placeholder="Search providers..."
+                        value={subProviderSearch}
+                        onChange={(e) => {
+                            setSubProviderSearch(e.target.value);
+                            setSubProviderFilter(null);
+                        }}
+                        className="h-8 text-sm"
+                    />
+                )}
+
+                {/* Sub-provider filter chips */}
+                {hasSubProviders && (
+                    <div className="flex flex-wrap gap-1.5">
+                        <button
+                            onClick={() => setSubProviderFilter(null)}
+                            className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                subProviderFilter === null
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                            }`}
+                        >
+                            All
+                        </button>
+                        {filteredSubProviders.map((sub) => (
+                            <button
+                                key={sub}
+                                onClick={() =>
+                                    setSubProviderFilter((prev) =>
+                                        prev === sub ? null : sub,
+                                    )
+                                }
+                                className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
+                                    subProviderFilter === sub
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                                }`}
+                            >
+                                {sub}
+                                {showSubProviderSearch &&
+                                    subProviderModelCounts[sub] !==
+                                        undefined && (
+                                        <span className="ml-1 opacity-60">
+                                            ({subProviderModelCounts[sub]})
+                                        </span>
+                                    )}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {providerModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        {isFetchable
+                            ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
+                            : "No models available."}
+                    </p>
+                ) : (
+                    <div className="space-y-2">
+                        {visibleProviderModels.map((m) => {
+                            const visibility = visibleModels?.find(
+                                (vm) => vm.modelId === m.modelId,
+                            );
+                            const isVisible = visibility
+                                ? visibility.isVisible
+                                : true;
+
+                            return (
+                                <div
+                                    key={m.id}
+                                    className="flex items-center justify-between text-sm"
+                                >
+                                    <span>{m.displayName}</span>
+                                    <Switch
+                                        checked={isVisible}
+                                        onCheckedChange={(checked) =>
+                                            onSetVisibility({
+                                                providerName: provider,
+                                                modelId: m.modelId,
+                                                isVisible: checked,
+                                            })
+                                        }
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </CollapsibleContent>
+        </Collapsible>
+    );
+}
+
 export function VisibleModelsTab() {
     const { data: visibleModels, isLoading } = useProviderVisibleModels();
     const { data: allModels } = useModelConfigs();
+    const { data: apiKeys } = useApiKeys();
     const setVisibility = useSetModelVisibility();
     const setAllVisibility = useSetAllProviderModelsVisible();
 
@@ -55,11 +312,6 @@ export function VisibleModelsTab() {
     const [fetchingProviders, setFetchingProviders] = useState<
         Record<FetchableProvider, boolean>
     >({ openrouter: false, ollama: false, lmstudio: false });
-
-    // Selected sub-provider filter per top-level provider (null = show all)
-    const [subProviderFilter, setSubProviderFilter] = useState<
-        Record<string, string | null>
-    >({});
 
     if (isLoading || !allModels) {
         return (
@@ -113,176 +365,38 @@ export function VisibleModelsTab() {
                 </p>
             </div>
 
-            {orderedProviders.map((provider) => {
-                const providerModels = allModels.filter(
-                    (m) => getProviderName(m.modelId) === provider,
-                );
-                const isFetchable = FETCHABLE_PROVIDERS.includes(
-                    provider as FetchableProvider,
-                );
-                const isFetching =
-                    isFetchable &&
-                    fetchingProviders[provider as FetchableProvider];
-
-                // Compute unique sub-providers for this top-level provider
-                const subProviders = Array.from(
-                    new Set(
-                        providerModels
-                            .map((m) => getSubProvider(m.modelId))
-                            .filter((s): s is string => s !== null),
-                    ),
-                ).sort();
-
-                const activeSubFilter = subProviderFilter[provider] ?? null;
-
-                // Apply sub-provider filter
-                const visibleProviderModels: ModelConfig[] =
-                    activeSubFilter !== null
-                        ? providerModels.filter(
-                              (m) =>
-                                  getSubProvider(m.modelId) === activeSubFilter,
-                          )
-                        : providerModels;
-
-                const isAllVisible = visibleProviderModels.every((m) => {
-                    const v = visibleModels?.find(
-                        (vm) => vm.modelId === m.modelId,
+            <div className="space-y-4">
+                {orderedProviders.map((provider) => {
+                    const providerModels = allModels.filter(
+                        (m) => getProviderName(m.modelId) === provider,
                     );
-                    return v ? v.isVisible : true;
-                });
+                    const isFetchable = FETCHABLE_PROVIDERS.includes(
+                        provider as FetchableProvider,
+                    );
+                    const isFetching =
+                        isFetchable &&
+                        fetchingProviders[provider as FetchableProvider];
 
-                return (
-                    <div
-                        key={provider}
-                        className="space-y-4 border rounded-lg p-4"
-                    >
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-semibold">
-                                {PROVIDER_LABELS[provider] ?? provider}
-                            </h3>
-                            <div className="flex items-center gap-2">
-                                {isFetchable && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={isFetching}
-                                        onClick={() =>
-                                            void handleFetchModels(
-                                                provider as FetchableProvider,
-                                            )
-                                        }
-                                    >
-                                        <RefreshCcw
-                                            className={`w-3 h-3 mr-1 ${isFetching ? "animate-spin" : ""}`}
-                                        />
-                                        {isFetching
-                                            ? "Fetching..."
-                                            : "Fetch Models"}
-                                    </Button>
-                                )}
-                                {visibleProviderModels.length > 0 && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                            setAllVisibility.mutate({
-                                                providerName: provider,
-                                                modelIds:
-                                                    visibleProviderModels.map(
-                                                        (m) => m.modelId,
-                                                    ),
-                                                isVisible: !isAllVisible,
-                                            })
-                                        }
-                                    >
-                                        {isAllVisible ? "Hide All" : "Show All"}
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Sub-provider filter chips */}
-                        {subProviders.length > 1 && (
-                            <div className="flex flex-wrap gap-1.5">
-                                <button
-                                    onClick={() =>
-                                        setSubProviderFilter((prev) => ({
-                                            ...prev,
-                                            [provider]: null,
-                                        }))
-                                    }
-                                    className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                        activeSubFilter === null
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-background text-muted-foreground border-border hover:border-foreground/40"
-                                    }`}
-                                >
-                                    All
-                                </button>
-                                {subProviders.map((sub) => (
-                                    <button
-                                        key={sub}
-                                        onClick={() =>
-                                            setSubProviderFilter((prev) => ({
-                                                ...prev,
-                                                [provider]:
-                                                    prev[provider] === sub
-                                                        ? null
-                                                        : sub,
-                                            }))
-                                        }
-                                        className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                            activeSubFilter === sub
-                                                ? "bg-primary text-primary-foreground border-primary"
-                                                : "bg-background text-muted-foreground border-border hover:border-foreground/40"
-                                        }`}
-                                    >
-                                        {sub}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {providerModels.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">
-                                {isFetchable
-                                    ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
-                                    : "No models available."}
-                            </p>
-                        ) : (
-                            <div className="space-y-2">
-                                {visibleProviderModels.map((m) => {
-                                    const visibility = visibleModels?.find(
-                                        (vm) => vm.modelId === m.modelId,
-                                    );
-                                    const isVisible = visibility
-                                        ? visibility.isVisible
-                                        : true;
-
-                                    return (
-                                        <div
-                                            key={m.id}
-                                            className="flex items-center justify-between text-sm"
-                                        >
-                                            <span>{m.displayName}</span>
-                                            <Switch
-                                                checked={isVisible}
-                                                onCheckedChange={(checked) =>
-                                                    setVisibility.mutate({
-                                                        providerName: provider,
-                                                        modelId: m.modelId,
-                                                        isVisible: checked,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
+                    return (
+                        <ProviderModelSection
+                            key={provider}
+                            provider={provider}
+                            providerModels={providerModels}
+                            visibleModels={visibleModels}
+                            isFetchable={isFetchable}
+                            isFetching={isFetching}
+                            onFetchModels={() =>
+                                void handleFetchModels(
+                                    provider as FetchableProvider,
+                                )
+                            }
+                            onSetVisibility={setVisibility.mutate}
+                            onSetAllVisibility={setAllVisibility.mutate}
+                            apiKeys={apiKeys}
+                        />
+                    );
+                })}
+            </div>
         </div>
     );
 }
