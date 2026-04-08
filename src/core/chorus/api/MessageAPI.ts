@@ -1307,35 +1307,50 @@ export function useStreamMessagePart() {
 
                 const hasToolCalls = toolCalls && toolCalls.length > 0;
 
-                // Calculate cost - use OpenRouter's actual cost when available
+                // Calculate cost - use OpenRouter's response-level cost when available
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
                 let actualModelId: string | undefined;
 
-                // For OpenRouter models with generation ID, fetch actual costs
-                if (
-                    usageData?.generation_id &&
-                    modelConfig.modelId.startsWith("openrouter::") &&
-                    apiKeys.openrouter
-                ) {
-                    const openRouterCost = await fetchOpenRouterCost(
-                        usageData.generation_id,
-                        apiKeys.openrouter,
-                    );
-                    if (openRouterCost) {
-                        costUsd = openRouterCost.cost;
-                        // Use native token counts from OpenRouter
-                        actualPromptTokens = openRouterCost.promptTokens;
-                        actualCompletionTokens =
-                            openRouterCost.completionTokens;
-                        actualModelId = openRouterCost.actualModel
-                            ? `openrouter::${openRouterCost.actualModel}`
-                            : undefined;
+                if (modelConfig.modelId.startsWith("openrouter::")) {
+                    // Prefer cost and model from the streaming response
+                    if (usageData?.cost !== undefined && usageData.cost >= 0) {
+                        costUsd = usageData.cost;
+                    }
+                    if (usageData?.model) {
+                        actualModelId = `openrouter::${usageData.model}`;
+                    }
+
+                    // Fall back to generation endpoint if response didn't include cost or model
+                    if (
+                        (costUsd === undefined ||
+                            actualModelId === undefined) &&
+                        usageData?.generation_id &&
+                        apiKeys.openrouter
+                    ) {
+                        const openRouterCost = await fetchOpenRouterCost(
+                            usageData.generation_id,
+                            apiKeys.openrouter,
+                        );
+                        if (openRouterCost) {
+                            if (costUsd === undefined) {
+                                costUsd = openRouterCost.cost;
+                            }
+                            actualPromptTokens = openRouterCost.promptTokens;
+                            actualCompletionTokens =
+                                openRouterCost.completionTokens;
+                            if (
+                                actualModelId === undefined &&
+                                openRouterCost.actualModel
+                            ) {
+                                actualModelId = `openrouter::${openRouterCost.actualModel}`;
+                            }
+                        }
                     }
                 }
 
-                // Fallback to calculated cost for non-OpenRouter or if fetch failed
+                // Fallback to calculated cost for non-OpenRouter or if no cost yet
                 if (
                     costUsd === undefined &&
                     usageData?.prompt_tokens !== undefined &&
@@ -1649,35 +1664,50 @@ export function useStreamMessageLegacy() {
                     streamingToken,
                 );
 
-                // Calculate cost - use OpenRouter's actual cost when available
+                // Calculate cost - use OpenRouter's response-level cost when available
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
                 let actualModelId: string | undefined;
 
-                // For OpenRouter models with generation ID, fetch actual costs
-                if (
-                    usageData?.generation_id &&
-                    modelConfig.modelId.startsWith("openrouter::") &&
-                    apiKeys.openrouter
-                ) {
-                    const openRouterCost = await fetchOpenRouterCost(
-                        usageData.generation_id,
-                        apiKeys.openrouter,
-                    );
-                    if (openRouterCost) {
-                        costUsd = openRouterCost.cost;
-                        // Use native token counts from OpenRouter
-                        actualPromptTokens = openRouterCost.promptTokens;
-                        actualCompletionTokens =
-                            openRouterCost.completionTokens;
-                        actualModelId = openRouterCost.actualModel
-                            ? `openrouter::${openRouterCost.actualModel}`
-                            : undefined;
+                if (modelConfig.modelId.startsWith("openrouter::")) {
+                    // Prefer cost and model from the streaming response
+                    if (usageData?.cost !== undefined && usageData.cost >= 0) {
+                        costUsd = usageData.cost;
+                    }
+                    if (usageData?.model) {
+                        actualModelId = `openrouter::${usageData.model}`;
+                    }
+
+                    // Fall back to generation endpoint if response didn't include cost or model
+                    if (
+                        (costUsd === undefined ||
+                            actualModelId === undefined) &&
+                        usageData?.generation_id &&
+                        apiKeys.openrouter
+                    ) {
+                        const openRouterCost = await fetchOpenRouterCost(
+                            usageData.generation_id,
+                            apiKeys.openrouter,
+                        );
+                        if (openRouterCost) {
+                            if (costUsd === undefined) {
+                                costUsd = openRouterCost.cost;
+                            }
+                            actualPromptTokens = openRouterCost.promptTokens;
+                            actualCompletionTokens =
+                                openRouterCost.completionTokens;
+                            if (
+                                actualModelId === undefined &&
+                                openRouterCost.actualModel
+                            ) {
+                                actualModelId = `openrouter::${openRouterCost.actualModel}`;
+                            }
+                        }
                     }
                 }
 
-                // Fallback to calculated cost for non-OpenRouter or if fetch failed
+                // Fallback to calculated cost for non-OpenRouter or if no cost yet
                 if (
                     costUsd === undefined &&
                     usageData?.prompt_tokens !== undefined &&
