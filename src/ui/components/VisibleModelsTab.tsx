@@ -18,7 +18,7 @@ import {
     useRefreshOllamaModels,
     useRefreshLMStudioModels,
 } from "@core/chorus/api/ModelsAPI";
-import { ModelConfig, ApiKeys } from "@core/chorus/Models";
+import { ModelConfig, ApiKeys, ProviderName } from "@core/chorus/Models";
 import { Loader2, RefreshCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { getProviderName } from "@core/chorus/Models";
 import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
@@ -55,7 +55,7 @@ function getSubProvider(modelId: string): string | null {
 }
 
 interface ProviderModelSectionProps {
-    provider: string;
+    provider: ProviderName;
     providerModels: ModelConfig[];
     visibleModels: { modelId: string; isVisible: boolean }[] | undefined;
     isFetchable: boolean;
@@ -67,7 +67,7 @@ interface ProviderModelSectionProps {
         isVisible: boolean;
     }) => void;
     onSetAllVisibility: (args: {
-        providerName: string;
+        providerName: ProviderName;
         modelIds: string[];
         isVisible: boolean;
     }) => void;
@@ -335,7 +335,7 @@ export function VisibleModelsTab() {
     };
 
     // Group models by provider
-    const allProviders = Array.from(
+    const allProviders: ProviderName[] = Array.from(
         new Set(allModels.map((m) => getProviderName(m.modelId))),
     );
 
@@ -349,7 +349,7 @@ export function VisibleModelsTab() {
         (p) => !FETCHABLE_PROVIDERS.includes(p as FetchableProvider),
     );
 
-    const orderedProviders = [
+    const orderedProviders: ProviderName[] = [
         ...otherProviders,
         ...fetchableWithModels,
         ...fetchableWithoutModels,
