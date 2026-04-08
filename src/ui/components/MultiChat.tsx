@@ -1187,6 +1187,101 @@ export function ToolsReplyCountView({
     );
 }
 
+/**
+ * Map a wire / persisted model id (e.g. OpenRouter snapshot slug) to a local {@link Models.ModelConfig}.
+ */
+function findModelConfigForDisplay(
+    configs: Models.ModelConfig[] | undefined,
+    resolvedId: string,
+): Models.ModelConfig | undefined {
+    if (!configs?.length) {
+        return undefined;
+    }
+    const byId = configs.find((m) => m.id === resolvedId);
+    if (byId) {
+        return byId;
+    }
+    const byModelId = configs.find((m) => m.modelId === resolvedId);
+    if (byModelId) {
+        return byModelId;
+    }
+    if (resolvedId.startsWith("openrouter::")) {
+        const hyphenMatch = configs.find(
+            (m) =>
+                m.modelId.startsWith("openrouter::") &&
+                (resolvedId.startsWith(`${m.modelId}-`) ||
+                    m.modelId.startsWith(`${resolvedId}-`)),
+        );
+        if (hyphenMatch) {
+            return hyphenMatch;
+        }
+        if (resolvedId.endsWith(":free")) {
+            const withoutFree = resolvedId.slice(
+                0,
+                resolvedId.length - ":free".length,
+            );
+            const byNoFreeSuffix = configs.find(
+                (m) => m.id === withoutFree || m.modelId === withoutFree,
+            );
+            if (byNoFreeSuffix) {
+                return byNoFreeSuffix;
+            }
+            return configs.find(
+                (m) =>
+                    m.modelId.startsWith("openrouter::") &&
+                    (withoutFree.startsWith(`${m.modelId}-`) ||
+                        m.modelId.startsWith(`${withoutFree}-`)),
+            );
+        }
+    }
+    return undefined;
+}
+
+/** Part after the first {@code openrouter::} (OpenRouter API / catalog slug). */
+function getOpenRouterWireModelSlug(modelId: string): string | undefined {
+    if (!modelId.startsWith("openrouter::")) {
+        return undefined;
+    }
+    return modelId.slice("openrouter::".length);
+}
+
+/**
+ * User-facing label when a request was routed (auto / free meta-model on OpenRouter).
+ */
+function openRouterRoutingBadgeText(requestedModelId: string): string {
+    const slug = getOpenRouterWireModelSlug(requestedModelId);
+    if (slug === "openrouter/free") {
+        return "VIA FREEROUTER";
+    }
+    if (slug === "openrouter/auto") {
+        return "VIA AUTOROUTER";
+    }
+    return "VIA ROUTER";
+}
+
+/**
+ * Whether the resolved model id refers to the same OpenRouter model as the one the user picked
+ * (API may append snapshot / version segments after a hyphen).
+ */
+function resolvedOpenRouterModelMatchesRequested(
+    resolved: string,
+    requestedModelId: string,
+): boolean {
+    if (resolved === requestedModelId) {
+        return true;
+    }
+    if (
+        !resolved.startsWith("openrouter::") ||
+        !requestedModelId.startsWith("openrouter::")
+    ) {
+        return false;
+    }
+    return (
+        resolved.startsWith(`${requestedModelId}-`) ||
+        requestedModelId.startsWith(`${resolved}-`)
+    );
+}
+
 export function ToolsMessageView({
     message,
     isQuickChatWindow,
@@ -1252,12 +1347,20 @@ export function ToolsMessageView({
         (m) => m.id === message.model,
     );
     const displayModelId = message.actualModelId ?? message.model;
-    const displayModelConfig = modelConfigsQuery.data?.find(
-        (m) => m.id === displayModelId,
+    const displayModelConfig = findModelConfigForDisplay(
+        modelConfigsQuery.data,
+        displayModelId,
     );
+    const canonicalRequestedModelId = modelConfig?.modelId ?? message.model;
     const isAutoRoutedModel =
         message.actualModelId !== undefined &&
-        message.actualModelId !== (modelConfig?.modelId ?? message.model);
+        !resolvedOpenRouterModelMatchesRequested(
+            message.actualModelId,
+            canonicalRequestedModelId,
+        );
+    const routingBadgeText = isAutoRoutedModel
+        ? openRouterRoutingBadgeText(canonicalRequestedModelId)
+        : undefined;
     const toolsDisabledForModel =
         toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
@@ -1351,9 +1454,9 @@ export function ToolsMessageView({
                                                 {displayModelConfig?.displayName ??
                                                     displayModelId}
                                             </span>
-                                            {isAutoRoutedModel && (
+                                            {routingBadgeText !== undefined && (
                                                 <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                                                    via auto
+                                                    {routingBadgeText}
                                                 </span>
                                             )}
                                             {toolsDisabledForModel && (
