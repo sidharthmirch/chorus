@@ -383,6 +383,13 @@ export function applyContextWindow(
     windowSize: number | undefined,
 ): MessageSetDetail[] {
     if (windowSize === undefined) return messageSets;
+    if (
+        !Number.isFinite(windowSize) ||
+        !Number.isInteger(windowSize) ||
+        windowSize < 0
+    ) {
+        return messageSets;
+    }
     if (windowSize === 0) return [];
     return messageSets.slice(-(windowSize * 2));
 }

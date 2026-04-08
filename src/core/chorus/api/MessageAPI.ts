@@ -87,6 +87,27 @@ const messageKeys = {
         ["messages", messageId, "attachments"] as const,
 };
 
+function normalizeContextWindowSize(
+    windowSize: number | undefined,
+): number | undefined {
+    if (windowSize === undefined) return undefined;
+    if (!Number.isFinite(windowSize) || !Number.isInteger(windowSize))
+        return undefined;
+    return Math.max(0, windowSize);
+}
+
+function resolveContextWindowSize(
+    chatWindowSize: number | undefined,
+    defaultWindowSizeRaw: string | undefined,
+): number | undefined {
+    const normalizedChatWindowSize = normalizeContextWindowSize(chatWindowSize);
+    if (normalizedChatWindowSize !== undefined) return normalizedChatWindowSize;
+
+    if (!defaultWindowSizeRaw) return undefined;
+    const parsedDefaultWindowSize = Number.parseInt(defaultWindowSizeRaw, 10);
+    return normalizeContextWindowSize(parsedDefaultWindowSize);
+}
+
 export type MessageSetDBRow = {
     id: string;
     chat_id: string;
@@ -1097,13 +1118,14 @@ export function useRestartMessageLegacy(
                 queryKey: appMetadataKeys.appMetadata(),
                 queryFn: () => fetchAppMetadata(),
             });
-            const windowSize =
-                chat?.contextWindowSize ??
-                (appMetadata["default_context_window_size"]
-                    ? parseInt(appMetadata["default_context_window_size"])
-                    : undefined);
+            const windowSize = resolveContextWindowSize(
+                chat?.contextWindowSize,
+                appMetadata["default_context_window_size"],
+            );
             const conversation = [
-                ...llmConversation(applyContextWindow(previousMessageSets, windowSize)),
+                ...llmConversation(
+                    applyContextWindow(previousMessageSets, windowSize),
+                ),
                 ...(shouldUseDraftForRegenerate
                     ? [
                           {
@@ -2777,16 +2799,18 @@ function useStreamToolsMessage() {
             const chat = await queryClient.ensureQueryData(
                 chatQueries.detail(chatId),
             );
-            const projectContext = await getProjectContext(chat.projectId, chatId);
+            const projectContext = await getProjectContext(
+                chat.projectId,
+                chatId,
+            );
             const appMetadata = await queryClient.ensureQueryData({
                 queryKey: appMetadataKeys.appMetadata(),
                 queryFn: () => fetchAppMetadata(),
             });
-            const windowSize =
-                chat?.contextWindowSize ??
-                (appMetadata["default_context_window_size"]
-                    ? parseInt(appMetadata["default_context_window_size"])
-                    : undefined);
+            const windowSize = resolveContextWindowSize(
+                chat?.contextWindowSize,
+                appMetadata["default_context_window_size"],
+            );
 
             // this loop adds all MessageParts
             const MAX_AI_TURNS = 40;
@@ -2826,7 +2850,9 @@ function useStreamToolsMessage() {
                 ]);
                 const conversation: LLMMessage[] = [
                     ...projectContext,
-                    ...llmConversation(applyContextWindow(previousMessageSets, windowSize)),
+                    ...llmConversation(
+                        applyContextWindow(previousMessageSets, windowSize),
+                    ),
                     ...(draftUserInput
                         ? [
                               {
@@ -3310,11 +3336,10 @@ export function useAddMessageToCompareBlock(chatId: string) {
                 queryKey: appMetadataKeys.appMetadata(),
                 queryFn: () => fetchAppMetadata(),
             });
-            const windowSize =
-                chat?.contextWindowSize ??
-                (appMetadata["default_context_window_size"]
-                    ? parseInt(appMetadata["default_context_window_size"])
-                    : undefined);
+            const windowSize = resolveContextWindowSize(
+                chat?.contextWindowSize,
+                appMetadata["default_context_window_size"],
+            );
             const conversation = llmConversation(
                 applyContextWindow(previousMessageSets, windowSize),
             );

@@ -1417,12 +1417,15 @@ export function ToolsMessageView({
                                                 <button
                                                     className={`hover:text-foreground ${message.selected ? "text-amber-400" : ""}`}
                                                     onClick={() => {
+                                                        if (message.selected)
+                                                            return;
                                                         selectMessage.mutate({
                                                             chatId: message.chatId,
                                                             messageSetId:
                                                                 message.messageSetId,
                                                             messageId:
                                                                 message.id,
+                                                            blockType: "tools",
                                                         });
                                                     }}
                                                 >
