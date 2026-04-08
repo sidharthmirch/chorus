@@ -28,6 +28,12 @@ const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
 type FetchableProvider = (typeof FETCHABLE_PROVIDERS)[number];
 
 const LOCAL_PROVIDERS = new Set(["ollama", "lmstudio"]);
+const API_KEY_REQUIRED_PROVIDERS = new Set<ProviderName>([
+    "openrouter",
+    "google",
+    "openai",
+    "anthropic",
+]);
 const SUB_PROVIDER_SEARCH_THRESHOLD = 10;
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -87,8 +93,7 @@ function ProviderModelSection({
 }: ProviderModelSectionProps) {
     const isLocal = LOCAL_PROVIDERS.has(provider);
     const providerHasKey =
-        isLocal ||
-        canProceedWithProvider(provider, apiKeys ?? {}).canProceed;
+        isLocal || canProceedWithProvider(provider, apiKeys ?? {}).canProceed;
 
     const [isOpen, setIsOpen] = useState(isLocal || providerHasKey);
     const [subProviderFilter, setSubProviderFilter] = useState<string | null>(
@@ -370,6 +375,13 @@ export function VisibleModelsTab() {
                     const providerModels = allModels.filter(
                         (m) => getProviderName(m.modelId) === provider,
                     );
+                    const hideModelsWithoutKey =
+                        API_KEY_REQUIRED_PROVIDERS.has(provider) &&
+                        !canProceedWithProvider(provider, apiKeys ?? {})
+                            .canProceed;
+                    const filteredProviderModels = hideModelsWithoutKey
+                        ? []
+                        : providerModels;
                     const isFetchable = FETCHABLE_PROVIDERS.includes(
                         provider as FetchableProvider,
                     );
@@ -381,7 +393,7 @@ export function VisibleModelsTab() {
                         <ProviderModelSection
                             key={provider}
                             provider={provider}
-                            providerModels={providerModels}
+                            providerModels={filteredProviderModels}
                             visibleModels={visibleModels}
                             isFetchable={isFetchable}
                             isFetching={isFetching}
