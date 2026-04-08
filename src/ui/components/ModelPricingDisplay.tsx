@@ -74,7 +74,9 @@ function getRangeLabel(modelConfigs: ModelConfig[]): string | undefined {
     return `${minPromptLabel}-${maxPromptLabel} / ${minCompletionLabel}-${maxCompletionLabel} per 1M tokens`;
 }
 
-export function ModelPricingDisplay({ modelConfigs }: ModelPricingDisplayProps) {
+export function ModelPricingDisplay({
+    modelConfigs,
+}: ModelPricingDisplayProps) {
     const settings = useSettings();
     const showCost = settings?.showCost ?? false;
 

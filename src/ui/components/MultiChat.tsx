@@ -1340,7 +1340,9 @@ export function ToolsMessageView({
                                         {displayModelConfig && (
                                             <ProviderLogo
                                                 size="sm"
-                                                modelId={displayModelConfig.modelId}
+                                                modelId={
+                                                    displayModelConfig.modelId
+                                                }
                                                 className="-mt-[1px]"
                                             />
                                         )}
