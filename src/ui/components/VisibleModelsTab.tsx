@@ -62,7 +62,7 @@ interface ProviderModelSectionProps {
     isFetching: boolean;
     onFetchModels: () => void;
     onSetVisibility: (args: {
-        providerName: string;
+        providerName: ProviderName;
         modelId: string;
         isVisible: boolean;
     }) => void;
@@ -88,7 +88,7 @@ function ProviderModelSection({
     const isLocal = LOCAL_PROVIDERS.has(provider);
     const providerHasKey =
         isLocal ||
-        canProceedWithProvider(provider, apiKeys ?? ({} as ApiKeys)).canProceed;
+        canProceedWithProvider(provider, apiKeys ?? {}).canProceed;
 
     const [isOpen, setIsOpen] = useState(isLocal || providerHasKey);
     const [subProviderFilter, setSubProviderFilter] = useState<string | null>(
