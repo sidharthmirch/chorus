@@ -374,6 +374,20 @@ function getLastUserMessageSetIndex(messageSets: MessageSetDetail[]): number {
 }
 
 /**
+ * Slices messageSets to the last `windowSize` user/assistant turn pairs.
+ * A "turn" is one user message set + one assistant message set, so we keep
+ * the last `windowSize * 2` message sets.  Pass `undefined` to keep all.
+ */
+export function applyContextWindow(
+    messageSets: MessageSetDetail[],
+    windowSize: number | undefined,
+): MessageSetDetail[] {
+    if (windowSize === undefined) return messageSets;
+    if (windowSize === 0) return [];
+    return messageSets.slice(-(windowSize * 2));
+}
+
+/**
  * This is the conversation that will be sent to the LLM.
  */
 export function llmConversation(messageSets: MessageSetDetail[]): LLMMessage[] {

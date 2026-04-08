@@ -4,6 +4,7 @@ import {
     MessageSetDetail,
     MessageSet,
     llmConversation,
+    applyContextWindow,
     createAIMessage,
     blockIsEmpty,
     llmConversationForSynthesis,
@@ -1089,8 +1090,20 @@ export function useRestartMessageLegacy(
 
             // assume this is the last message set
             const previousMessageSets = messageSets?.slice(0, -1);
+            const chat = await queryClient.ensureQueryData(
+                chatQueries.detail(chatId),
+            );
+            const appMetadata = await queryClient.ensureQueryData({
+                queryKey: appMetadataKeys.appMetadata(),
+                queryFn: () => fetchAppMetadata(),
+            });
+            const windowSize =
+                chat?.contextWindowSize ??
+                (appMetadata["default_context_window_size"]
+                    ? parseInt(appMetadata["default_context_window_size"])
+                    : undefined);
             const conversation = [
-                ...llmConversation(previousMessageSets),
+                ...llmConversation(applyContextWindow(previousMessageSets, windowSize)),
                 ...(shouldUseDraftForRegenerate
                     ? [
                           {
@@ -2761,10 +2774,19 @@ function useStreamToolsMessage() {
             draftUserInput?: string;
             disableTools?: boolean;
         }) => {
-            const projectId = (
-                await queryClient.ensureQueryData(chatQueries.detail(chatId))
-            ).projectId;
-            const projectContext = await getProjectContext(projectId, chatId);
+            const chat = await queryClient.ensureQueryData(
+                chatQueries.detail(chatId),
+            );
+            const projectContext = await getProjectContext(chat.projectId, chatId);
+            const appMetadata = await queryClient.ensureQueryData({
+                queryKey: appMetadataKeys.appMetadata(),
+                queryFn: () => fetchAppMetadata(),
+            });
+            const windowSize =
+                chat?.contextWindowSize ??
+                (appMetadata["default_context_window_size"]
+                    ? parseInt(appMetadata["default_context_window_size"])
+                    : undefined);
 
             // this loop adds all MessageParts
             const MAX_AI_TURNS = 40;
@@ -2804,7 +2826,7 @@ function useStreamToolsMessage() {
                 ]);
                 const conversation: LLMMessage[] = [
                     ...projectContext,
-                    ...llmConversation(previousMessageSets),
+                    ...llmConversation(applyContextWindow(previousMessageSets, windowSize)),
                     ...(draftUserInput
                         ? [
                               {
@@ -3254,6 +3276,7 @@ export function useAddMessageToToolsBlock(chatId: string) {
  * Adds a message to the compare block in the LAST message set.
  */
 export function useAddMessageToCompareBlock(chatId: string) {
+    const queryClient = useQueryClient();
     const createMessage = useCreateMessage();
     const streamMessageText = useStreamMessageLegacy();
     const getMessageSets = useGetMessageSets();
@@ -3280,7 +3303,21 @@ export function useAddMessageToCompareBlock(chatId: string) {
                 0,
                 -1,
             ); // assume this is the last set
-            const conversation = llmConversation(previousMessageSets);
+            const chat = await queryClient.ensureQueryData(
+                chatQueries.detail(chatId),
+            );
+            const appMetadata = await queryClient.ensureQueryData({
+                queryKey: appMetadataKeys.appMetadata(),
+                queryFn: () => fetchAppMetadata(),
+            });
+            const windowSize =
+                chat?.contextWindowSize ??
+                (appMetadata["default_context_window_size"]
+                    ? parseInt(appMetadata["default_context_window_size"])
+                    : undefined);
+            const conversation = llmConversation(
+                applyContextWindow(previousMessageSets, windowSize),
+            );
 
             const result = await createMessage.mutateAsync({
                 message: createAIMessage({
