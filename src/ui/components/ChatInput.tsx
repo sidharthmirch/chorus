@@ -47,6 +47,7 @@ import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI
 import { PromptProfilePill } from "./PromptProfilePill";
 import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
 import { modelConfigQueries } from "@core/chorus/api/ModelsAPI";
+import { ModelPricingDisplay } from "./ModelPricingDisplay";
 
 const DEFAULT_CHAT_INPUT_ID = "default-chat-input";
 const REPLY_CHAT_INPUT_ID = "reply-chat-input";
@@ -782,6 +783,15 @@ export function ChatInput({
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 h-7">
+                        <ModelPricingDisplay
+                            modelConfigs={
+                                isReply
+                                    ? replyToModelConfig
+                                        ? [replyToModelConfig]
+                                        : []
+                                    : chatCompareModelConfigs
+                            }
+                        />
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <button

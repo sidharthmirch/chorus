@@ -1251,6 +1251,13 @@ export function ToolsMessageView({
     const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     );
+    const displayModelId = message.actualModelId ?? message.model;
+    const displayModelConfig = modelConfigsQuery.data?.find(
+        (m) => m.id === displayModelId,
+    );
+    const isAutoRoutedModel =
+        message.actualModelId !== undefined &&
+        message.actualModelId !== message.model;
     const toolsDisabledForModel =
         toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
@@ -1329,25 +1336,31 @@ export function ToolsMessageView({
                                             : "text-muted-foreground"
                                     }`}
                                 >
-                                    {modelConfig && (
-                                        <div className="flex items-center gap-2 h-6">
+                                    <div className="flex items-center gap-2 h-6">
+                                        {displayModelConfig && (
                                             <ProviderLogo
                                                 size="sm"
-                                                modelId={modelConfig.modelId}
+                                                modelId={displayModelConfig.modelId}
                                                 className="-mt-[1px]"
                                             />
-                                            <div className="text-sm">
-                                                <span>
-                                                    {modelConfig?.displayName}
+                                        )}
+                                        <div className="text-sm">
+                                            <span>
+                                                {displayModelConfig?.displayName ??
+                                                    displayModelId}
+                                            </span>
+                                            {isAutoRoutedModel && (
+                                                <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                                    via auto
                                                 </span>
-                                                {toolsDisabledForModel && (
-                                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
-                                                        tools off
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )}
+                                            {toolsDisabledForModel && (
+                                                <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
+                                                    tools off
+                                                </span>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
                             <div

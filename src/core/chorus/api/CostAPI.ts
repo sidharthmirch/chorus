@@ -34,6 +34,7 @@ export async function fetchOpenRouterCost(
     cost: number;
     promptTokens: number;
     completionTokens: number;
+    actualModel?: string;
 } | null> {
     try {
         const response = await fetch(
@@ -63,6 +64,7 @@ export async function fetchOpenRouterCost(
             completionTokens:
                 data.data.native_tokens_completion ??
                 data.data.tokens_completion,
+            actualModel: data.data.model,
         };
     } catch (error) {
         console.error("Error fetching OpenRouter generation cost:", error);
@@ -106,6 +108,31 @@ export function formatCost(costUsd: number | null | undefined): string {
 
     // For costs >= $1, show 2 decimal places
     return `$${costUsd.toFixed(2)}`;
+}
+
+/**
+ * Format per-token pricing as per-1M token pricing for UI display.
+ * Examples: "$2.50", "$0.25", "<$0.01"
+ */
+export function formatPricePerMillion(
+    pricePerToken: number | undefined,
+): string | undefined {
+    if (
+        pricePerToken === undefined ||
+        Number.isNaN(pricePerToken) ||
+        !Number.isFinite(pricePerToken) ||
+        pricePerToken <= 0
+    ) {
+        return undefined;
+    }
+
+    const pricePerMillion = pricePerToken * 1_000_000;
+
+    if (pricePerMillion < 0.01) {
+        return "<$0.01";
+    }
+
+    return `$${pricePerMillion.toFixed(2)}`;
 }
 
 /**

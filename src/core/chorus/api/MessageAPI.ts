@@ -126,6 +126,7 @@ export interface MessageDBRow {
     completion_tokens: number | null;
     total_tokens: number | null;
     cost_usd: number | null;
+    actual_model_id: string | null;
 }
 
 export interface MessagePartDBRow {
@@ -164,6 +165,7 @@ export function readMessage(
         completionTokens: row.completion_tokens ?? undefined,
         totalTokens: row.total_tokens ?? undefined,
         costUsd: row.cost_usd ?? undefined,
+        actualModelId: row.actual_model_id ?? undefined,
     };
 }
 
@@ -1309,6 +1311,7 @@ export function useStreamMessagePart() {
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
+                let actualModelId: string | undefined;
 
                 // For OpenRouter models with generation ID, fetch actual costs
                 if (
@@ -1326,6 +1329,9 @@ export function useStreamMessagePart() {
                         actualPromptTokens = openRouterCost.promptTokens;
                         actualCompletionTokens =
                             openRouterCost.completionTokens;
+                        actualModelId = openRouterCost.actualModel
+                            ? `openrouter::${openRouterCost.actualModel}`
+                            : undefined;
                     }
                 }
 
@@ -1378,8 +1384,9 @@ export function useStreamMessagePart() {
                         actualPromptTokens !== undefined &&
                         actualCompletionTokens !== undefined;
                     const hasCost = costUsd !== undefined;
+                    const hasActualModelId = actualModelId !== undefined;
 
-                    if (hasTokens || hasCost) {
+                    if (hasTokens || hasCost || hasActualModelId) {
                         // Build SET clause dynamically to avoid writing 0 for unknown values
                         // Use a helper to track the next parameter index (1-based for SQL)
                         let paramIndex = 1;
@@ -1411,6 +1418,12 @@ export function useStreamMessagePart() {
                                 `cost_usd = COALESCE(cost_usd, 0) + $${paramIndex++}`,
                             );
                             params.push(costUsd);
+                        }
+                        if (actualModelId !== undefined) {
+                            setClauses.push(
+                                `actual_model_id = $${paramIndex++}`,
+                            );
+                            params.push(actualModelId);
                         }
 
                         // Add WHERE clause parameters (increment both for consistency, even though
@@ -1640,6 +1653,7 @@ export function useStreamMessageLegacy() {
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
+                let actualModelId: string | undefined;
 
                 // For OpenRouter models with generation ID, fetch actual costs
                 if (
@@ -1657,6 +1671,9 @@ export function useStreamMessageLegacy() {
                         actualPromptTokens = openRouterCost.promptTokens;
                         actualCompletionTokens =
                             openRouterCost.completionTokens;
+                        actualModelId = openRouterCost.actualModel
+                            ? `openrouter::${openRouterCost.actualModel}`
+                            : undefined;
                     }
                 }
 
@@ -1687,7 +1704,7 @@ export function useStreamMessageLegacy() {
                 await db.execute(
                     `UPDATE messages
                     SET streaming_token = NULL, state = 'idle', text = ?,
-                        prompt_tokens = ?, completion_tokens = ?, total_tokens = ?, cost_usd = ?
+                        prompt_tokens = ?, completion_tokens = ?, total_tokens = ?, cost_usd = ?, actual_model_id = ?
                     WHERE id = ? AND streaming_token = ?`,
                     [
                         finalText,
@@ -1695,6 +1712,7 @@ export function useStreamMessageLegacy() {
                         actualCompletionTokens ?? null,
                         totalTokens,
                         costUsd ?? null,
+                        actualModelId ?? null,
                         messageId,
                         streamingToken,
                     ],
@@ -1737,6 +1755,14 @@ export function useStreamMessageLegacy() {
                         WHERE id = $2 AND streaming_token = $3`,
                     [errorMessage, messageId, streamingToken],
                 );
+
+                const projectId = await updateChatAndProjectCosts(chatId);
+                await queryClient.invalidateQueries(chatQueries.list());
+                await queryClient.invalidateQueries(chatQueries.detail(chatId));
+                if (projectId) {
+                    await queryClient.invalidateQueries(projectQueries.list());
+                }
+
                 UpdateQueue.getInstance().closeUpdateStream(streamKey);
 
                 // invalidate to ensure consistency
@@ -2014,6 +2040,7 @@ function useStopMessageStreaming() {
     return useMutation({
         mutationKey: ["stopMessageStreaming"] as const,
         mutationFn: async ({
+            chatId,
             messageId,
             streamingToken,
             errorMessage,
@@ -2030,6 +2057,13 @@ function useStopMessageStreaming() {
                         WHERE id = $2 AND streaming_token = $3`,
                     [errorMessage, messageId, streamingToken],
                 );
+
+                const projectId = await updateChatAndProjectCosts(chatId);
+                await queryClient.invalidateQueries(chatQueries.list());
+                await queryClient.invalidateQueries(chatQueries.detail(chatId));
+                if (projectId) {
+                    await queryClient.invalidateQueries(projectQueries.list());
+                }
             } else {
                 await db.execute(
                     `UPDATE messages
