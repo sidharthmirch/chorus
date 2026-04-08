@@ -360,7 +360,7 @@ export function ChatInput({
             void populateBlock.mutateAsync({
                 messageSetId: aiMessageSetId,
                 blockType: BLOCK_TYPE,
-                replyToModelId: replyToModelConfig?.modelId,
+                replyToModelId: replyToModelConfig?.id,
                 excludedModelIds: minimizedModels,
                 applyChatCreationModelDefaults,
             });
