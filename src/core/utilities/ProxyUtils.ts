@@ -39,7 +39,8 @@ export function hasApiKey(
     providerKey: keyof ApiKeys,
     apiKeys: ApiKeys,
 ): boolean {
-    return Boolean(apiKeys[providerKey]);
+    const key = apiKeys[providerKey];
+    return typeof key === "string" && key.trim().length > 0;
 }
 
 /**

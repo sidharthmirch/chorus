@@ -64,16 +64,46 @@ import {
 } from "./ui/select";
 
 // Helper function to filter models by search terms
+const normalizeSearchValue = (value: string): string =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const isSubsequenceMatch = (needle: string, haystack: string): boolean => {
+    if (!needle) return true;
+    let index = 0;
+    for (const char of haystack) {
+        if (char === needle[index]) {
+            index += 1;
+            if (index === needle.length) {
+                return true;
+            }
+        }
+    }
+    return false;
+};
+
 const filterBySearch = (models: ModelConfig[], searchTerms: string[]) => {
     if (searchTerms.length === 0) return models;
     return models.filter((m) => {
         const providerLabel = getProviderLabel(m.modelId);
-
-        return searchTerms.every(
-            (term) =>
-                m.displayName.toLowerCase().includes(term) ||
-                providerLabel.toLowerCase().includes(term),
+        const displayName = m.displayName.toLowerCase();
+        const providerLabelLower = providerLabel.toLowerCase();
+        const modelIdLower = m.modelId.toLowerCase();
+        const normalizedHaystack = normalizeSearchValue(
+            `${m.displayName} ${providerLabel} ${m.modelId}`,
         );
+
+        return searchTerms.every((term) => {
+            const normalizedTerm = normalizeSearchValue(term);
+
+            return (
+                displayName.includes(term) ||
+                providerLabelLower.includes(term) ||
+                modelIdLower.includes(term) ||
+                (normalizedTerm.length > 0 &&
+                    (normalizedHaystack.includes(normalizedTerm) ||
+                        isSubsequenceMatch(normalizedTerm, normalizedHaystack)))
+            );
+        });
     });
 };
 

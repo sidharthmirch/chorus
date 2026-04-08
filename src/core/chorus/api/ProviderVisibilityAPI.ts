@@ -1,11 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { db } from "../DB";
-import { ProviderVisibility, ProviderName } from "../Models";
+import { ProviderVisibility, ProviderName, getProviderName } from "../Models";
+import { useApiKeys } from "./AppMetadataAPI";
+import { useModelConfigs } from "./ModelsAPI";
+import { hasApiKey } from "@core/utilities/ProxyUtils";
 
 const providerVisibilityKeys = {
     all: () => ["providerVisibility"] as const,
     list: () => [...providerVisibilityKeys.all(), "list"] as const,
 };
+
+const API_KEY_REQUIRED_HIDDEN_PROVIDERS = new Set<ProviderName>([
+    "openrouter",
+    "google",
+    "openai",
+    "anthropic",
+]);
 
 type ProviderVisibilityDBRow = {
     provider_name: string;
@@ -113,7 +123,29 @@ export function useSetAllProviderModelsVisible() {
  */
 export function useProviderVisibilityMap(): Map<string, boolean> | undefined {
     const { data } = useProviderVisibleModels();
-    if (!data) return undefined;
+    const { data: apiKeys } = useApiKeys();
+    const { data: allModels } = useModelConfigs();
 
-    return new Map(data.map((v) => [v.modelId, v.isVisible]));
+    if (!data && !allModels) return undefined;
+
+    const visibilityMap = new Map(
+        (data ?? []).map((v) => [v.modelId, v.isVisible]),
+    );
+
+    if (!allModels || apiKeys === undefined) {
+        return visibilityMap;
+    }
+
+    for (const model of allModels) {
+        const provider = getProviderName(model.modelId);
+        if (!API_KEY_REQUIRED_HIDDEN_PROVIDERS.has(provider)) {
+            continue;
+        }
+
+        if (!hasApiKey(provider as keyof typeof apiKeys, apiKeys)) {
+            visibilityMap.set(model.modelId, false);
+        }
+    }
+
+    return visibilityMap;
 }
