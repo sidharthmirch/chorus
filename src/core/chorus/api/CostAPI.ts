@@ -111,31 +111,6 @@ export function formatCost(costUsd: number | null | undefined): string {
 }
 
 /**
- * Format per-token pricing as per-1M token pricing for UI display.
- * Examples: "$2.50", "$0.25", "<$0.01"
- */
-export function formatPricePerMillion(
-    pricePerToken: number | undefined,
-): string | undefined {
-    if (
-        pricePerToken === undefined ||
-        Number.isNaN(pricePerToken) ||
-        !Number.isFinite(pricePerToken) ||
-        pricePerToken <= 0
-    ) {
-        return undefined;
-    }
-
-    const pricePerMillion = pricePerToken * 1_000_000;
-
-    if (pricePerMillion < 0.01) {
-        return "<$0.01";
-    }
-
-    return `$${pricePerMillion.toFixed(2)}`;
-}
-
-/**
  * Calculate total cost for a chat
  */
 export async function calculateChatCost(chatId: string): Promise<number> {
