@@ -18,6 +18,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
     ModelConfig,
+    ProviderName,
     getProviderLabel,
     getProviderName,
 } from "@core/chorus/Models";
@@ -67,7 +68,8 @@ import {
 const normalizeSearchValue = (value: string): string =>
     value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-const KNOWN_PROVIDERS = [
+// Derived from ProviderName to stay in sync with the core model layer
+const KNOWN_PROVIDERS: ProviderName[] = [
     "anthropic",
     "openai",
     "google",
@@ -76,10 +78,11 @@ const KNOWN_PROVIDERS = [
     "ollama",
     "lmstudio",
     "openrouter",
-] as const;
+    "meta",
+];
 
 interface ParsedSearchQuery {
-    providerFilter: string | null;
+    providerFilter: ProviderName | null;
     modelTerms: string[];
 }
 
@@ -89,13 +92,25 @@ const parseSearchQuery = (query: string): ParsedSearchQuery => {
         const potentialProvider = normalizeSearchValue(
             query.slice(0, colonIndex),
         );
-        const matched = KNOWN_PROVIDERS.find((p) =>
-            p.startsWith(potentialProvider) || potentialProvider.startsWith(p),
-        );
-        if (matched) {
-            const remainder = query.slice(colonIndex + 1).toLowerCase();
-            const modelTerms = remainder.split(" ").filter(Boolean);
-            return { providerFilter: matched, modelTerms };
+        if (potentialProvider.length > 0) {
+            // Exact match first
+            const exactMatch = KNOWN_PROVIDERS.find(
+                (p) => p === potentialProvider,
+            );
+            if (exactMatch) {
+                const remainder = query.slice(colonIndex + 1).toLowerCase();
+                const modelTerms = remainder.split(" ").filter(Boolean);
+                return { providerFilter: exactMatch, modelTerms };
+            }
+            // Unambiguous prefix match
+            const prefixMatches = KNOWN_PROVIDERS.filter((p) =>
+                p.startsWith(potentialProvider),
+            );
+            if (prefixMatches.length === 1) {
+                const remainder = query.slice(colonIndex + 1).toLowerCase();
+                const modelTerms = remainder.split(" ").filter(Boolean);
+                return { providerFilter: prefixMatches[0], modelTerms };
+            }
         }
     }
     const modelTerms = query.toLowerCase().split(" ").filter(Boolean);
@@ -137,45 +152,48 @@ const scoreMatch = (term: string, haystack: string): number => {
 const filterBySearch = (
     models: ModelConfig[],
     modelTerms: string[],
-    providerFilter: string | null = null,
+    providerFilter: ProviderName | null = null,
 ): ModelConfig[] => {
     if (modelTerms.length === 0 && providerFilter === null) return models;
 
-    return models
-        .filter((m) => {
-            // Hard-filter by provider when specified
+    // Compute score once per model to avoid redundant work in the sort comparator
+    const scored = models.reduce<{ model: ModelConfig; score: number }[]>(
+        (acc, model) => {
             if (
                 providerFilter !== null &&
-                getProviderName(m.modelId) !== providerFilter
+                getProviderName(model.modelId) !== providerFilter
             ) {
-                return false;
+                return acc;
             }
 
-            if (modelTerms.length === 0) return true;
+            if (modelTerms.length === 0) {
+                acc.push({ model, score: 0 });
+                return acc;
+            }
 
-            const providerLabel = getProviderLabel(m.modelId);
-            const haystack = `${m.displayName} ${providerLabel} ${m.modelId}`.toLowerCase();
+            const providerLabel = getProviderLabel(model.modelId);
+            const haystack =
+                `${model.displayName} ${providerLabel} ${model.modelId}`.toLowerCase();
+            const termScores = modelTerms.map((term) =>
+                scoreMatch(term, haystack),
+            );
 
-            return modelTerms.every(
-                (term) => scoreMatch(term, haystack) > 0,
-            );
-        })
-        .sort((a, b) => {
-            if (modelTerms.length === 0) return 0;
-            const haystackA =
-                `${a.displayName} ${getProviderLabel(a.modelId)} ${a.modelId}`.toLowerCase();
-            const haystackB =
-                `${b.displayName} ${getProviderLabel(b.modelId)} ${b.modelId}`.toLowerCase();
-            const scoreA = modelTerms.reduce(
-                (acc, term) => acc + scoreMatch(term, haystackA),
-                0,
-            );
-            const scoreB = modelTerms.reduce(
-                (acc, term) => acc + scoreMatch(term, haystackB),
-                0,
-            );
-            return scoreB - scoreA;
-        });
+            if (termScores.some((s) => s <= 0)) return acc;
+
+            acc.push({
+                model,
+                score: termScores.reduce((total, s) => total + s, 0),
+            });
+            return acc;
+        },
+        [],
+    );
+
+    if (modelTerms.length > 0) {
+        scored.sort((a, b) => b.score - a.score);
+    }
+
+    return scored.map(({ model }) => model);
 };
 
 // Helper function to format pricing for display (per million tokens)
