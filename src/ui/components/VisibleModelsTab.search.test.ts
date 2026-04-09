@@ -1,0 +1,48 @@
+import { describe, expect, it } from "vitest";
+import { ModelConfig } from "@core/chorus/Models";
+import { filterModelsBySearch } from "./visibleModelsSearch";
+
+function makeModel(
+    id: string,
+    modelId: string,
+    displayName: string,
+): ModelConfig {
+    return {
+        id,
+        modelId,
+        displayName,
+    } as ModelConfig;
+}
+
+const MODELS: ModelConfig[] = [
+    makeModel("1", "openrouter::openai/gpt-4o", "OpenAI GPT-4o"),
+    makeModel("2", "openrouter::google/gemini-1.5-pro", "Google Gemini 1.5 Pro"),
+    makeModel("3", "openrouter::meta-llama/llama-3.1-8b", "Llama 3.1 8B"),
+];
+
+const SUB_PROVIDERS = ["google", "meta-llama", "openai"];
+
+describe("filterModelsBySearch", () => {
+    it("returns all models when search is empty", () => {
+        expect(filterModelsBySearch(MODELS, "", SUB_PROVIDERS)).toEqual(MODELS);
+    });
+
+    it("supports sub-provider prefix search with model terms", () => {
+        const filtered = filterModelsBySearch(
+            MODELS,
+            "openai: gpt-4",
+            SUB_PROVIDERS,
+        );
+        expect(filtered).toEqual([MODELS[0]]);
+    });
+
+    it("supports provider-only prefix syntax with trailing colon", () => {
+        const filtered = filterModelsBySearch(MODELS, "google:", SUB_PROVIDERS);
+        expect(filtered).toEqual([MODELS[1]]);
+    });
+
+    it("applies plain text term filtering", () => {
+        const filtered = filterModelsBySearch(MODELS, "5.4", SUB_PROVIDERS);
+        expect(filtered).toEqual([]);
+    });
+});

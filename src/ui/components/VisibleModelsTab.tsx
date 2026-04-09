@@ -23,6 +23,7 @@ import { Loader2, RefreshCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { getProviderName } from "@core/chorus/Models";
 import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
+import { filterModelsBySearch, getSubProvider } from "./visibleModelsSearch";
 
 const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
 type FetchableProvider = (typeof FETCHABLE_PROVIDERS)[number];
@@ -46,19 +47,6 @@ const PROVIDER_LABELS: Record<string, string> = {
     grok: "Grok",
     perplexity: "Perplexity",
 };
-
-/**
- * Extracts the sub-provider org from a model ID.
- * For "openrouter::meta-llama/llama-4-scout" returns "meta-llama".
- * For models without an org prefix returns null.
- */
-function getSubProvider(modelId: string): string | null {
-    const modelPart = modelId.split("::")[1];
-    if (!modelPart) return null;
-    const slashIdx = modelPart.indexOf("/");
-    if (slashIdx === -1) return null;
-    return modelPart.slice(0, slashIdx);
-}
 
 interface ProviderModelSectionProps {
     provider: ProviderName;
@@ -138,12 +126,15 @@ function ProviderModelSection({
         return counts;
     }, [providerModels]);
 
-    const visibleProviderModels: ModelConfig[] =
-        subProviderFilter !== null
-            ? providerModels.filter(
-                  (m) => getSubProvider(m.modelId) === subProviderFilter,
-              )
-            : providerModels;
+    const visibleProviderModels = useMemo(() => {
+        const chipFiltered =
+            subProviderFilter !== null
+                ? providerModels.filter(
+                      (m) => getSubProvider(m.modelId) === subProviderFilter,
+                  )
+                : providerModels;
+        return filterModelsBySearch(chipFiltered, subProviderSearch, subProviders);
+    }, [providerModels, subProviderFilter, subProviderSearch, subProviders]);
 
     const isAllVisible = visibleProviderModels.every((m) => {
         const v = visibleModels?.find((vm) => vm.modelId === m.modelId);
@@ -211,16 +202,13 @@ function ProviderModelSection({
             <CollapsibleContent className="px-4 pb-4 space-y-4">
                 {/* Searchable sub-provider filter (only for large sub-provider lists) */}
                 {hasSubProviders && showSubProviderSearch && (
-                    <Input
-                        placeholder="Search providers..."
-                        value={subProviderSearch}
-                        onChange={(e) => {
-                            setSubProviderSearch(e.target.value);
-                            setSubProviderFilter(null);
-                        }}
-                        className="h-8 text-sm"
-                    />
-                )}
+                        <Input
+                            placeholder="Search providers..."
+                            value={subProviderSearch}
+                            onChange={(e) => setSubProviderSearch(e.target.value)}
+                            className="h-8 text-sm"
+                        />
+                    )}
 
                 {/* Sub-provider filter chips */}
                 {hasSubProviders && (
@@ -262,15 +250,19 @@ function ProviderModelSection({
                     </div>
                 )}
 
-                {providerModels.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                        {isFetchable
-                            ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
-                            : "No models available."}
-                    </p>
-                ) : (
-                    <div className="space-y-2">
-                        {visibleProviderModels.map((m) => {
+                    {providerModels.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                            {isFetchable
+                                ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
+                                : "No models available."}
+                        </p>
+                    ) : visibleProviderModels.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                            No models match your search.
+                        </p>
+                    ) : (
+                        <div className="space-y-2">
+                            {visibleProviderModels.map((m) => {
                             const visibility = visibleModels?.find(
                                 (vm) => vm.modelId === m.modelId,
                             );
