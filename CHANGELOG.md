@@ -32,33 +32,13 @@ Released 2026-04-07
 -   **Fix cmd+number keyboard navigation** - selected blocks and columns now scroll into view when using cmd+number.
 -   **Fix cmd+number toggle-off behavior** - reselecting the same block with cmd+number now deselects it as expected.
 
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper. Alternatively, run:
->
-> ```
-> xattr -d com.apple.quarantine /Applications/Chorus.app
-> ```
-
 ## 0.14.6-PRE (pre-release)
 
 Released 2026-04-08
 
 This is a testing build which should have the same feature-set as v0.14.14. Intended use is for proof-of-concept for merging with base fork meltylabs/chorus
+NOT WORKING UNLESS RUN VIA `pnpm dev build; exit;`
 
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper. Alternatively, run:
->
-> ```
-> xattr -d com.apple.quarantine /Applications/Chorus.app
-> ```
 
 ## v0.14.13
 
@@ -68,16 +48,6 @@ Released 2026-03-31
 -   **Fix sidepane blur on reply messages** — reply messages in the sidepane no longer have the blur effect incorrectly applied
 -   **Fix cmd+number keybindings** — cmd+1-8 now works for both tools and compare blocks; cmd+1 always selects the leftmost column; cmd/ctrl+shift+space scrolls the selected column into view
 
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper. Alternatively, run:
->
-> ```
-> xattr -d com.apple.quarantine /Applications/Chorus.app
-> ```
 
 ## v0.14.12
 
@@ -93,105 +63,13 @@ Released 2026-03-31
 
 -   **Fresh-install model preferences** — On first launch, Gemini 2.5 Flash Lite is seeded as the default ambient, fallback, and chat model.
 
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** \`Chorus-aarch64.app.zip\` or \`Chorus-aarch64.dmg\`
--   **Intel:** \`Chorus-x86_64.app.zip\` or \`Chorus-x86_64.dmg\`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
 ## v0.14.11
 
 Released 2026-03-31
 
 -   Initial implementation of reorder chat functionality
 
-### Downloads
 
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
+## < v0.14.10
 
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
-## v0.14.10
-
-Released 2026-03-30
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
-## v0.14.9
-
-Released 2026-03-30
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
-## v0.14.8
-
-Released 2026-03-30
-
--   **Multi-Model Column Minimization**: Added a minimize button to each model column in the multi-model view to help manage your workspace.
-
--   **Automated Minimization**: Models that fail to return a response after stopping will now automatically minimize to reduce clutter.
-
--   **Sidebar Integration**: Minimized models are easily accessible in the sidebar above Projects, where they can be clicked to quickly restore the column.
-
--   **Smart Message Sending**: Minimized models are automatically excluded from new message sends until you expand them again.
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-> Alternatively, remove the quarantine flag via Terminal: `xattr -d com.apple.quarantine Chorus.app`
-
-## v0.14.7
-
-Released 2026-03-29
-
--   Add support for ⌘ Command + ⇧ Shift + A to select all models in a profile
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
-## v0.14.6
-
-Released 2026-03-29
-
--   Update Ambient chat model to use Gemini 2.5 flash
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
-
-## v0.14.5
-
-Released 2026-03-29
-
--   Added profiles for favorite models in the chat window
--   Dynamically fetch and select models from providers
--   Prompt profiles
-
-### Downloads
-
--   **Apple Silicon (M1/M2/M3):** `Chorus-aarch64.app.zip` or `Chorus-aarch64.dmg`
--   **Intel:** `Chorus-x86_64.app.zip` or `Chorus-x86_64.dmg`
-
-> **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
+Pre-fork Chorus!
