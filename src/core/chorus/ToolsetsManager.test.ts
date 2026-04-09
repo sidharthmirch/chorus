@@ -40,7 +40,9 @@ describe("ToolsetsManager.executeToolCall", () => {
         const manager = new ToolsetsManager();
         const executeTool = vi.fn().mockResolvedValue("should-not-run");
 
-        (manager as unknown as { _builtInToolsets: Toolset[] })._builtInToolsets = [
+        (
+            manager as unknown as { _builtInToolsets: Toolset[] }
+        )._builtInToolsets = [
             {
                 name: "web",
                 executeTool,
@@ -67,7 +69,11 @@ describe("ToolsetsManager.executeToolCall", () => {
             "project-1",
         );
 
-        expect(checkToolPermission).toHaveBeenCalledWith("web", "search", "ask");
+        expect(checkToolPermission).toHaveBeenCalledWith(
+            "web",
+            "search",
+            "ask",
+        );
         expect(executeTool).not.toHaveBeenCalled();
         expect(result.content).toContain("denied by saved preference");
     });
