@@ -23,6 +23,11 @@ import { Loader2, RefreshCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { getProviderName } from "@core/chorus/Models";
 import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
+import {
+    filterSubProvidersBySearch,
+    filterModelsBySearch,
+    getSubProvider,
+} from "./visibleModelsSearch";
 
 const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
 type FetchableProvider = (typeof FETCHABLE_PROVIDERS)[number];
@@ -46,19 +51,6 @@ const PROVIDER_LABELS: Record<string, string> = {
     grok: "Grok",
     perplexity: "Perplexity",
 };
-
-/**
- * Extracts the sub-provider org from a model ID.
- * For "openrouter::meta-llama/llama-4-scout" returns "meta-llama".
- * For models without an org prefix returns null.
- */
-function getSubProvider(modelId: string): string | null {
-    const modelPart = modelId.split("::")[1];
-    if (!modelPart) return null;
-    const slashIdx = modelPart.indexOf("/");
-    if (slashIdx === -1) return null;
-    return modelPart.slice(0, slashIdx);
-}
 
 interface ProviderModelSectionProps {
     provider: ProviderName;
@@ -96,9 +88,7 @@ function ProviderModelSection({
         isLocal || canProceedWithProvider(provider, apiKeys ?? {}).canProceed;
 
     const [isOpen, setIsOpen] = useState(isLocal || providerHasKey);
-    const [subProviderFilter, setSubProviderFilter] = useState<string | null>(
-        null,
-    );
+    const [subProviderFilters, setSubProviderFilters] = useState<string[]>([]);
     const [subProviderSearch, setSubProviderSearch] = useState("");
 
     // Auto-expand when an API key is added for this provider
@@ -124,10 +114,12 @@ function ProviderModelSection({
         subProviders.length > SUB_PROVIDER_SEARCH_THRESHOLD;
 
     const filteredSubProviders = useMemo(() => {
-        if (!subProviderSearch.trim()) return subProviders;
-        const term = subProviderSearch.toLowerCase();
-        return subProviders.filter((s) => s.toLowerCase().includes(term));
-    }, [subProviders, subProviderSearch]);
+        return filterSubProvidersBySearch(
+            subProviders,
+            subProviderSearch,
+            subProviderFilters,
+        );
+    }, [subProviders, subProviderSearch, subProviderFilters]);
 
     const subProviderModelCounts = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -138,12 +130,14 @@ function ProviderModelSection({
         return counts;
     }, [providerModels]);
 
-    const visibleProviderModels: ModelConfig[] =
-        subProviderFilter !== null
-            ? providerModels.filter(
-                  (m) => getSubProvider(m.modelId) === subProviderFilter,
-              )
-            : providerModels;
+    const visibleProviderModels = useMemo(() => {
+        return filterModelsBySearch(
+            providerModels,
+            subProviderSearch,
+            subProviders,
+            subProviderFilters,
+        );
+    }, [providerModels, subProviderFilters, subProviderSearch, subProviders]);
 
     const isAllVisible = visibleProviderModels.every((m) => {
         const v = visibleModels?.find((vm) => vm.modelId === m.modelId);
@@ -214,10 +208,7 @@ function ProviderModelSection({
                     <Input
                         placeholder="Search providers..."
                         value={subProviderSearch}
-                        onChange={(e) => {
-                            setSubProviderSearch(e.target.value);
-                            setSubProviderFilter(null);
-                        }}
+                        onChange={(e) => setSubProviderSearch(e.target.value)}
                         className="h-8 text-sm"
                     />
                 )}
@@ -226,9 +217,9 @@ function ProviderModelSection({
                 {hasSubProviders && (
                     <div className="flex flex-wrap gap-1.5">
                         <button
-                            onClick={() => setSubProviderFilter(null)}
+                            onClick={() => setSubProviderFilters([])}
                             className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                subProviderFilter === null
+                                subProviderFilters.length === 0
                                     ? "bg-primary text-primary-foreground border-primary"
                                     : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                             }`}
@@ -239,12 +230,16 @@ function ProviderModelSection({
                             <button
                                 key={sub}
                                 onClick={() =>
-                                    setSubProviderFilter((prev) =>
-                                        prev === sub ? null : sub,
+                                    setSubProviderFilters((prev) =>
+                                        prev.includes(sub)
+                                            ? prev.filter(
+                                                  (item) => item !== sub,
+                                              )
+                                            : [...prev, sub],
                                     )
                                 }
                                 className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                    subProviderFilter === sub
+                                    subProviderFilters.includes(sub)
                                         ? "bg-primary text-primary-foreground border-primary"
                                         : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                                 }`}
@@ -267,6 +262,10 @@ function ProviderModelSection({
                         {isFetchable
                             ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
                             : "No models available."}
+                    </p>
+                ) : visibleProviderModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        No models match your search.
                     </p>
                 ) : (
                     <div className="space-y-2">
