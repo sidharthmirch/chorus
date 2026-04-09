@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ModelConfig } from "@core/chorus/Models";
-import { filterModelsBySearch } from "./visibleModelsSearch";
+import {
+    filterModelsBySearch,
+    parseSubProviderSearch,
+} from "./visibleModelsSearch";
 
 function makeModel(
     id: string,
@@ -16,7 +19,11 @@ function makeModel(
 
 const MODELS: ModelConfig[] = [
     makeModel("1", "openrouter::openai/gpt-4o", "OpenAI GPT-4o"),
-    makeModel("2", "openrouter::google/gemini-1.5-pro", "Google Gemini 1.5 Pro"),
+    makeModel(
+        "2",
+        "openrouter::google/gemini-1.5-pro",
+        "Google Gemini 1.5 Pro",
+    ),
     makeModel("3", "openrouter::meta-llama/llama-3.1-8b", "Llama 3.1 8B"),
 ];
 
@@ -41,18 +48,23 @@ describe("filterModelsBySearch", () => {
         expect(filtered).toEqual([MODELS[1]]);
     });
 
+    it("parses provider prefix syntax for chip filtering", () => {
+        expect(parseSubProviderSearch("openai: gpt-4", SUB_PROVIDERS)).toEqual({
+            matchedSubProvider: "openai",
+            remainingSearch: "gpt-4",
+        });
+    });
+
     it("applies plain text term filtering", () => {
         const filtered = filterModelsBySearch(MODELS, "5.4", SUB_PROVIDERS);
         expect(filtered).toEqual([]);
     });
 
     it("filters by multiple selected sub-providers", () => {
-        const filtered = filterModelsBySearch(
-            MODELS,
-            "",
-            SUB_PROVIDERS,
-            ["openai", "google"],
-        );
+        const filtered = filterModelsBySearch(MODELS, "", SUB_PROVIDERS, [
+            "openai",
+            "google",
+        ]);
         expect(filtered).toEqual([MODELS[0], MODELS[1]]);
     });
 });

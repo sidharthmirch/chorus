@@ -13,6 +13,55 @@ export function getSubProvider(modelId: string): string | null {
     return modelPart.slice(0, slashIdx);
 }
 
+export interface ParsedSubProviderSearch {
+    matchedSubProvider: string | null;
+    remainingSearch: string;
+}
+
+export function parseSubProviderSearch(
+    search: string,
+    subProviders: string[],
+): ParsedSubProviderSearch {
+    const trimmedSearch = search.trim();
+    if (!trimmedSearch) {
+        return {
+            matchedSubProvider: null,
+            remainingSearch: "",
+        };
+    }
+
+    const normalizedSubProviders = new Set(
+        subProviders.map((subProvider) => subProvider.toLowerCase()),
+    );
+
+    const colonIdx = trimmedSearch.indexOf(":");
+    if (colonIdx === -1) {
+        return {
+            matchedSubProvider: null,
+            remainingSearch: trimmedSearch,
+        };
+    }
+
+    const candidateSubProvider = trimmedSearch
+        .slice(0, colonIdx)
+        .trim()
+        .toLowerCase();
+    if (
+        !candidateSubProvider ||
+        !normalizedSubProviders.has(candidateSubProvider)
+    ) {
+        return {
+            matchedSubProvider: null,
+            remainingSearch: trimmedSearch,
+        };
+    }
+
+    return {
+        matchedSubProvider: candidateSubProvider,
+        remainingSearch: trimmedSearch.slice(colonIdx + 1).trim(),
+    };
+}
+
 export function filterModelsBySearch(
     models: ModelConfig[],
     search: string,
@@ -26,37 +75,20 @@ export function filterModelsBySearch(
         normalizedSelectedSubProviders.size === 0
             ? models
             : models.filter((model) => {
-                  const subProvider = getSubProvider(model.modelId)?.toLowerCase();
+                  const subProvider = getSubProvider(
+                      model.modelId,
+                  )?.toLowerCase();
                   return (
                       subProvider !== undefined &&
                       normalizedSelectedSubProviders.has(subProvider)
                   );
               });
 
-    const trimmedSearch = search.trim();
-    if (!trimmedSearch) return selectedFilteredModels;
-
-    const normalizedSubProviders = new Set(
-        subProviders.map((subProvider) => subProvider.toLowerCase()),
+    const { matchedSubProvider, remainingSearch } = parseSubProviderSearch(
+        search,
+        subProviders,
     );
-
-    let matchedSubProvider: string | null = null;
-    let remainingSearch = trimmedSearch;
-    const colonIdx = trimmedSearch.indexOf(":");
-
-    if (colonIdx !== -1) {
-        const candidateSubProvider = trimmedSearch
-            .slice(0, colonIdx)
-            .trim()
-            .toLowerCase();
-        if (
-            candidateSubProvider &&
-            normalizedSubProviders.has(candidateSubProvider)
-        ) {
-            matchedSubProvider = candidateSubProvider;
-            remainingSearch = trimmedSearch.slice(colonIdx + 1).trim();
-        }
-    }
+    if (!matchedSubProvider && !remainingSearch) return selectedFilteredModels;
 
     const terms = remainingSearch.toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -68,7 +100,8 @@ export function filterModelsBySearch(
 
         if (terms.length === 0) return true;
 
-        const searchableText = `${model.displayName} ${model.modelId}`.toLowerCase();
+        const searchableText =
+            `${model.displayName} ${model.modelId}`.toLowerCase();
         return terms.every((term) => searchableText.includes(term));
     });
 }

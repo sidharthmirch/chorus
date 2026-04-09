@@ -23,7 +23,11 @@ import { Loader2, RefreshCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { getProviderName } from "@core/chorus/Models";
 import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
-import { filterModelsBySearch, getSubProvider } from "./visibleModelsSearch";
+import {
+    filterModelsBySearch,
+    getSubProvider,
+    parseSubProviderSearch,
+} from "./visibleModelsSearch";
 
 const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
 type FetchableProvider = (typeof FETCHABLE_PROVIDERS)[number];
@@ -109,11 +113,19 @@ function ProviderModelSection({
     const showSubProviderSearch =
         subProviders.length > SUB_PROVIDER_SEARCH_THRESHOLD;
 
+    const parsedSubProviderSearch = useMemo(
+        () => parseSubProviderSearch(subProviderSearch, subProviders),
+        [subProviderSearch, subProviders],
+    );
+
     const filteredSubProviders = useMemo(() => {
-        if (!subProviderSearch.trim()) return subProviders;
-        const term = subProviderSearch.toLowerCase();
+        const term = (
+            parsedSubProviderSearch.matchedSubProvider ??
+            parsedSubProviderSearch.remainingSearch
+        ).toLowerCase();
+        if (!term) return subProviders;
         return subProviders.filter((s) => s.toLowerCase().includes(term));
-    }, [subProviders, subProviderSearch]);
+    }, [subProviders, parsedSubProviderSearch]);
 
     const subProviderModelCounts = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -199,13 +211,13 @@ function ProviderModelSection({
             <CollapsibleContent className="px-4 pb-4 space-y-4">
                 {/* Searchable sub-provider filter (only for large sub-provider lists) */}
                 {hasSubProviders && showSubProviderSearch && (
-                        <Input
-                            placeholder="Search providers..."
-                            value={subProviderSearch}
-                            onChange={(e) => setSubProviderSearch(e.target.value)}
-                            className="h-8 text-sm"
-                        />
-                    )}
+                    <Input
+                        placeholder="Search providers..."
+                        value={subProviderSearch}
+                        onChange={(e) => setSubProviderSearch(e.target.value)}
+                        className="h-8 text-sm"
+                    />
+                )}
 
                 {/* Sub-provider filter chips */}
                 {hasSubProviders && (
@@ -226,7 +238,9 @@ function ProviderModelSection({
                                 onClick={() =>
                                     setSubProviderFilters((prev) =>
                                         prev.includes(sub)
-                                            ? prev.filter((item) => item !== sub)
+                                            ? prev.filter(
+                                                  (item) => item !== sub,
+                                              )
                                             : [...prev, sub],
                                     )
                                 }
@@ -249,19 +263,19 @@ function ProviderModelSection({
                     </div>
                 )}
 
-                    {providerModels.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            {isFetchable
-                                ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
-                                : "No models available."}
-                        </p>
-                    ) : visibleProviderModels.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No models match your search.
-                        </p>
-                    ) : (
-                        <div className="space-y-2">
-                            {visibleProviderModels.map((m) => {
+                {providerModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        {isFetchable
+                            ? 'No models loaded yet. Click "Fetch Models" to load the model list.'
+                            : "No models available."}
+                    </p>
+                ) : visibleProviderModels.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        No models match your search.
+                    </p>
+                ) : (
+                    <div className="space-y-2">
+                        {visibleProviderModels.map((m) => {
                             const visibility = visibleModels?.find(
                                 (vm) => vm.modelId === m.modelId,
                             );

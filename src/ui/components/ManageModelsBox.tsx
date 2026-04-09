@@ -68,8 +68,15 @@ import {
 const normalizeSearchValue = (value: string): string =>
     value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Derived from ProviderName to stay in sync with the core model layer
-const KNOWN_PROVIDERS: ProviderName[] = [
+const ensureKnownProvidersExhaustive = <T extends readonly ProviderName[]>(
+    providers: T &
+        (Exclude<ProviderName, T[number]> extends never
+            ? unknown
+            : "KNOWN_PROVIDERS must include every ProviderName"),
+): T => providers;
+
+// Keep this curated list aligned with ProviderName for provider-prefix parsing.
+const KNOWN_PROVIDERS = ensureKnownProvidersExhaustive([
     "anthropic",
     "openai",
     "google",
@@ -79,7 +86,7 @@ const KNOWN_PROVIDERS: ProviderName[] = [
     "lmstudio",
     "openrouter",
     "meta",
-];
+] as const);
 
 interface ParsedSearchQuery {
     providerFilter: ProviderName | null;
