@@ -1188,6 +1188,101 @@ export function ToolsReplyCountView({
     );
 }
 
+/**
+ * Map a wire / persisted model id (e.g. OpenRouter snapshot slug) to a local {@link Models.ModelConfig}.
+ */
+function findModelConfigForDisplay(
+    configs: Models.ModelConfig[] | undefined,
+    resolvedId: string,
+): Models.ModelConfig | undefined {
+    if (!configs?.length) {
+        return undefined;
+    }
+    const byId = configs.find((m) => m.id === resolvedId);
+    if (byId) {
+        return byId;
+    }
+    const byModelId = configs.find((m) => m.modelId === resolvedId);
+    if (byModelId) {
+        return byModelId;
+    }
+    if (resolvedId.startsWith("openrouter::")) {
+        const hyphenMatch = configs.find(
+            (m) =>
+                m.modelId.startsWith("openrouter::") &&
+                (resolvedId.startsWith(`${m.modelId}-`) ||
+                    m.modelId.startsWith(`${resolvedId}-`)),
+        );
+        if (hyphenMatch) {
+            return hyphenMatch;
+        }
+        if (resolvedId.endsWith(":free")) {
+            const withoutFree = resolvedId.slice(
+                0,
+                resolvedId.length - ":free".length,
+            );
+            const byNoFreeSuffix = configs.find(
+                (m) => m.id === withoutFree || m.modelId === withoutFree,
+            );
+            if (byNoFreeSuffix) {
+                return byNoFreeSuffix;
+            }
+            return configs.find(
+                (m) =>
+                    m.modelId.startsWith("openrouter::") &&
+                    (withoutFree.startsWith(`${m.modelId}-`) ||
+                        m.modelId.startsWith(`${withoutFree}-`)),
+            );
+        }
+    }
+    return undefined;
+}
+
+/** Part after the first {@code openrouter::} (OpenRouter API / catalog slug). */
+function getOpenRouterWireModelSlug(modelId: string): string | undefined {
+    if (!modelId.startsWith("openrouter::")) {
+        return undefined;
+    }
+    return modelId.slice("openrouter::".length);
+}
+
+/**
+ * User-facing label when a request was routed (auto / free meta-model on OpenRouter).
+ */
+function openRouterRoutingBadgeText(requestedModelId: string): string {
+    const slug = getOpenRouterWireModelSlug(requestedModelId);
+    if (slug === "openrouter/free") {
+        return "VIA FREEROUTER";
+    }
+    if (slug === "openrouter/auto") {
+        return "VIA AUTOROUTER";
+    }
+    return "VIA ROUTER";
+}
+
+/**
+ * Whether the resolved model id refers to the same OpenRouter model as the one the user picked
+ * (API may append snapshot / version segments after a hyphen).
+ */
+function resolvedOpenRouterModelMatchesRequested(
+    resolved: string,
+    requestedModelId: string,
+): boolean {
+    if (resolved === requestedModelId) {
+        return true;
+    }
+    if (
+        !resolved.startsWith("openrouter::") ||
+        !requestedModelId.startsWith("openrouter::")
+    ) {
+        return false;
+    }
+    return (
+        resolved.startsWith(`${requestedModelId}-`) ||
+        requestedModelId.startsWith(`${resolved}-`)
+    );
+}
+
 export function ToolsMessageView({
     message,
     isQuickChatWindow,
@@ -1248,10 +1343,34 @@ export function ToolsMessageView({
     if (!message) {
         return null;
     }
-    const fullText = message.parts.map((p) => p.content).join("\n");
+    let fullText = "";
+    try {
+        fullText = (message.parts ?? []).map((p) => p.content).join("\n");
+    } catch (error) {
+        console.warn("Skipping malformed streaming message", {
+            messageId: message.id,
+            error,
+        });
+        return null;
+    }
     const modelConfig = modelConfigsQuery.data?.find(
         (m) => m.id === message.model,
     );
+    const displayModelId = message.actualModelId ?? message.model;
+    const displayModelConfig = findModelConfigForDisplay(
+        modelConfigsQuery.data,
+        displayModelId,
+    );
+    const canonicalRequestedModelId = modelConfig?.modelId ?? message.model;
+    const isAutoRoutedModel =
+        message.actualModelId !== undefined &&
+        !resolvedOpenRouterModelMatchesRequested(
+            message.actualModelId,
+            canonicalRequestedModelId,
+        );
+    const routingBadgeText = isAutoRoutedModel
+        ? openRouterRoutingBadgeText(canonicalRequestedModelId)
+        : undefined;
     const toolsDisabledForModel =
         toolsDisabledByChatId.get(message.chatId)?.has(message.model) ?? false;
 
@@ -1330,34 +1449,70 @@ export function ToolsMessageView({
                                             : "text-muted-foreground"
                                     }`}
                                 >
-                                    {modelConfig && (
-                                        <div className="flex items-center gap-2 h-6">
+                                    <div className="flex items-center gap-2 h-6">
+                                        {displayModelConfig && (
                                             <ProviderLogo
                                                 size="sm"
-                                                modelId={modelConfig.modelId}
+                                                modelId={
+                                                    displayModelConfig.modelId
+                                                }
                                                 className="-mt-[1px]"
                                             />
-                                            <div className="text-sm">
-                                                <span>
-                                                    {modelConfig?.displayName}
+                                        )}
+                                        <div className="text-sm">
+                                            <span>
+                                                {displayModelConfig?.displayName ??
+                                                    displayModelId}
+                                            </span>
+                                            {routingBadgeText !== undefined && (
+                                                <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                                    {routingBadgeText}
                                                 </span>
-                                                {toolsDisabledForModel && (
-                                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
-                                                        tools off
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )}
+                                            {toolsDisabledForModel && (
+                                                <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">
+                                                    tools off
+                                                </span>
+                                            )}
                                             {!isLastRow && message.selected && (
                                                 <StarIcon className="w-3 h-3 fill-amber-400 text-amber-400" />
                                             )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
                             <div
                                 className={`no-print mr-3 flex items-center h-6 gap-2
                                 `}
                             >
+                                {!isLastRow && (
+                                    <button
+                                        className={`pointer-events-auto inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] uppercase tracking-wide ${
+                                            message.selected
+                                                ? "border-amber-400 text-amber-500"
+                                                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                                        }`}
+                                        onClick={() => {
+                                            if (message.selected) return;
+                                            selectMessage.mutate({
+                                                chatId: message.chatId,
+                                                messageSetId:
+                                                    message.messageSetId,
+                                                messageId: message.id,
+                                                blockType: "tools",
+                                            });
+                                        }}
+                                    >
+                                        <StarIcon
+                                            className={`h-3.5 w-3.5 ${message.selected ? "fill-amber-400 text-amber-400" : ""}`}
+                                        />
+                                        <span>
+                                            {message.selected
+                                                ? "Best reply"
+                                                : "Mark best"}
+                                        </span>
+                                    </button>
+                                )}
                                 <div
                                     className={`gap-2 text-muted-foreground px-2
                                     hidden group-hover/message-set-view:flex
@@ -1411,36 +1566,7 @@ export function ToolsMessageView({
                                                 Regenerate
                                             </TooltipContent>
                                         </Tooltip>
-                                    ) : (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    className={`hover:text-foreground ${message.selected ? "text-amber-400" : ""}`}
-                                                    onClick={() => {
-                                                        if (message.selected)
-                                                            return;
-                                                        selectMessage.mutate({
-                                                            chatId: message.chatId,
-                                                            messageSetId:
-                                                                message.messageSetId,
-                                                            messageId:
-                                                                message.id,
-                                                            blockType: "tools",
-                                                        });
-                                                    }}
-                                                >
-                                                    <StarIcon
-                                                        className={`w-3.5 h-3.5 ${message.selected ? "fill-amber-400" : ""}`}
-                                                    />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                {message.selected
-                                                    ? "Best reply"
-                                                    : "Mark as best"}
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
+                                    ) : null}
 
                                     {!isReply && !isQuickChatWindow && (
                                         <Tooltip>

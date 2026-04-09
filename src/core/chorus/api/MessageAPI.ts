@@ -148,6 +148,7 @@ export interface MessageDBRow {
     completion_tokens: number | null;
     total_tokens: number | null;
     cost_usd: number | null;
+    actual_model_id: string | null;
 }
 
 export interface MessagePartDBRow {
@@ -186,6 +187,7 @@ export function readMessage(
         completionTokens: row.completion_tokens ?? undefined,
         totalTokens: row.total_tokens ?? undefined,
         costUsd: row.cost_usd ?? undefined,
+        actualModelId: row.actual_model_id ?? undefined,
     };
 }
 
@@ -1250,6 +1252,40 @@ export function useStreamMessagePart() {
             const streamPromise = new Promise<PartStreamResult>((resolve) => {
                 resolveStreamPromise = resolve;
             });
+            let streamSettled = false;
+
+            const resolveStream = (result: PartStreamResult) => {
+                if (streamSettled) {
+                    return;
+                }
+                streamSettled = true;
+                resolveStreamPromise(result);
+            };
+
+            const toStreamErrorMessage = (error: unknown): string => {
+                if (typeof error === "string" && error.trim().length > 0) {
+                    return error;
+                }
+                if (error instanceof Error && error.message.trim().length > 0) {
+                    return error.message;
+                }
+                return "Streaming failed unexpectedly.";
+            };
+
+            const reportStreamingFailure = (
+                error: unknown,
+                stage: "start" | "runtime",
+            ) => {
+                posthog?.capture("message_stream_failed", {
+                    chatId,
+                    messageSetId,
+                    messageId,
+                    partLevel,
+                    modelConfigId: modelConfigRaw.id,
+                    stage,
+                    errorMessage: toStreamErrorMessage(error),
+                });
+            };
 
             let partialResponse = "";
             let priority = 0;
@@ -1331,6 +1367,9 @@ export function useStreamMessagePart() {
                 toolCalls?: UserToolCall[],
                 usageData?: UsageData,
             ) => {
+                if (streamSettled) {
+                    return;
+                }
                 // if the provider didn't give us final text, then we use the
                 // one we've been accumulating
                 finalText = finalText ?? partialResponse;
@@ -1340,31 +1379,50 @@ export function useStreamMessagePart() {
 
                 const hasToolCalls = toolCalls && toolCalls.length > 0;
 
-                // Calculate cost - use OpenRouter's actual cost when available
+                // Calculate cost - use OpenRouter's response-level cost when available
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
+                let actualModelId: string | undefined;
 
-                // For OpenRouter models with generation ID, fetch actual costs
-                if (
-                    usageData?.generation_id &&
-                    modelConfig.modelId.startsWith("openrouter::") &&
-                    apiKeys.openrouter
-                ) {
-                    const openRouterCost = await fetchOpenRouterCost(
-                        usageData.generation_id,
-                        apiKeys.openrouter,
-                    );
-                    if (openRouterCost) {
-                        costUsd = openRouterCost.cost;
-                        // Use native token counts from OpenRouter
-                        actualPromptTokens = openRouterCost.promptTokens;
-                        actualCompletionTokens =
-                            openRouterCost.completionTokens;
+                if (modelConfig.modelId.startsWith("openrouter::")) {
+                    // Prefer cost and model from the streaming response
+                    if (usageData?.cost !== undefined && usageData.cost >= 0) {
+                        costUsd = usageData.cost;
+                    }
+                    if (usageData?.model) {
+                        actualModelId = `openrouter::${usageData.model}`;
+                    }
+
+                    // Fall back to generation endpoint if response didn't include cost or model
+                    if (
+                        (costUsd === undefined ||
+                            actualModelId === undefined) &&
+                        usageData?.generation_id &&
+                        apiKeys.openrouter
+                    ) {
+                        const openRouterCost = await fetchOpenRouterCost(
+                            usageData.generation_id,
+                            apiKeys.openrouter,
+                        );
+                        if (openRouterCost) {
+                            if (costUsd === undefined) {
+                                costUsd = openRouterCost.cost;
+                            }
+                            actualPromptTokens = openRouterCost.promptTokens;
+                            actualCompletionTokens =
+                                openRouterCost.completionTokens;
+                            if (
+                                actualModelId === undefined &&
+                                openRouterCost.actualModel
+                            ) {
+                                actualModelId = `openrouter::${openRouterCost.actualModel}`;
+                            }
+                        }
                     }
                 }
 
-                // Fallback to calculated cost for non-OpenRouter or if fetch failed
+                // Fallback to calculated cost for non-OpenRouter or if no cost yet
                 if (
                     costUsd === undefined &&
                     usageData?.prompt_tokens !== undefined &&
@@ -1413,8 +1471,9 @@ export function useStreamMessagePart() {
                         actualPromptTokens !== undefined &&
                         actualCompletionTokens !== undefined;
                     const hasCost = costUsd !== undefined;
+                    const hasActualModelId = actualModelId !== undefined;
 
-                    if (hasTokens || hasCost) {
+                    if (hasTokens || hasCost || hasActualModelId) {
                         // Build SET clause dynamically to avoid writing 0 for unknown values
                         // Use a helper to track the next parameter index (1-based for SQL)
                         let paramIndex = 1;
@@ -1446,6 +1505,12 @@ export function useStreamMessagePart() {
                                 `cost_usd = COALESCE(cost_usd, 0) + $${paramIndex++}`,
                             );
                             params.push(costUsd);
+                        }
+                        if (actualModelId !== undefined) {
+                            setClauses.push(
+                                `actual_model_id = $${paramIndex++}`,
+                            );
+                            params.push(actualModelId);
                         }
 
                         // Add WHERE clause parameters (increment both for consistency, even though
@@ -1481,17 +1546,27 @@ export function useStreamMessagePart() {
                 UpdateQueue.getInstance().closeUpdateStream(streamKey);
 
                 // Resolve with tool calls if we have them
-                resolveStreamPromise({ result: "success", toolCalls });
+                resolveStream({ result: "success", toolCalls });
             };
 
             const onError = (errorMessage: string) => {
+                if (streamSettled) {
+                    return;
+                }
+                const safeErrorMessage =
+                    errorMessage.trim().length > 0
+                        ? errorMessage
+                        : "Streaming failed unexpectedly.";
                 console.log(
                     `streaming for ${messageId} ${partLevel} ending with error`,
-                    errorMessage,
+                    safeErrorMessage,
                 );
 
                 UpdateQueue.getInstance().closeUpdateStream(streamKey);
-                resolveStreamPromise({ result: "error", errorMessage });
+                resolveStream({
+                    result: "error",
+                    errorMessage: safeErrorMessage,
+                });
             };
 
             // inject system prompts
@@ -1526,7 +1601,15 @@ export function useStreamMessagePart() {
                 customBaseUrl,
             };
 
-            void Models.streamResponse(params);
+            try {
+                void Models.streamResponse(params).catch((error) => {
+                    reportStreamingFailure(error, "runtime");
+                    onError(toStreamErrorMessage(error));
+                });
+            } catch (error) {
+                reportStreamingFailure(error, "start");
+                onError(toStreamErrorMessage(error));
+            }
             return streamPromise;
         },
         onSettled: async (_data, _error, variables, _context) => {
@@ -1671,31 +1754,50 @@ export function useStreamMessageLegacy() {
                     streamingToken,
                 );
 
-                // Calculate cost - use OpenRouter's actual cost when available
+                // Calculate cost - use OpenRouter's response-level cost when available
                 let costUsd: number | undefined;
                 let actualPromptTokens = usageData?.prompt_tokens;
                 let actualCompletionTokens = usageData?.completion_tokens;
+                let actualModelId: string | undefined;
 
-                // For OpenRouter models with generation ID, fetch actual costs
-                if (
-                    usageData?.generation_id &&
-                    modelConfig.modelId.startsWith("openrouter::") &&
-                    apiKeys.openrouter
-                ) {
-                    const openRouterCost = await fetchOpenRouterCost(
-                        usageData.generation_id,
-                        apiKeys.openrouter,
-                    );
-                    if (openRouterCost) {
-                        costUsd = openRouterCost.cost;
-                        // Use native token counts from OpenRouter
-                        actualPromptTokens = openRouterCost.promptTokens;
-                        actualCompletionTokens =
-                            openRouterCost.completionTokens;
+                if (modelConfig.modelId.startsWith("openrouter::")) {
+                    // Prefer cost and model from the streaming response
+                    if (usageData?.cost !== undefined && usageData.cost >= 0) {
+                        costUsd = usageData.cost;
+                    }
+                    if (usageData?.model) {
+                        actualModelId = `openrouter::${usageData.model}`;
+                    }
+
+                    // Fall back to generation endpoint if response didn't include cost or model
+                    if (
+                        (costUsd === undefined ||
+                            actualModelId === undefined) &&
+                        usageData?.generation_id &&
+                        apiKeys.openrouter
+                    ) {
+                        const openRouterCost = await fetchOpenRouterCost(
+                            usageData.generation_id,
+                            apiKeys.openrouter,
+                        );
+                        if (openRouterCost) {
+                            if (costUsd === undefined) {
+                                costUsd = openRouterCost.cost;
+                            }
+                            actualPromptTokens = openRouterCost.promptTokens;
+                            actualCompletionTokens =
+                                openRouterCost.completionTokens;
+                            if (
+                                actualModelId === undefined &&
+                                openRouterCost.actualModel
+                            ) {
+                                actualModelId = `openrouter::${openRouterCost.actualModel}`;
+                            }
+                        }
                     }
                 }
 
-                // Fallback to calculated cost for non-OpenRouter or if fetch failed
+                // Fallback to calculated cost for non-OpenRouter or if no cost yet
                 if (
                     costUsd === undefined &&
                     usageData?.prompt_tokens !== undefined &&
@@ -1722,7 +1824,7 @@ export function useStreamMessageLegacy() {
                 await db.execute(
                     `UPDATE messages
                     SET streaming_token = NULL, state = 'idle', text = ?,
-                        prompt_tokens = ?, completion_tokens = ?, total_tokens = ?, cost_usd = ?
+                        prompt_tokens = ?, completion_tokens = ?, total_tokens = ?, cost_usd = ?, actual_model_id = ?
                     WHERE id = ? AND streaming_token = ?`,
                     [
                         finalText,
@@ -1730,6 +1832,7 @@ export function useStreamMessageLegacy() {
                         actualCompletionTokens ?? null,
                         totalTokens,
                         costUsd ?? null,
+                        actualModelId ?? null,
                         messageId,
                         streamingToken,
                     ],
@@ -1772,6 +1875,14 @@ export function useStreamMessageLegacy() {
                         WHERE id = $2 AND streaming_token = $3`,
                     [errorMessage, messageId, streamingToken],
                 );
+
+                const projectId = await updateChatAndProjectCosts(chatId);
+                await queryClient.invalidateQueries(chatQueries.list());
+                await queryClient.invalidateQueries(chatQueries.detail(chatId));
+                if (projectId) {
+                    await queryClient.invalidateQueries(projectQueries.list());
+                }
+
                 UpdateQueue.getInstance().closeUpdateStream(streamKey);
 
                 // invalidate to ensure consistency
@@ -2049,6 +2160,7 @@ function useStopMessageStreaming() {
     return useMutation({
         mutationKey: ["stopMessageStreaming"] as const,
         mutationFn: async ({
+            chatId,
             messageId,
             streamingToken,
             errorMessage,
@@ -2065,6 +2177,13 @@ function useStopMessageStreaming() {
                         WHERE id = $2 AND streaming_token = $3`,
                     [errorMessage, messageId, streamingToken],
                 );
+
+                const projectId = await updateChatAndProjectCosts(chatId);
+                await queryClient.invalidateQueries(chatQueries.list());
+                await queryClient.invalidateQueries(chatQueries.detail(chatId));
+                if (projectId) {
+                    await queryClient.invalidateQueries(projectQueries.list());
+                }
             } else {
                 await db.execute(
                     `UPDATE messages

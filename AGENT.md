@@ -20,3 +20,13 @@
 -   **UI:** Components in `src/ui/components/`
 -   **Core:** Business logic in `src/core/chorus/`
 -   **Tauri:** Rust backend in `src-tauri/src/`
+
+# Distill Usage
+
+When piping command output through `distill`, always provide a quoted prompt argument.
+
+Example:
+
+```bash
+command 2>&1 | distill "Summarize errors"
+```

@@ -250,6 +250,8 @@ export type UsageData = {
     completion_tokens?: number;
     total_tokens?: number;
     generation_id?: string; // OpenRouter generation ID for fetching actual costs
+    model?: string; // Actual model used (e.g. from OpenRouter auto-routing)
+    cost?: number; // Cost in USD (from provider response)
 };
 
 export type StreamResponseParams = {

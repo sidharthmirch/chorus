@@ -34,6 +34,7 @@ export async function fetchOpenRouterCost(
     cost: number;
     promptTokens: number;
     completionTokens: number;
+    actualModel?: string;
 } | null> {
     try {
         const response = await fetch(
@@ -63,6 +64,7 @@ export async function fetchOpenRouterCost(
             completionTokens:
                 data.data.native_tokens_completion ??
                 data.data.tokens_completion,
+            actualModel: data.data.model,
         };
     } catch (error) {
         console.error("Error fetching OpenRouter generation cost:", error);

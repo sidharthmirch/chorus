@@ -18,6 +18,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
     ModelConfig,
+    ProviderName,
     getProviderLabel,
     getProviderName,
 } from "@core/chorus/Models";
@@ -67,44 +68,139 @@ import {
 const normalizeSearchValue = (value: string): string =>
     value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-const isSubsequenceMatch = (needle: string, haystack: string): boolean => {
-    if (!needle) return true;
-    let index = 0;
-    for (const char of haystack) {
-        if (char === needle[index]) {
-            index += 1;
-            if (index === needle.length) {
-                return true;
+const ensureKnownProvidersExhaustive = <T extends readonly ProviderName[]>(
+    providers: T &
+        (Exclude<ProviderName, T[number]> extends never
+            ? unknown
+            : "KNOWN_PROVIDERS must include every ProviderName"),
+): T => providers;
+
+// Keep this curated list aligned with ProviderName for provider-prefix parsing.
+const KNOWN_PROVIDERS = ensureKnownProvidersExhaustive([
+    "anthropic",
+    "openai",
+    "google",
+    "perplexity",
+    "grok",
+    "ollama",
+    "lmstudio",
+    "openrouter",
+    "meta",
+] as const);
+
+interface ParsedSearchQuery {
+    providerFilter: ProviderName | null;
+    modelTerms: string[];
+}
+
+const parseSearchQuery = (query: string): ParsedSearchQuery => {
+    const colonIndex = query.indexOf(":");
+    if (colonIndex !== -1) {
+        const potentialProvider = normalizeSearchValue(
+            query.slice(0, colonIndex),
+        );
+        if (potentialProvider.length > 0) {
+            // Exact match first
+            const exactMatch = KNOWN_PROVIDERS.find(
+                (p) => p === potentialProvider,
+            );
+            if (exactMatch) {
+                const remainder = query.slice(colonIndex + 1).toLowerCase();
+                const modelTerms = remainder.split(" ").filter(Boolean);
+                return { providerFilter: exactMatch, modelTerms };
+            }
+            // Unambiguous prefix match
+            const prefixMatches = KNOWN_PROVIDERS.filter((p) =>
+                p.startsWith(potentialProvider),
+            );
+            if (prefixMatches.length === 1) {
+                const remainder = query.slice(colonIndex + 1).toLowerCase();
+                const modelTerms = remainder.split(" ").filter(Boolean);
+                return { providerFilter: prefixMatches[0], modelTerms };
             }
         }
     }
-    return false;
+    const modelTerms = query.toLowerCase().split(" ").filter(Boolean);
+    return { providerFilter: null, modelTerms };
 };
 
-const filterBySearch = (models: ModelConfig[], searchTerms: string[]) => {
-    if (searchTerms.length === 0) return models;
-    return models.filter((m) => {
-        const providerLabel = getProviderLabel(m.modelId);
-        const displayName = m.displayName.toLowerCase();
-        const providerLabelLower = providerLabel.toLowerCase();
-        const modelIdLower = m.modelId.toLowerCase();
-        const normalizedHaystack = normalizeSearchValue(
-            `${m.displayName} ${providerLabel} ${m.modelId}`,
+/** Returns a match score > 0 if term matches haystack, 0 for no match. */
+const scoreMatch = (term: string, haystack: string): number => {
+    if (!term) return 100;
+
+    // Exact substring match
+    if (haystack.includes(term)) return 100;
+
+    // Word-boundary match: term matches the start of any whitespace-separated word
+    const words = haystack.split(/[\s\-_.:/]+/);
+    if (words.some((word) => word.startsWith(term))) return 80;
+
+    const normalizedTerm = normalizeSearchValue(term);
+    const normalizedHaystack = normalizeSearchValue(haystack);
+
+    if (!normalizedTerm) return 0;
+
+    // For purely numeric terms, require contiguous match in number groups
+    if (/^\d+$/.test(normalizedTerm)) {
+        const numberGroups = normalizedHaystack.match(/\d+/g) ?? [];
+        const contiguous = numberGroups.some(
+            (group) =>
+                group === normalizedTerm || group.startsWith(normalizedTerm),
         );
+        return contiguous ? 60 : 0;
+    }
 
-        return searchTerms.every((term) => {
-            const normalizedTerm = normalizeSearchValue(term);
+    // Normalized substring match (strip non-alphanumeric)
+    if (normalizedHaystack.includes(normalizedTerm)) return 60;
 
-            return (
-                displayName.includes(term) ||
-                providerLabelLower.includes(term) ||
-                modelIdLower.includes(term) ||
-                (normalizedTerm.length > 0 &&
-                    (normalizedHaystack.includes(normalizedTerm) ||
-                        isSubsequenceMatch(normalizedTerm, normalizedHaystack)))
+    return 0;
+};
+
+const filterBySearch = (
+    models: ModelConfig[],
+    modelTerms: string[],
+    providerFilter: ProviderName | null = null,
+): ModelConfig[] => {
+    if (modelTerms.length === 0 && providerFilter === null) return models;
+
+    // Compute score once per model to avoid redundant work in the sort comparator
+    const scored = models.reduce<{ model: ModelConfig; score: number }[]>(
+        (acc, model) => {
+            if (
+                providerFilter !== null &&
+                getProviderName(model.modelId) !== providerFilter
+            ) {
+                return acc;
+            }
+
+            if (modelTerms.length === 0) {
+                acc.push({ model, score: 0 });
+                return acc;
+            }
+
+            const providerLabel = getProviderLabel(model.modelId);
+            const haystack =
+                `${model.displayName} ${providerLabel} ${model.modelId}`.toLowerCase();
+            const termScores = modelTerms.map((term) =>
+                scoreMatch(term, haystack),
             );
-        });
-    });
+
+            if (termScores.some((s) => s <= 0)) return acc;
+
+            acc.push({
+                model,
+                score: termScores.reduce((total, s) => total + s, 0),
+            });
+            return acc;
+        },
+        [],
+    );
+
+    if (modelTerms.length > 0) {
+        scored.sort((a, b) => b.score - a.score);
+    }
+
+    return scored.map(({ model }) => model);
 };
 
 // Helper function to format pricing for display (per million tokens)
@@ -568,10 +664,7 @@ export function ManageModelsBox({
     const providerVisibilityMap = useProviderVisibilityMap();
     const activeProfile = useActiveModelProfile();
     const modelGroups = useMemo(() => {
-        const searchTerms = searchQuery
-            .toLowerCase()
-            .split(" ")
-            .filter(Boolean);
+        const { providerFilter, modelTerms } = parseSearchQuery(searchQuery);
 
         const filtered = getFilteredModelConfigs(
             modelConfigs.data ?? [],
@@ -603,19 +696,27 @@ export function ManageModelsBox({
         const directByProvider = Object.fromEntries(
             directProviders.map((provider) => [
                 provider,
-                filterBySearch(
-                    systemModels.filter(
-                        (m) => getProviderName(m.modelId) === provider,
-                    ),
-                    searchTerms,
-                ),
+                // Short-circuit: if a different provider is specified, return empty
+                providerFilter !== null && providerFilter !== provider
+                    ? []
+                    : filterBySearch(
+                          systemModels.filter(
+                              (m) => getProviderName(m.modelId) === provider,
+                          ),
+                          modelTerms,
+                          providerFilter,
+                      ),
             ]),
         ) as Record<(typeof directProviders)[number], ModelConfig[]>;
 
         return {
-            custom: filterBySearch(userModels, searchTerms),
-            local: filterBySearch(localModels, searchTerms),
-            openrouter: filterBySearch(openrouterModels, searchTerms),
+            custom: filterBySearch(userModels, modelTerms, providerFilter),
+            local: filterBySearch(localModels, modelTerms, providerFilter),
+            openrouter: filterBySearch(
+                openrouterModels,
+                modelTerms,
+                providerFilter,
+            ),
             directByProvider,
         };
     }, [modelConfigs.data, searchQuery, providerVisibilityMap, activeProfile]);

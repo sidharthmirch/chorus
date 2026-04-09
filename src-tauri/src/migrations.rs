@@ -2673,6 +2673,14 @@ You have full access to bash commands on the user''''s computer. If you write a 
         },
         Migration {
             version: 145,
+            description: "add actual_model_id to messages",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE messages ADD COLUMN actual_model_id TEXT DEFAULT NULL;
+            "#,
+        },
+        Migration {
+            version: 146,
             description: "add context_window_size to chats",
             kind: MigrationKind::Up,
             sql: r#"
