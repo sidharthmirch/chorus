@@ -1,3 +1,6 @@
 src-tauri/gen
 pnpm-lock.yaml
 .github
+.agents
+.claude
+.codex
