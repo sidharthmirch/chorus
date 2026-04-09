@@ -84,9 +84,7 @@ function ProviderModelSection({
         isLocal || canProceedWithProvider(provider, apiKeys ?? {}).canProceed;
 
     const [isOpen, setIsOpen] = useState(isLocal || providerHasKey);
-    const [subProviderFilter, setSubProviderFilter] = useState<string | null>(
-        null,
-    );
+    const [subProviderFilters, setSubProviderFilters] = useState<string[]>([]);
     const [subProviderSearch, setSubProviderSearch] = useState("");
 
     // Auto-expand when an API key is added for this provider
@@ -127,14 +125,13 @@ function ProviderModelSection({
     }, [providerModels]);
 
     const visibleProviderModels = useMemo(() => {
-        const chipFiltered =
-            subProviderFilter !== null
-                ? providerModels.filter(
-                      (m) => getSubProvider(m.modelId) === subProviderFilter,
-                  )
-                : providerModels;
-        return filterModelsBySearch(chipFiltered, subProviderSearch, subProviders);
-    }, [providerModels, subProviderFilter, subProviderSearch, subProviders]);
+        return filterModelsBySearch(
+            providerModels,
+            subProviderSearch,
+            subProviders,
+            subProviderFilters,
+        );
+    }, [providerModels, subProviderFilters, subProviderSearch, subProviders]);
 
     const isAllVisible = visibleProviderModels.every((m) => {
         const v = visibleModels?.find((vm) => vm.modelId === m.modelId);
@@ -214,9 +211,9 @@ function ProviderModelSection({
                 {hasSubProviders && (
                     <div className="flex flex-wrap gap-1.5">
                         <button
-                            onClick={() => setSubProviderFilter(null)}
+                            onClick={() => setSubProviderFilters([])}
                             className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                subProviderFilter === null
+                                subProviderFilters.length === 0
                                     ? "bg-primary text-primary-foreground border-primary"
                                     : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                             }`}
@@ -227,12 +224,14 @@ function ProviderModelSection({
                             <button
                                 key={sub}
                                 onClick={() =>
-                                    setSubProviderFilter((prev) =>
-                                        prev === sub ? null : sub,
+                                    setSubProviderFilters((prev) =>
+                                        prev.includes(sub)
+                                            ? prev.filter((item) => item !== sub)
+                                            : [...prev, sub],
                                     )
                                 }
                                 className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                                    subProviderFilter === sub
+                                    subProviderFilters.includes(sub)
                                         ? "bg-primary text-primary-foreground border-primary"
                                         : "bg-background text-muted-foreground border-border hover:border-foreground/40"
                                 }`}

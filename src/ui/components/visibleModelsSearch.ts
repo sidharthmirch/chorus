@@ -17,9 +17,24 @@ export function filterModelsBySearch(
     models: ModelConfig[],
     search: string,
     subProviders: string[],
+    selectedSubProviders: string[] = [],
 ): ModelConfig[] {
+    const normalizedSelectedSubProviders = new Set(
+        selectedSubProviders.map((subProvider) => subProvider.toLowerCase()),
+    );
+    const selectedFilteredModels =
+        normalizedSelectedSubProviders.size === 0
+            ? models
+            : models.filter((model) => {
+                  const subProvider = getSubProvider(model.modelId)?.toLowerCase();
+                  return (
+                      subProvider !== undefined &&
+                      normalizedSelectedSubProviders.has(subProvider)
+                  );
+              });
+
     const trimmedSearch = search.trim();
-    if (!trimmedSearch) return models;
+    if (!trimmedSearch) return selectedFilteredModels;
 
     const normalizedSubProviders = new Set(
         subProviders.map((subProvider) => subProvider.toLowerCase()),
@@ -45,7 +60,7 @@ export function filterModelsBySearch(
 
     const terms = remainingSearch.toLowerCase().split(/\s+/).filter(Boolean);
 
-    return models.filter((model) => {
+    return selectedFilteredModels.filter((model) => {
         if (matchedSubProvider !== null) {
             const subProvider = getSubProvider(model.modelId)?.toLowerCase();
             if (subProvider !== matchedSubProvider) return false;

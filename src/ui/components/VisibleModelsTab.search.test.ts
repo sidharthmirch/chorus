@@ -45,4 +45,14 @@ describe("filterModelsBySearch", () => {
         const filtered = filterModelsBySearch(MODELS, "5.4", SUB_PROVIDERS);
         expect(filtered).toEqual([]);
     });
+
+    it("filters by multiple selected sub-providers", () => {
+        const filtered = filterModelsBySearch(
+            MODELS,
+            "",
+            SUB_PROVIDERS,
+            ["openai", "google"],
+        );
+        expect(filtered).toEqual([MODELS[0], MODELS[1]]);
+    });
 });
