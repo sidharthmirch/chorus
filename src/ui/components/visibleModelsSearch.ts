@@ -62,6 +62,34 @@ export function parseSubProviderSearch(
     };
 }
 
+export function filterSubProvidersBySearch(
+    subProviders: string[],
+    search: string,
+    selectedSubProviders: string[] = [],
+): string[] {
+    const { matchedSubProvider, remainingSearch } = parseSubProviderSearch(
+        search,
+        subProviders,
+    );
+    const term = (matchedSubProvider ?? remainingSearch).toLowerCase();
+    const visibleSubProviders = new Set(
+        (term
+            ? subProviders.filter((subProvider) =>
+                  subProvider.toLowerCase().includes(term),
+              )
+            : subProviders
+        ).map((subProvider) => subProvider.toLowerCase()),
+    );
+
+    for (const selectedSubProvider of selectedSubProviders) {
+        visibleSubProviders.add(selectedSubProvider.toLowerCase());
+    }
+
+    return subProviders.filter((subProvider) =>
+        visibleSubProviders.has(subProvider.toLowerCase()),
+    );
+}
+
 export function filterModelsBySearch(
     models: ModelConfig[],
     search: string,

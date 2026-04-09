@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ModelConfig } from "@core/chorus/Models";
 import {
+    filterSubProvidersBySearch,
     filterModelsBySearch,
     parseSubProviderSearch,
 } from "./visibleModelsSearch";
@@ -53,6 +54,14 @@ describe("filterModelsBySearch", () => {
             matchedSubProvider: "openai",
             remainingSearch: "gpt-4",
         });
+    });
+
+    it("keeps selected sub-providers visible while search narrows", () => {
+        const filtered = filterSubProvidersBySearch(SUB_PROVIDERS, "flash", [
+            "google",
+            "openai",
+        ]);
+        expect(filtered).toEqual(["google", "openai"]);
     });
 
     it("applies plain text term filtering", () => {

@@ -24,9 +24,9 @@ import { getProviderName } from "@core/chorus/Models";
 import { useApiKeys } from "@core/chorus/api/AppMetadataAPI";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
 import {
+    filterSubProvidersBySearch,
     filterModelsBySearch,
     getSubProvider,
-    parseSubProviderSearch,
 } from "./visibleModelsSearch";
 
 const FETCHABLE_PROVIDERS = ["openrouter", "ollama", "lmstudio"] as const;
@@ -113,19 +113,13 @@ function ProviderModelSection({
     const showSubProviderSearch =
         subProviders.length > SUB_PROVIDER_SEARCH_THRESHOLD;
 
-    const parsedSubProviderSearch = useMemo(
-        () => parseSubProviderSearch(subProviderSearch, subProviders),
-        [subProviderSearch, subProviders],
-    );
-
     const filteredSubProviders = useMemo(() => {
-        const term = (
-            parsedSubProviderSearch.matchedSubProvider ??
-            parsedSubProviderSearch.remainingSearch
-        ).toLowerCase();
-        if (!term) return subProviders;
-        return subProviders.filter((s) => s.toLowerCase().includes(term));
-    }, [subProviders, parsedSubProviderSearch]);
+        return filterSubProvidersBySearch(
+            subProviders,
+            subProviderSearch,
+            subProviderFilters,
+        );
+    }, [subProviders, subProviderSearch, subProviderFilters]);
 
     const subProviderModelCounts = useMemo(() => {
         const counts: Record<string, number> = {};
