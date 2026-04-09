@@ -23,6 +23,30 @@
 > **Note:** This app is not code-signed. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
 > Alternatively, remove the quarantine flag via Terminal: `xattr -d com.apple.quarantine Chorus.app`
 
+# Changelog
+
+## v0.14.15
+
+### Features
+
+- Per-tool and per-project YOLO mode for granular auto-accept permissions
+- OpenRouter actual model attribution and cost tracking in streaming responses
+- Multiple sub-provider filter selection in model search
+- Collapsible chat input for long text
+
+### Improvements
+
+- Improved fuzzy search with scored substring matching and provider filtering
+- Better autorouter/freerouter labels and free-tier display names
+- Selected provider chips stay visible during search
+
+### Fixes
+
+- Fix YOLO deny precedence and memoize permission tool list
+- Fix MCP terminal startup
+- Fix model_config UUID passed when replying to single model
+- Migration 145 legacy compatibility for dev instances
+
 # Getting Started
 
 You will need:
