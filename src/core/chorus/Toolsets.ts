@@ -170,6 +170,32 @@ function configsEqual(
     );
 }
 
+const MCP_CONNECT_TIMEOUT_MS = 15_000;
+const MCP_LIST_TOOLS_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    operationName: string,
+): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(
+                new Error(`${operationName} timed out after ${timeoutMs}ms`),
+            );
+        }, timeoutMs);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+}
+
 type MCPContentBlock =
     | { type: "text"; text: string }
     | { type: "image"; image: string }
@@ -267,6 +293,7 @@ export abstract class MCPServer {
     private _status: ToolsetStatus = { status: "stopped" };
     private _logs: string = ""; // accumulated logs
     private activeConfig?: Record<string, string> = undefined;
+    private _startPromise: Promise<boolean> | null = null;
 
     constructor() {
         this.mcp = new Client({ name: "mcp-client-cli", version: "1.0.0" });
@@ -299,49 +326,70 @@ export abstract class MCPServer {
             await this.ensureStop();
         }
 
-        if (this._status.status !== "stopped") {
-            // technically, we'd want to wait until it's running, but
-            // this is good enough for now
+        if (this._status.status === "running") {
             return true;
         }
+        if (this._startPromise) {
+            return this._startPromise;
+        }
 
-        console.info("Starting MCP server", config);
-        this._status = { status: "starting" };
-        this._logs = ""; // clear any previous logs
+        this._startPromise = (async () => {
+            console.info("Starting MCP server", config);
+            this._status = { status: "starting" };
+            this._logs = ""; // clear any previous logs
 
-        try {
-            console.log("starting mcp server");
-            const serverParams = this.getExecutionParameters(config);
+            try {
+                console.log("starting mcp server");
+                const serverParams = this.getExecutionParameters(config);
 
-            this.mcp.onerror = (error: Error) => {
-                console.log("[Toolset] MCP server error", error);
-                this._logs += error.message + "\n";
-            };
+                this.mcp.onerror = (error: Error) => {
+                    console.log("[Toolset] MCP server error", error);
+                    this._logs += error.message + "\n";
+                };
 
-            this.mcp.onclose = () => {
-                console.log("[Toolset] MCP server closed");
+                this.mcp.onclose = () => {
+                    console.log("[Toolset] MCP server closed");
+                    this._status = {
+                        status: "stopped",
+                    };
+                };
+
+                const transport = new StdioClientTransportChorus(serverParams);
+                this.transport = transport;
+                await withTimeout(
+                    this.mcp.connect(this.transport),
+                    MCP_CONNECT_TIMEOUT_MS,
+                    "MCP server connect",
+                );
+
+                if (this._status.status !== "starting") {
+                    await this.transport?.close();
+                    this.transport = null;
+                    return false;
+                }
+
+                this.activeConfig = config;
+                this._status = {
+                    status: "running",
+                };
+                return true;
+            } catch (e) {
+                console.error("Error starting MCP server: ", e);
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                this._logs += `[Error starting MCP server: ${errorMessage}]\n`;
+                void this.transport?.close();
                 this._status = {
                     status: "stopped",
                 };
-            };
+                this.transport = null;
+                this.activeConfig = undefined;
+                return false;
+            }
+        })().finally(() => {
+            this._startPromise = null;
+        });
 
-            const transport = new StdioClientTransportChorus(serverParams);
-            this.transport = transport;
-            await this.mcp.connect(this.transport);
-
-            this.activeConfig = config;
-            this._status = {
-                status: "running",
-            };
-            return true;
-        } catch (e) {
-            console.error("Error starting MCP server: ", e);
-            void this.transport?.close();
-            this._status = {
-                status: "stopped",
-            };
-            return false;
-        }
+        return this._startPromise;
     }
 
     /**
@@ -354,6 +402,7 @@ export abstract class MCPServer {
 
         console.info("Stopping MCP server");
         this._status = { status: "stopped" };
+        this._startPromise = null;
 
         try {
             await this.mcp.close();
@@ -468,6 +517,7 @@ export class Toolset {
     >();
     private servers: MCPServer[] = [];
     private _status: ToolsetStatus = { status: "stopped" };
+    private _startPromise: Promise<boolean> | null = null;
 
     constructor(
         public readonly name: string, // used to namespace tool names. alphanumeric only, must not contain special characters.
@@ -623,70 +673,103 @@ export class Toolset {
         if (this._status.status === "running") {
             return true;
         }
-
-        this._status = {
-            status: "starting",
-        };
-
-        // Start all servers in parallel
-        const allStarted = _.every(
-            await Promise.all(
-                this.servers.map((server) => server.ensureStart(config)),
-            ),
-            Boolean,
-        );
-
-        if (!allStarted) {
-            console.error(
-                `Failed to start all servers for toolset ${this.name}`,
-            );
-            return false;
+        if (this._startPromise) {
+            return this._startPromise;
         }
 
-        // Auto-register tools based on registration options
-        for (const server of this.servers) {
-            const options = this._serverRegistrationOptions.get(server);
+        this._startPromise = (async () => {
+            this._status = {
+                status: "starting",
+            };
 
-            // Skip if no registration options or explicitly set to none
-            if (!options || options.registration.mode === "none") {
-                continue;
-            }
-
-            // Get all tools from the server
-            const serverTools = await server.listTools();
-
-            // Apply registration options
-            let filteredTools: ServerTool[] = serverTools;
-
-            if (options.registration.mode === "filter") {
-                // Filter tools using the provided filter function
-                filteredTools = serverTools.filter(options.registration.filter);
-            } else if (options.registration.mode === "select") {
-                // Only include tools in the include list
-                const selectedTools = options.registration.include;
-                filteredTools = serverTools.filter((serverTool) =>
-                    selectedTools.includes(serverTool.nameOnServer),
+            try {
+                // Start all servers in parallel
+                const allStarted = _.every(
+                    await Promise.all(
+                        this.servers.map((server) =>
+                            server.ensureStart(config),
+                        ),
+                    ),
+                    Boolean,
                 );
+
+                if (!allStarted) {
+                    console.error(
+                        `Failed to start all servers for toolset ${this.name}`,
+                    );
+                    this._status = {
+                        status: "stopped",
+                    };
+                    return false;
+                }
+
+                // Auto-register tools based on registration options
+                for (const server of this.servers) {
+                    const options = this._serverRegistrationOptions.get(server);
+
+                    // Skip if no registration options or explicitly set to none
+                    if (!options || options.registration.mode === "none") {
+                        continue;
+                    }
+
+                    // Get all tools from the server
+                    const serverTools = await withTimeout(
+                        server.listTools(),
+                        MCP_LIST_TOOLS_TIMEOUT_MS,
+                        `MCP listTools for toolset ${this.name}`,
+                    );
+
+                    // Apply registration options
+                    let filteredTools: ServerTool[] = serverTools;
+
+                    if (options.registration.mode === "filter") {
+                        // Filter tools using the provided filter function
+                        filteredTools = serverTools.filter(
+                            options.registration.filter,
+                        );
+                    } else if (options.registration.mode === "select") {
+                        // Only include tools in the include list
+                        const selectedTools = options.registration.include;
+                        filteredTools = serverTools.filter((serverTool) =>
+                            selectedTools.includes(serverTool.nameOnServer),
+                        );
+                    }
+
+                    // Import the filtered tools with any rename mappings and description overrides
+                    this.importServerTools(server, filteredTools, {
+                        renameMap: options.renameMap,
+                        descriptionMap: options.descriptionMap,
+                    });
+                }
+
+                if (this._status.status !== "starting") {
+                    return false;
+                }
+
+                this._status = {
+                    status: "running",
+                };
+
+                return true;
+            } catch (error) {
+                console.error(`Failed to start toolset ${this.name}:`, error);
+                this._status = {
+                    status: "stopped",
+                };
+                return false;
             }
+        })().finally(() => {
+            this._startPromise = null;
+        });
 
-            // Import the filtered tools with any rename mappings and description overrides
-            this.importServerTools(server, filteredTools, {
-                renameMap: options.renameMap,
-                descriptionMap: options.descriptionMap,
-            });
-        }
-
-        this._status = {
-            status: "running",
-        };
-
-        return true;
+        return this._startPromise;
     }
 
     /**
      * Stop all servers
      */
     async ensureStop(): Promise<void> {
+        this._startPromise = null;
         await Promise.all(this.servers.map((server) => server.ensureStop()));
         this._status = {
             status: "stopped",
