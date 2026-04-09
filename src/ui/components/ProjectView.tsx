@@ -84,6 +84,7 @@ export default function ProjectView() {
     const setMagicProjectsEnabled = ProjectAPI.useSetMagicProjectsEnabled();
     const setProjectDefaultPromptProfile =
         ProjectAPI.useSetProjectDefaultPromptProfile();
+    const setProjectYoloMode = ProjectAPI.useSetProjectYoloMode();
 
     // Queries
     const { data: promptProfiles } = usePromptProfiles();
@@ -474,6 +475,45 @@ export default function ProjectView() {
                             </Select>
                         </div>
                     )}
+                    <div className="flex justify-between items-center gap-2 bg-muted px-3 py-2 rounded mt-1">
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <h2 className="font-medium text-sm">YOLO Mode</h2>
+                            <p className="text-xs text-muted-foreground font-[350] -mt-0.5">
+                                Override global YOLO setting for this project.
+                            </p>
+                        </div>
+                        <Select
+                            value={
+                                project.yoloMode === undefined
+                                    ? "inherit"
+                                    : project.yoloMode
+                                      ? "enabled"
+                                      : "disabled"
+                            }
+                            onValueChange={(v) => {
+                                void setProjectYoloMode.mutateAsync({
+                                    projectId,
+                                    yoloMode:
+                                        v === "inherit"
+                                            ? null
+                                            : v === "enabled",
+                                });
+                            }}
+                        >
+                            <SelectTrigger className="w-36 h-7 text-xs shrink-0">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="inherit">
+                                    Inherit Global
+                                </SelectItem>
+                                <SelectItem value="enabled">Enabled</SelectItem>
+                                <SelectItem value="disabled">
+                                    Disabled
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div className="">
                         {/* Magic context details */}
                         <div className="space-y-2 mt-1 max-h-[400px] overflow-y-auto">

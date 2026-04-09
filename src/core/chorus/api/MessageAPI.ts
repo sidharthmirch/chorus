@@ -2945,6 +2945,7 @@ function useStreamToolsMessage() {
                             ToolsetsManager.instance.executeToolCall(
                                 toolCall,
                                 modelConfig.displayName,
+                                projectId,
                             ),
                         ),
                     )),

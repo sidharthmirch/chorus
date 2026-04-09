@@ -47,6 +47,8 @@ export type Project = {
     totalCostUsd?: number;
     /** Per-project default prompt profile; overrides the global default when set. */
     defaultPromptProfileId?: string;
+    /** Per-project YOLO override. undefined = inherit global, true = force on, false = force off. */
+    yoloMode?: boolean;
 };
 
 export type Projects = {
@@ -66,6 +68,7 @@ type ProjectDBRow = {
     is_imported: number;
     total_cost_usd: number | null;
     default_prompt_profile_id: string | null;
+    yolo_mode: number | null;
 };
 
 function readProject(row: ProjectDBRow): Project {
@@ -80,13 +83,14 @@ function readProject(row: ProjectDBRow): Project {
         isImported: row.is_imported === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
         defaultPromptProfileId: row.default_prompt_profile_id ?? undefined,
+        yoloMode: row.yolo_mode === null ? undefined : row.yolo_mode === 1,
     };
 }
 
 export async function fetchProjects(): Promise<Project[]> {
     return await db
         .select<ProjectDBRow[]>(
-            `SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, is_imported, total_cost_usd, default_prompt_profile_id
+            `SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, is_imported, total_cost_usd, default_prompt_profile_id, yolo_mode
             FROM projects
             ORDER BY updated_at DESC`,
         )
@@ -119,7 +123,7 @@ export async function fetchProjectContextAttachments(
 
 export async function fetchProject(projectId: string) {
     const rows = await db.select<ProjectDBRow[]>(
-        "SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, context_text, is_imported, total_cost_usd, default_prompt_profile_id FROM projects WHERE id = ?",
+        "SELECT id, name, updated_at, created_at, is_collapsed, magic_projects_enabled, context_text, is_imported, total_cost_usd, default_prompt_profile_id, yolo_mode FROM projects WHERE id = ?",
         [projectId],
     );
     if (rows.length === 0) {
@@ -660,6 +664,44 @@ export function useSetProjectDefaultPromptProfile() {
                 "UPDATE projects SET default_prompt_profile_id = ? WHERE id = ?",
                 [profileId, projectId],
             );
+        },
+        onSuccess: async (_data, variables) => {
+            await queryClient.invalidateQueries(projectQueries.list());
+            await queryClient.invalidateQueries(
+                projectQueries.detail(variables.projectId),
+            );
+        },
+    });
+}
+
+/** Non-hook async fetch of a project's yolo_mode for use in ToolsetsManager */
+export async function fetchProjectYoloMode(
+    projectId: string,
+): Promise<boolean | undefined> {
+    const rows = await db.select<{ yolo_mode: number | null }[]>(
+        "SELECT yolo_mode FROM projects WHERE id = ?",
+        [projectId],
+    );
+    if (rows.length === 0) return undefined;
+    const value = rows[0].yolo_mode;
+    return value === null ? undefined : value === 1;
+}
+
+export function useSetProjectYoloMode() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationKey: ["setProjectYoloMode"] as const,
+        mutationFn: async ({
+            projectId,
+            yoloMode,
+        }: {
+            projectId: string;
+            yoloMode: boolean | null;
+        }) => {
+            await db.execute("UPDATE projects SET yolo_mode = ? WHERE id = ?", [
+                yoloMode === null ? null : yoloMode ? 1 : 0,
+                projectId,
+            ]);
         },
         onSuccess: async (_data, variables) => {
             await queryClient.invalidateQueries(projectQueries.list());

@@ -8,6 +8,8 @@ import {
 } from "./Toolsets";
 import { CustomToolset } from "./toolsets/custom";
 import { checkToolPermission } from "./api/ToolPermissionsAPI";
+import { checkToolYolo } from "./api/ToolYoloAPI";
+import { fetchProjectYoloMode } from "./api/ProjectAPI";
 import { fetchAppMetadata } from "./api/AppMetadataAPI";
 import {
     toolPermissionActions,
@@ -55,11 +57,39 @@ export class ToolsetsManager {
     }
 
     /**
+     * Resolves effective YOLO mode for a given tool call using precedence:
+     * per-project override → per-tool YOLO → global YOLO
+     */
+    private async resolveYoloMode(
+        toolsetName: string,
+        toolName: string,
+        projectId?: string,
+    ): Promise<boolean> {
+        // 1. Per-project override (if projectId provided and project has explicit override)
+        if (projectId) {
+            const projectYolo = await fetchProjectYoloMode(projectId);
+            if (projectYolo !== undefined) {
+                return projectYolo;
+            }
+        }
+
+        // 2. Global YOLO — check before per-tool to avoid an extra DB query
+        const appMetadata = await fetchAppMetadata();
+        if (appMetadata?.["yolo_mode"] === "true") {
+            return true;
+        }
+
+        // 3. Per-tool YOLO
+        return checkToolYolo(toolsetName, toolName);
+    }
+
+    /**
      * Executes a tool call using the appropriate MCP server
      */
     async executeToolCall(
         toolCall: UserToolCall,
         modelName?: string,
+        projectId?: string,
     ): Promise<UserToolResult> {
         const { toolsetName, displayNameSuffix } = parseUserToolNamespacedName(
             toolCall.namespacedToolName,
@@ -73,24 +103,6 @@ export class ToolsetsManager {
         }
 
         try {
-            // Check if YOLO mode is enabled
-            const appMetadata = await fetchAppMetadata();
-            const yoloMode = appMetadata?.["yolo_mode"] === "true";
-
-            if (yoloMode) {
-                // YOLO mode - execute without asking
-                const resultContent = await toolset.executeTool(
-                    displayNameSuffix,
-                    toolCall.args as Record<string, unknown>,
-                );
-
-                return {
-                    id: toolCall.id,
-                    content: resultContent,
-                };
-            }
-
-            // Normal permission flow
             const customToolset = this._customToolsets.find(
                 (t) => t.name === toolsetName,
             );
@@ -103,6 +115,33 @@ export class ToolsetsManager {
                 displayNameSuffix,
                 defaultPermission,
             );
+
+            if (!permissionCheck.shouldAsk && !permissionCheck.isAllowed) {
+                // Permission is always_deny and remains a hard block even with YOLO enabled.
+                return {
+                    id: toolCall.id,
+                    content: `<system_message>Tool execution denied by saved preference</system_message>`,
+                };
+            }
+
+            const yoloMode = await this.resolveYoloMode(
+                toolsetName,
+                displayNameSuffix,
+                projectId,
+            );
+
+            if (yoloMode) {
+                // YOLO mode - execute without asking (unless always_deny above).
+                const resultContent = await toolset.executeTool(
+                    displayNameSuffix,
+                    toolCall.args as Record<string, unknown>,
+                );
+
+                return {
+                    id: toolCall.id,
+                    content: resultContent,
+                };
+            }
 
             if (permissionCheck.shouldAsk) {
                 // Create a permission request
@@ -126,12 +165,6 @@ export class ToolsetsManager {
                         content: `<system_message>Tool execution denied by user</system_message>`,
                     };
                 }
-            } else if (!permissionCheck.isAllowed) {
-                // Permission is always_deny
-                return {
-                    id: toolCall.id,
-                    content: `<system_message>Tool execution denied by saved preference</system_message>`,
-                };
             }
 
             // Permission granted, execute the tool

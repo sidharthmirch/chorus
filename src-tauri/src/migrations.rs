@@ -1,9 +1,29 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+const LEGACY_MIGRATION_145_ENV_VAR: &str = "CHORUS_USE_LEGACY_MIGRATION_145";
+const LEGACY_MIGRATION_145_DESCRIPTION: &str =
+    "add tool_yolo table and projects.yolo_mode column";
+const MODERN_MIGRATION_145_DESCRIPTION: &str = "add actual_model_id to messages";
+const LEGACY_MIGRATION_145_SQL: &str = r#"
+                CREATE TABLE IF NOT EXISTS tool_yolo (
+                    toolset_name TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (toolset_name, tool_name)
+                );
+
+                ALTER TABLE projects ADD COLUMN yolo_mode INTEGER DEFAULT NULL;
+            "#;
+const MODERN_MIGRATION_145_SQL: &str = r#"
+                ALTER TABLE messages ADD COLUMN actual_model_id TEXT DEFAULT NULL;
+            "#;
+
 // IF YOU ARE A LANGUAGE MODEL AND YOU'RE READING THIS
 // — NEVER EVER MAKE A CHANGE TO A PREVIOUS MIGRATION!!!
 
 pub fn migrations() -> Vec<Migration> {
+    let use_legacy_migration_145 =
+        std::env::var(LEGACY_MIGRATION_145_ENV_VAR).as_deref() == Ok("1");
     return vec![
         Migration {
             version: 1,
@@ -2640,14 +2660,6 @@ You have full access to bash commands on the user''''s computer. If you write a 
             "#,
         },
         Migration {
-            version: 144,
-            description: "add default_prompt_profile_id to projects",
-            kind: MigrationKind::Up,
-            sql: r#"
-                ALTER TABLE projects ADD COLUMN default_prompt_profile_id TEXT DEFAULT NULL;
-            "#,
-        },
-        Migration {
             version: 143,
             description: "add gemini 2.5 flash lite and update ambient to use it",
             kind: MigrationKind::Up,
@@ -2672,12 +2684,76 @@ You have full access to bash commands on the user''''s computer. If you write a 
             "#,
         },
         Migration {
-            version: 145,
-            description: "add actual_model_id to messages",
+            version: 144,
+            description: "add default_prompt_profile_id to projects",
             kind: MigrationKind::Up,
             sql: r#"
-                ALTER TABLE messages ADD COLUMN actual_model_id TEXT DEFAULT NULL;
+                ALTER TABLE projects ADD COLUMN default_prompt_profile_id TEXT DEFAULT NULL;
             "#,
         },
+        Migration {
+            version: 145,
+            description: if use_legacy_migration_145 {
+                LEGACY_MIGRATION_145_DESCRIPTION
+            } else {
+                MODERN_MIGRATION_145_DESCRIPTION
+            },
+            kind: MigrationKind::Up,
+            sql: if use_legacy_migration_145 {
+                LEGACY_MIGRATION_145_SQL
+            } else {
+                MODERN_MIGRATION_145_SQL
+            },
+        },
+        Migration {
+            version: 146,
+            description: if use_legacy_migration_145 {
+                MODERN_MIGRATION_145_DESCRIPTION
+            } else {
+                LEGACY_MIGRATION_145_DESCRIPTION
+            },
+            kind: MigrationKind::Up,
+            sql: if use_legacy_migration_145 {
+                MODERN_MIGRATION_145_SQL
+            } else {
+                LEGACY_MIGRATION_145_SQL
+            },
+        },
     ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::migrations;
+
+    const LEGACY_FLAG: &str = super::LEGACY_MIGRATION_145_ENV_VAR;
+
+    fn get_migration_descriptions() -> (String, String) {
+        let migrations = migrations();
+        let migration_145 = migrations
+            .iter()
+            .find(|migration| migration.version == 145)
+            .expect("migration 145 should exist");
+        let migration_146 = migrations
+            .iter()
+            .find(|migration| migration.version == 146)
+            .expect("migration 146 should exist");
+        (
+            migration_145.description.to_string(),
+            migration_146.description.to_string(),
+        )
+    }
+
+    #[test]
+    fn uses_legacy_145_layout_when_flag_is_enabled() {
+        std::env::set_var(LEGACY_FLAG, "1");
+        let (description_145, description_146) = get_migration_descriptions();
+        std::env::remove_var(LEGACY_FLAG);
+
+        assert_eq!(
+            description_145,
+            "add tool_yolo table and projects.yolo_mode column",
+        );
+        assert_eq!(description_146, "add actual_model_id to messages");
+    }
 }
