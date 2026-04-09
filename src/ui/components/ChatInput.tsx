@@ -32,7 +32,7 @@ import {
 } from "@ui/hooks/useAttachments";
 import { dialogActions, useDialogStore } from "@core/infra/DialogStore";
 import { ChatSuggestions } from "./ChatSuggestions";
-import { ArrowUp, ChevronDownIcon } from "lucide-react";
+import { ArrowUp, ChevronDownIcon, ChevronUp } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { EmptyState } from "./EmptyState";
 import { handleInputPasteWithAttachments } from "@ui/lib/utils";
@@ -50,6 +50,9 @@ import { modelConfigQueries } from "@core/chorus/api/ModelsAPI";
 
 const DEFAULT_CHAT_INPUT_ID = "default-chat-input";
 const REPLY_CHAT_INPUT_ID = "reply-chat-input";
+
+const COLLAPSE_THRESHOLD_PX = 150;
+const COLLAPSED_HEIGHT_PX = 80;
 
 function ScrollToBottomButton({ onClick }: { onClick: () => void }) {
     const { isQuickChatWindow } = useAppContext();
@@ -178,6 +181,10 @@ export function ChatInput({
         useState(false);
 
     const [isAnimatingToBottom, setIsAnimatingToBottom] = useState(false);
+
+    const [naturalHeight, setNaturalHeight] = useState(0);
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
 
     const placeholderText = isReply ? "Reply..." : "Ask me anything...";
 
@@ -360,7 +367,7 @@ export function ChatInput({
             void populateBlock.mutateAsync({
                 messageSetId: aiMessageSetId,
                 blockType: BLOCK_TYPE,
-                replyToModelId: replyToModelConfig?.modelId,
+                replyToModelId: replyToModelConfig?.id,
                 excludedModelIds: minimizedModels,
                 applyChatCreationModelDefaults,
             });
@@ -387,6 +394,33 @@ export function ChatInput({
             await filePaste.mutateAsync(files);
         }
     };
+
+    const handleInputFocus = useCallback(() => {
+        setIsFocused(true);
+        setIsCollapsed(false);
+        inputActions.setFocusedInputId(
+            isReply ? REPLY_CHAT_INPUT_ID : DEFAULT_CHAT_INPUT_ID,
+        );
+    }, [isReply]);
+
+    const handleInputBlur = useCallback(() => {
+        setIsFocused(false);
+        inputActions.setFocusedInputId(null);
+    }, []);
+
+    useEffect(() => {
+        if (naturalHeight < COLLAPSE_THRESHOLD_PX) {
+            setIsCollapsed(false);
+        } else if (!isFocused) {
+            setIsCollapsed(true);
+        }
+    }, [naturalHeight, isFocused]);
+
+    useEffect(() => {
+        if (isCollapsed && inputRef.current) {
+            inputRef.current.scrollTop = inputRef.current.scrollHeight;
+        }
+    }, [isCollapsed, inputRef]);
 
     // --------------------------------------------------------------------------
     // Model management (persisted per chat; never tied to draft/input state)
@@ -645,43 +679,75 @@ export function ChatInput({
                 onSubmit={handleSubmit}
                 className="flex flex-col w-full mx-auto relative"
             >
-                <AutoExpandingTextarea
-                    ref={inputRef}
-                    value={draft}
-                    onChange={(e) => {
-                        setDraft(e.target.value);
-                    }}
-                    onPaste={(e) => void handlePaste(e)}
-                    rows={2}
-                    onKeyDown={(e) => {
-                        if (cautiousEnter) {
-                            // Cautious mode: Cmd+Enter to submit
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                e.preventDefault();
-                                handleSubmit(e);
+                <div className="relative">
+                    <AutoExpandingTextarea
+                        ref={inputRef}
+                        value={draft}
+                        onChange={(e) => {
+                            setDraft(e.target.value);
+                        }}
+                        onPaste={(e) => void handlePaste(e)}
+                        rows={2}
+                        onKeyDown={(e) => {
+                            if (cautiousEnter) {
+                                // Cautious mode: Cmd+Enter to submit
+                                if (
+                                    e.key === "Enter" &&
+                                    (e.metaKey || e.ctrlKey)
+                                ) {
+                                    e.preventDefault();
+                                    handleSubmit(e);
+                                }
+                            } else {
+                                // Normal mode: Enter to submit, Shift+Enter for newline
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSubmit(e);
+                                }
                             }
-                        } else {
-                            // Normal mode: Enter to submit, Shift+Enter for newline
-                            if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSubmit(e);
-                            }
+                        }}
+                        placeholder={placeholderText}
+                        className="ring-0
+                    placeholder:text-muted-foreground/50 font-[350] focus:outline-none pt-2 px-1.5 select-text
+                    max-h-[60vh] overflow-y-auto my-2 rounded-none !p-0"
+                        autoFocus
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        onHeightChange={setNaturalHeight}
+                        style={
+                            isCollapsed
+                                ? {
+                                      maxHeight: `${COLLAPSED_HEIGHT_PX}px`,
+                                      overflowY: "hidden",
+                                  }
+                                : undefined
                         }
-                    }}
-                    placeholder={placeholderText}
-                    className="ring-0
-                placeholder:text-muted-foreground/50 font-[350] focus:outline-none pt-2 px-1.5 select-text
-                max-h-[60vh] overflow-y-auto my-2 rounded-none !p-0"
-                    autoFocus
-                    onFocus={() =>
-                        inputActions.setFocusedInputId(
-                            isReply
-                                ? REPLY_CHAT_INPUT_ID
-                                : DEFAULT_CHAT_INPUT_ID,
-                        )
-                    }
-                    onBlur={() => inputActions.setFocusedInputId(null)}
-                />
+                    />
+                    {isCollapsed && (
+                        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent pointer-events-none" />
+                    )}
+                    {naturalHeight >= COLLAPSE_THRESHOLD_PX && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsCollapsed((c) => !c);
+                                if (isCollapsed) inputRef.current?.focus();
+                            }}
+                            className="absolute top-1 right-1 z-10 flex items-center gap-0.5 text-xs text-muted-foreground/50 bg-background/90 backdrop-blur-[1px] rounded-full px-2 py-1 hover:text-muted-foreground"
+                        >
+                            {isCollapsed ? (
+                                <>
+                                    Show more <ChevronUp className="w-3 h-3" />
+                                </>
+                            ) : (
+                                <>
+                                    Collapse{" "}
+                                    <ChevronDownIcon className="w-3 h-3" />
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
 
                 {/* Helper text for Cmd+L */}
                 {isNextFocus && (
@@ -851,42 +917,72 @@ export function ChatInput({
                     removeAttachment.mutate({ attachmentId })
                 }
             />
-            <AutoExpandingTextarea
-                ref={inputRef}
-                value={draft}
-                onChange={(e) => {
-                    setDraft(e.target.value);
-                }}
-                onPaste={(e) => handlePaste(e)}
-                rows={2}
-                onKeyDown={(e) => {
-                    if (cautiousEnter) {
-                        // Cautious mode: Cmd+Enter to submit
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                            e.preventDefault();
-                            handleSubmit(e);
+            <div className="relative">
+                <AutoExpandingTextarea
+                    ref={inputRef}
+                    value={draft}
+                    onChange={(e) => {
+                        setDraft(e.target.value);
+                    }}
+                    onPaste={(e) => handlePaste(e)}
+                    rows={2}
+                    onKeyDown={(e) => {
+                        if (cautiousEnter) {
+                            // Cautious mode: Cmd+Enter to submit
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                e.preventDefault();
+                                handleSubmit(e);
+                            }
+                        } else {
+                            // Normal mode: Enter to submit, Shift+Enter for newline
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSubmit(e);
+                            }
                         }
-                    } else {
-                        // Normal mode: Enter to submit, Shift+Enter for newline
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmit(e);
-                        }
+                    }}
+                    placeholder={placeholderText}
+                    className={`ring-0 w-full rounded-xl bg-foreground/5 focus:shadow-sm
+                                    placeholder:text-foreground/50 px-3 !border-foreground/10 select-text
+                                    max-h-[70vh] overflow-y-auto !p-2`}
+                    autoFocus
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    onHeightChange={setNaturalHeight}
+                    style={
+                        isCollapsed
+                            ? {
+                                  maxHeight: `${COLLAPSED_HEIGHT_PX}px`,
+                                  overflowY: "hidden",
+                              }
+                            : undefined
                     }
-                }}
-                placeholder={placeholderText}
-                className={`ring-0 w-full rounded-xl bg-foreground/5 focus:shadow-sm
-                                placeholder:text-foreground/50 px-3 !border-foreground/10 select-text
-                                max-h-[70vh] overflow-y-auto !p-2`}
-                autoFocus
-                onFocus={() =>
-                    inputActions.setFocusedInputId(
-                        isReply ? REPLY_CHAT_INPUT_ID : DEFAULT_CHAT_INPUT_ID,
-                    )
-                }
-                onBlur={() => inputActions.setFocusedInputId(null)}
-                tabIndex={1} // should be first item to get focus
-            />
+                    tabIndex={1} // should be first item to get focus
+                />
+                {isCollapsed && (
+                    <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent pointer-events-none" />
+                )}
+                {naturalHeight >= COLLAPSE_THRESHOLD_PX && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsCollapsed((c) => !c);
+                            if (isCollapsed) inputRef.current?.focus();
+                        }}
+                        className="absolute top-1 right-1 z-10 flex items-center gap-0.5 text-xs text-muted-foreground/50 bg-background/90 backdrop-blur-[1px] rounded-full px-2 py-1 hover:text-muted-foreground"
+                    >
+                        {isCollapsed ? (
+                            <>
+                                Show more <ChevronUp className="w-3 h-3" />
+                            </>
+                        ) : (
+                            <>
+                                Collapse <ChevronDownIcon className="w-3 h-3" />
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
 
             {/* Helper text for Cmd+L */}
             {isNextFocus && (
