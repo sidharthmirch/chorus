@@ -1,6 +1,8 @@
 use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
+use rusqlite::{Connection, OpenFlags};
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use tauri_nspanel::ManagerExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
@@ -14,6 +16,9 @@ pub mod migrations;
 mod window;
 
 const DB_URL: &str = "sqlite:chats.db";
+const LEGACY_MIGRATION_145_ENV_VAR: &str = "CHORUS_USE_LEGACY_MIGRATION_145";
+const LEGACY_MIGRATION_145_DESCRIPTION: &str =
+    "add tool_yolo table and projects.yolo_mode column";
 
 pub const SPOTLIGHT_LABEL: &str = "quick-chat";
 
@@ -118,10 +123,61 @@ fn parse_shortcut(shortcut_str: &str) -> Option<Shortcut> {
     Some(Shortcut::new(Some(modifiers), code))
 }
 
+#[cfg(target_os = "macos")]
+fn get_db_path_for_identifier(identifier: &str) -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join(identifier)
+            .join("chats.db"),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_db_path_for_identifier(_identifier: &str) -> Option<PathBuf> {
+    None
+}
+
+fn db_has_legacy_migration_145(db_path: &Path) -> bool {
+    let Ok(connection) = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return false;
+    };
+
+    let description = connection.query_row(
+        "SELECT description FROM _sqlx_migrations WHERE version = 145",
+        [],
+        |row| row.get::<_, String>(0),
+    );
+
+    matches!(
+        description.as_deref(),
+        Ok(LEGACY_MIGRATION_145_DESCRIPTION)
+    )
+}
+
+fn set_migration_145_compatibility_mode(identifier: &str) {
+    let db_path = get_db_path_for_identifier(identifier);
+    let use_legacy_145 = db_path
+        .as_ref()
+        .is_some_and(|path| db_has_legacy_migration_145(path));
+
+    if use_legacy_145 {
+        std::env::set_var(LEGACY_MIGRATION_145_ENV_VAR, "1");
+    } else {
+        std::env::remove_var(LEGACY_MIGRATION_145_ENV_VAR);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)] // only enable instrumentation in development builds
     let devtools = tauri_plugin_devtools::init();
+
+    let context = tauri::generate_context!();
+    set_migration_145_compatibility_mode(&context.config().identifier);
 
     let migrations = migrations::migrations();
 
@@ -455,6 +511,6 @@ pub fn run() {
             command::write_file_async,
             command::get_file_metadata,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
