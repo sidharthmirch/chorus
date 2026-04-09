@@ -30,14 +30,29 @@ export const PermissionsTab: React.FC = () => {
     const { data: yoloMode } = AppMetadataAPI.useYoloMode();
     const setYoloMode = AppMetadataAPI.useSetYoloMode();
 
-    const allTools = ToolsetsManager.instance
+    const allToolsDependency = ToolsetsManager.instance
         .listToolsets()
-        .flatMap((toolset) =>
-            toolset.listTools().map((tool) => ({
-                toolsetName: tool.toolsetName,
-                toolName: tool.displayNameSuffix,
-            })),
-        );
+        .map(
+            (toolset) =>
+                `${toolset.name}:${toolset
+                    .listTools()
+                    .map((tool) => tool.displayNameSuffix)
+                    .join(",")}`,
+        )
+        .join("|");
+    const allTools = React.useMemo(
+        () => {
+            // Keep allTools referentially stable until toolset/tool composition changes.
+            void allToolsDependency;
+            return ToolsetsManager.instance.listToolsets().flatMap((toolset) =>
+                toolset.listTools().map((tool) => ({
+                    toolsetName: tool.toolsetName,
+                    toolName: tool.displayNameSuffix,
+                })),
+            );
+        },
+        [allToolsDependency],
+    );
 
     const { data: toolYoloEntries } = ToolYoloAPI.useAllToolYolo(
         yoloMode === false && allTools.length > 0,

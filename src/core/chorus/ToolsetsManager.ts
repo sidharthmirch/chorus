@@ -103,26 +103,6 @@ export class ToolsetsManager {
         }
 
         try {
-            const yoloMode = await this.resolveYoloMode(
-                toolsetName,
-                displayNameSuffix,
-                projectId,
-            );
-
-            if (yoloMode) {
-                // YOLO mode - execute without asking
-                const resultContent = await toolset.executeTool(
-                    displayNameSuffix,
-                    toolCall.args as Record<string, unknown>,
-                );
-
-                return {
-                    id: toolCall.id,
-                    content: resultContent,
-                };
-            }
-
-            // Normal permission flow
             const customToolset = this._customToolsets.find(
                 (t) => t.name === toolsetName,
             );
@@ -135,6 +115,33 @@ export class ToolsetsManager {
                 displayNameSuffix,
                 defaultPermission,
             );
+
+            if (!permissionCheck.shouldAsk && !permissionCheck.isAllowed) {
+                // Permission is always_deny and remains a hard block even with YOLO enabled.
+                return {
+                    id: toolCall.id,
+                    content: `<system_message>Tool execution denied by saved preference</system_message>`,
+                };
+            }
+
+            const yoloMode = await this.resolveYoloMode(
+                toolsetName,
+                displayNameSuffix,
+                projectId,
+            );
+
+            if (yoloMode) {
+                // YOLO mode - execute without asking (unless always_deny above).
+                const resultContent = await toolset.executeTool(
+                    displayNameSuffix,
+                    toolCall.args as Record<string, unknown>,
+                );
+
+                return {
+                    id: toolCall.id,
+                    content: resultContent,
+                };
+            }
 
             if (permissionCheck.shouldAsk) {
                 // Create a permission request
@@ -158,12 +165,6 @@ export class ToolsetsManager {
                         content: `<system_message>Tool execution denied by user</system_message>`,
                     };
                 }
-            } else if (!permissionCheck.isAllowed) {
-                // Permission is always_deny
-                return {
-                    id: toolCall.id,
-                    content: `<system_message>Tool execution denied by saved preference</system_message>`,
-                };
             }
 
             // Permission granted, execute the tool
