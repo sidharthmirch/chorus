@@ -85,7 +85,10 @@ function readChat(row: ChatDBRow): Chat {
         replyToId: row.reply_to_id,
         gcPrototype: row.gc_prototype_chat === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
-        contextWindowSize: row.context_window_size ?? undefined,
+        contextWindowSize:
+            row.context_window_size === null
+                ? undefined
+                : row.context_window_size,
     };
 }
 

@@ -12,7 +12,7 @@ export function normalizeLimitedTurns(
     const parsed =
         typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
 
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    if (!Number.isFinite(parsed) || parsed < 0) {
         return fallback;
     }
 

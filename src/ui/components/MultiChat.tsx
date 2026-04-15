@@ -2209,6 +2209,7 @@ type MessageSetViewProps = {
     messageSetId: string;
     isLastRow?: boolean;
     isQuickChatWindow: boolean;
+    isDimmed?: boolean;
     userMessageRef: React.RefObject<HTMLDivElement> | undefined;
     messageSetRef: React.RefObject<HTMLDivElement> | undefined;
     minimizedModels: Set<string>;
@@ -2218,11 +2219,14 @@ type MessageSetViewProps = {
     onMinimize: (modelId: string) => void; // for ToolsBlockView
 };
 
+const EMPTY_STRING_SET: Set<string> = new Set();
+
 const MessageSetView = memo(
     ({
         messageSetId,
         isLastRow = false,
         isQuickChatWindow,
+        isDimmed = false,
         userMessageRef, // a ref that will be applied to user message container, if there is one
         messageSetRef, // a ref that will be applied to the message set container
         minimizedModels,
@@ -2253,9 +2257,10 @@ const MessageSetView = memo(
         return (
             <div
                 ref={messageSetRef}
-                className={`relative text-sm flex flex-col w-full ${
+                className={`relative text-sm flex flex-col w-full transition-opacity duration-200 ${
                     messageSet.type === "ai" ? "mb-10" : ""
-                }`}
+                } ${isDimmed ? "opacity-40" : ""}`}
+                aria-hidden={isDimmed || undefined}
             >
                 <div
                     className={`
@@ -2427,7 +2432,7 @@ export default function MultiChat() {
         (s) => s.minimizedModelsByChatId,
     );
     const minimizedModels = useMemo(
-        () => minimizedModelsByChatId.get(chatId ?? "") ?? new Set<string>(),
+        () => minimizedModelsByChatId.get(chatId ?? "") ?? EMPTY_STRING_SET,
         [chatId, minimizedModelsByChatId],
     );
 
@@ -3381,6 +3386,9 @@ export default function MultiChat() {
                                     onToggleMinimize={handleToggleMinimize}
                                     movedRightModels={movedRightModels}
                                     onModelStopped={handleModelStopped}
+                                    contextWindowSize={
+                                        chatQuery.data?.contextWindowSize
+                                    }
                                 />
                                 <ChatInput
                                     isNewChat={chatQuery.data?.isNewChat}
@@ -3555,6 +3563,7 @@ function MainScrollableContentView({
     onToggleMinimize,
     movedRightModels,
     onModelStopped,
+    contextWindowSize,
 }: {
     chatContainerRef: React.RefObject<HTMLDivElement>;
     lastMessageSetRef: React.RefObject<HTMLDivElement>;
@@ -3566,6 +3575,7 @@ function MainScrollableContentView({
     onToggleMinimize: (modelId: string) => void;
     movedRightModels: Set<string>;
     onModelStopped: (modelId: string) => void;
+    contextWindowSize: number | undefined;
 }) {
     const appMetadata = useWaitForAppMetadata();
     const { chatId } = useParams();
@@ -3675,6 +3685,46 @@ function MainScrollableContentView({
 
     // minimizedModels and related state are lifted to MultiChat and passed as props
 
+    const messageSets = useMemo(
+        () => messageSetsQuery.data ?? [],
+        [messageSetsQuery.data],
+    );
+
+    const { lastUserSet, lastAISet, otherMessageSets } = useMemo(() => {
+        if (messageSets.length === 0) {
+            return {
+                lastUserSet: null as MessageSetDetail | null,
+                lastAISet: null as MessageSetDetail | null,
+                otherMessageSets: [] as MessageSetDetail[],
+            };
+        } else if (messageSets[messageSets.length - 1].type === "user") {
+            return {
+                lastUserSet: messageSets[messageSets.length - 1],
+                lastAISet: null as MessageSetDetail | null,
+                otherMessageSets: messageSets.slice(0, -1),
+            };
+        } else {
+            return {
+                lastUserSet: messageSets[messageSets.length - 2],
+                lastAISet: messageSets[messageSets.length - 1],
+                otherMessageSets: messageSets.slice(0, -2),
+            };
+        }
+    }, [messageSets]);
+
+    const dimmingCutoffIndex = useMemo(() => {
+        if (
+            contextWindowSize === undefined ||
+            contextWindowSize < 1 ||
+            otherMessageSets.length === 0
+        ) {
+            return -1;
+        }
+        return (
+            otherMessageSets.length - Math.max(0, (contextWindowSize - 1) * 2)
+        );
+    }, [contextWindowSize, otherMessageSets.length]);
+
     // early stopping
     if (messageSetsQuery.isPending) {
         return <ChatMessageSkeleton />;
@@ -3683,11 +3733,10 @@ function MainScrollableContentView({
         return <div>Error: {messageSetsQuery.error.message}</div>;
     }
 
-    const messageSets = messageSetsQuery.data;
-
     function renderMessageSet(
         ms: MessageSetDetail,
         messageSetRef: React.RefObject<HTMLDivElement> | undefined = undefined,
+        isDimmed = false,
     ) {
         const isLastRow = ms.level === messageSets.length - 1;
         return (
@@ -3698,6 +3747,7 @@ function MainScrollableContentView({
                 userMessageRef={undefined}
                 isLastRow={isLastRow}
                 isQuickChatWindow={isQuickChatWindow}
+                isDimmed={isDimmed}
                 minimizedModels={minimizedModels}
                 onToggleMinimize={onToggleMinimize}
                 movedRightModels={movedRightModels}
@@ -3705,23 +3755,6 @@ function MainScrollableContentView({
                 onMinimize={onMinimize}
             />
         );
-    }
-
-    let lastUserSet;
-    let lastAISet;
-    let otherMessageSets;
-    if (messageSets.length === 0) {
-        lastUserSet = null;
-        lastAISet = null;
-        otherMessageSets = messageSets;
-    } else if (messageSets[messageSets.length - 1].type === "user") {
-        lastUserSet = messageSets[messageSets.length - 1];
-        lastAISet = null;
-        otherMessageSets = messageSets.slice(0, -1);
-    } else {
-        lastUserSet = messageSets[messageSets.length - 2];
-        lastAISet = messageSets[messageSets.length - 1];
-        otherMessageSets = messageSets.slice(0, -2);
     }
 
     return (
@@ -3748,9 +3781,16 @@ function MainScrollableContentView({
 
                 {messageSets.length > 0 && (
                     <>
-                        {otherMessageSets.map((ms) => (
-                            <div key={ms.id}>{renderMessageSet(ms)}</div>
-                        ))}
+                        {otherMessageSets.map((ms, i) => {
+                            const isDimmed =
+                                dimmingCutoffIndex >= 0 &&
+                                i < dimmingCutoffIndex;
+                            return (
+                                <div key={ms.id}>
+                                    {renderMessageSet(ms, undefined, isDimmed)}
+                                </div>
+                            );
+                        })}
                         <div
                             // we should subtract enough space that there's no scroll bar on first message
                             // on either qc or normal chat, but not so much that on subsequent messages

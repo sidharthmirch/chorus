@@ -39,6 +39,7 @@ import { handleInputPasteWithAttachments } from "@ui/lib/utils";
 import { inputActions, useInputStore } from "@core/infra/InputStore";
 import { useSearchParams } from "react-router-dom";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
+import * as ChatAPI from "@core/chorus/api/ChatAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
@@ -575,6 +576,27 @@ export function ChatInput({
             return () => cancelAnimationFrame(focusTimeout);
         }
     }, [inputRef, chatId, isDialogClosed]);
+
+    const { data: chat } = ChatAPI.useChat(chatId);
+    const updateContextWindowSize = ChatAPI.useUpdateContextWindowSize();
+
+    useShortcut(
+        ["meta", "alt", "c"],
+        () => {
+            if (isQuickChatWindow) return;
+            const currentSize = chat?.contextWindowSize;
+            const nextSize = currentSize === 0 ? undefined : 0;
+            updateContextWindowSize.mutate({ chatId, size: nextSize });
+            toast(
+                nextSize === 0
+                    ? "Context limited to current message"
+                    : "Context set to full history",
+            );
+        },
+        {
+            isGlobal: true,
+        },
+    );
 
     useShortcut(
         ["meta", "j"],
