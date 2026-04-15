@@ -150,6 +150,7 @@ import * as ChatAPI from "@core/chorus/api/ChatAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import { fetchSavedModelConfigChat } from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
+import { useSingleChatMode } from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
@@ -2144,14 +2145,20 @@ function UserBlockView({
     userBlock,
     userMessageRef,
     isQuickChatWindow,
+    isSingleChatMode,
 }: {
     userBlock: UserBlock;
     userMessageRef?: React.RefObject<HTMLDivElement>;
     isQuickChatWindow: boolean;
+    isSingleChatMode?: boolean;
 }) {
     return (
         <div
-            className={`ml-10 max-w-prose ${isQuickChatWindow ? "ml-auto" : ""}`}
+            className={`${
+                isSingleChatMode && !isQuickChatWindow
+                    ? "mx-auto max-w-prose"
+                    : "ml-10 max-w-prose"
+            } ${isQuickChatWindow ? "ml-auto" : ""}`}
             ref={userMessageRef}
         >
             {userBlock.message && (
@@ -2175,6 +2182,8 @@ type MessageSetViewProps = {
     movedRightModels: Set<string>; // for CompareBlockView (deprecated path)
     onModelStopped: (modelId: string) => void; // for CompareBlockView (deprecated path)
     onMinimize: (modelId: string) => void; // for ToolsBlockView
+    isSingleChatMode?: boolean;
+    focusedModelId?: string | null;
 };
 
 const MessageSetView = memo(
@@ -2189,8 +2198,18 @@ const MessageSetView = memo(
         movedRightModels,
         onModelStopped,
         onMinimize,
+        isSingleChatMode: isSingleChatModeProp,
+        focusedModelId: focusedModelIdProp,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
+
+        const { data: singleChatModeData } = useSingleChatMode(chatId!);
+        const isSingleChatMode =
+            isSingleChatModeProp ??
+            singleChatModeData?.isSingleChatMode ??
+            false;
+        const focusedModelId =
+            focusedModelIdProp ?? singleChatModeData?.focusedModelId ?? null;
 
         const messageSetQuery = MessageAPI.useMessageSet(chatId!, messageSetId);
 
@@ -2225,7 +2244,11 @@ const MessageSetView = memo(
                             isLastRow
                                 ? "min-h-[200px]"
                                 : ""
-                        } ${isQuickChatWindow ? "flex w-full" : ""}`}
+                        } ${isQuickChatWindow ? "flex w-full" : ""} ${
+                            isSingleChatMode && !isQuickChatWindow
+                                ? "max-w-3xl mx-auto"
+                                : ""
+                        }`}
                     data-tauri-drag-region={
                         isQuickChatWindow ? "true" : undefined
                     }
@@ -2235,6 +2258,7 @@ const MessageSetView = memo(
                             userBlock={messageSet.userBlock}
                             userMessageRef={userMessageRef}
                             isQuickChatWindow={isQuickChatWindow}
+                            isSingleChatMode={isSingleChatMode}
                         />
                     ) : messageSet.selectedBlockType === "compare" ? (
                         <CompareBlockView
@@ -2246,6 +2270,8 @@ const MessageSetView = memo(
                             onToggleMinimize={onToggleMinimize}
                             movedRightModels={movedRightModels}
                             onModelStopped={onModelStopped}
+                            isSingleChatMode={isSingleChatMode}
+                            focusedModelId={focusedModelId}
                         />
                     ) : messageSet.selectedBlockType === "chat" ? (
                         <ChatBlockView
@@ -2253,6 +2279,8 @@ const MessageSetView = memo(
                             chatBlock={messageSet.chatBlock}
                             isLastRow={isLastRow}
                             isQuickChatWindow={isQuickChatWindow}
+                            isSingleChatMode={isSingleChatMode}
+                            focusedModelId={focusedModelId}
                         />
                     ) : messageSet.selectedBlockType === "tools" ? (
                         <ToolsBlockView

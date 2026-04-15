@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { ModelConfig } from "../Models";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { resolveOrderedCompareConfigs } from "../ChatCompareSelection";
 import { db } from "../DB";
@@ -12,6 +13,10 @@ import { v4 as uuidv4 } from "uuid";
 const modelConfigChatKeys = {
     savedModelConfigChat: (chatId: string) =>
         ["savedModelConfig", chatId] as const,
+};
+
+const singleChatModeKeys = {
+    detail: (chatId: string) => ["singleChatMode", chatId] as const,
 };
 
 // Saved model config functions (model **config** ids, same as messages.model)
@@ -185,4 +190,77 @@ export function useUpdateReplyModelConfig() {
                 modelIds: [modelConfigId],
             }),
     });
+}
+
+// Single chat mode
+
+export async function fetchSingleChatMode(
+    chatId: string,
+): Promise<{ isSingleChatMode: boolean; focusedModelId: string | null }> {
+    const rows = await db.select<
+        {
+            is_single_chat_mode: number;
+            focused_model_id: string | null;
+        }[]
+    >(`SELECT is_single_chat_mode, focused_model_id FROM chats WHERE id = ?`, [
+        chatId,
+    ]);
+
+    if (rows.length === 0) {
+        return { isSingleChatMode: false, focusedModelId: null };
+    }
+
+    return {
+        isSingleChatMode: rows[0].is_single_chat_mode === 1,
+        focusedModelId: rows[0].focused_model_id ?? null,
+    };
+}
+
+export async function updateSingleChatMode(
+    chatId: string,
+    isSingleChatMode: boolean,
+    focusedModelId: string | null,
+): Promise<void> {
+    await db.execute(
+        `UPDATE chats SET is_single_chat_mode = ?, focused_model_id = ? WHERE id = ?`,
+        [isSingleChatMode ? 1 : 0, focusedModelId, chatId],
+    );
+}
+
+export function useSingleChatMode(chatId: string) {
+    return useQuery({
+        queryKey: singleChatModeKeys.detail(chatId),
+        queryFn: () => fetchSingleChatMode(chatId),
+        enabled: !!chatId,
+    });
+}
+
+export function useUpdateSingleChatMode() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({
+            chatId,
+            isSingleChatMode,
+            focusedModelId,
+        }: {
+            chatId: string;
+            isSingleChatMode: boolean;
+            focusedModelId: string | null;
+        }) => updateSingleChatMode(chatId, isSingleChatMode, focusedModelId),
+        onSuccess: (_data, variables) => {
+            void queryClient.invalidateQueries({
+                queryKey: singleChatModeKeys.detail(variables.chatId),
+            });
+        },
+    });
+}
+
+export function getFocusedModelIdWhenEnablingSingleMode(
+    selectedModelConfigs: ModelConfig[],
+): string | null {
+    if (selectedModelConfigs.length === 1) {
+        return selectedModelConfigs[0].id;
+    }
+    return null;
 }

@@ -1,8 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 const LEGACY_MIGRATION_145_ENV_VAR: &str = "CHORUS_USE_LEGACY_MIGRATION_145";
-const LEGACY_MIGRATION_145_DESCRIPTION: &str =
-    "add tool_yolo table and projects.yolo_mode column";
+const LEGACY_MIGRATION_145_DESCRIPTION: &str = "add tool_yolo table and projects.yolo_mode column";
 const MODERN_MIGRATION_145_DESCRIPTION: &str = "add actual_model_id to messages";
 const LEGACY_MIGRATION_145_SQL: &str = r#"
                 CREATE TABLE IF NOT EXISTS tool_yolo (
@@ -2718,6 +2717,15 @@ You have full access to bash commands on the user''''s computer. If you write a 
             } else {
                 LEGACY_MIGRATION_145_SQL
             },
+        },
+        Migration {
+            version: 147,
+            description: "add single chat mode columns to chats",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE chats ADD COLUMN is_single_chat_mode BOOLEAN NOT NULL DEFAULT 0;
+                ALTER TABLE chats ADD COLUMN focused_model_id TEXT;
+            "#,
         },
     ];
 }

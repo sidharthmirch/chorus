@@ -32,7 +32,7 @@ import {
 } from "@ui/hooks/useAttachments";
 import { dialogActions, useDialogStore } from "@core/infra/DialogStore";
 import { ChatSuggestions } from "./ChatSuggestions";
-import { ArrowUp, ChevronDownIcon, ChevronUp } from "lucide-react";
+import { ArrowUp, ChevronDownIcon, ChevronUp, Columns } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { EmptyState } from "./EmptyState";
 import { handleInputPasteWithAttachments } from "@ui/lib/utils";
@@ -40,6 +40,11 @@ import { inputActions, useInputStore } from "@core/infra/InputStore";
 import { useSearchParams } from "react-router-dom";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
+import {
+    useSingleChatMode,
+    useUpdateSingleChatMode,
+    getFocusedModelIdWhenEnablingSingleMode,
+} from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
@@ -145,11 +150,17 @@ export function ChatInput({
     // Create a unique dialog ID for reply model picker
     const MANAGE_MODELS_REPLY_DIALOG_ID = `manage-models-reply-${chatId}`;
 
+    // Create a unique dialog ID for single chat mode picker
+    const MANAGE_MODELS_SINGLE_CHAT_DIALOG_ID = `manage-models-single-chat-${chatId}`;
+
     const isManageModelsCompareDialogOpen = useDialogStore(
         (state) => state.activeDialogId === MANAGE_MODELS_COMPARE_DIALOG_ID,
     );
     const isManageModelsReplyDialogOpen = useDialogStore(
         (state) => state.activeDialogId === MANAGE_MODELS_REPLY_DIALOG_ID,
+    );
+    const isManageModelsSingleChatDialogOpen = useDialogStore(
+        (state) => state.activeDialogId === MANAGE_MODELS_SINGLE_CHAT_DIALOG_ID,
     );
     const isDialogClosed = useDialogStore(
         (state) => state.activeDialogId === null,
@@ -159,6 +170,10 @@ export function ChatInput({
         ModelConfigChatAPI.useReplyModelConfig(chatId);
     const updateReplyModelConfig =
         ModelConfigChatAPI.useUpdateReplyModelConfig();
+
+    // Single chat mode hooks
+    const singleChatMode = useSingleChatMode(chatId);
+    const updateSingleChatMode = useUpdateSingleChatMode();
 
     const getReplyToModelConfig = useCallback(
         (raw: string | undefined) => {
@@ -562,6 +577,34 @@ export function ChatInput({
         [persistMainChatCompareIds],
     );
 
+    const toggleSingleChatMode = useCallback(() => {
+        if (singleChatMode.data?.isSingleChatMode) {
+            void updateSingleChatMode.mutateAsync({
+                chatId,
+                isSingleChatMode: false,
+                focusedModelId: null,
+            });
+        } else {
+            const focusedModelId = getFocusedModelIdWhenEnablingSingleMode(
+                chatCompareModelConfigs,
+            );
+            if (focusedModelId) {
+                void updateSingleChatMode.mutateAsync({
+                    chatId,
+                    isSingleChatMode: true,
+                    focusedModelId,
+                });
+            } else {
+                dialogActions.openDialog(MANAGE_MODELS_SINGLE_CHAT_DIALOG_ID);
+            }
+        }
+    }, [
+        chatId,
+        chatCompareModelConfigs,
+        singleChatMode.data,
+        updateSingleChatMode,
+    ]);
+
     // Update focus when dialog closes or chat id changes
     useEffect(() => {
         if (isDialogClosed) {
@@ -582,7 +625,8 @@ export function ChatInput({
 
             if (
                 isManageModelsCompareDialogOpen ||
-                isManageModelsReplyDialogOpen
+                isManageModelsReplyDialogOpen ||
+                isManageModelsSingleChatDialogOpen
             ) {
                 dialogActions.closeDialog();
             } else {
@@ -602,6 +646,18 @@ export function ChatInput({
         },
         {
             enableOnDialogIds: [MANAGE_MODELS_COMPARE_DIALOG_ID],
+        },
+    );
+
+    useShortcut(
+        ["meta", "shift", "s"],
+        () => {
+            if (!isQuickChatWindow && !isReply) {
+                toggleSingleChatMode();
+            }
+        },
+        {
+            isGlobal: true,
         },
     );
 
@@ -766,6 +822,38 @@ export function ChatInput({
                                 dialogId={MANAGE_MODELS_COMPARE_DIALOG_ID}
                             />
                         )}
+                        {!isReply && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        onClick={toggleSingleChatMode}
+                                        className={`flex items-center justify-center rounded-full h-7 w-7 transition-all duration-200 ${
+                                            singleChatMode.data
+                                                ?.isSingleChatMode
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                                        }`}
+                                        aria-label={
+                                            singleChatMode.data
+                                                ?.isSingleChatMode
+                                                ? "Exit single chat mode"
+                                                : "Enter single chat mode"
+                                        }
+                                        aria-pressed={
+                                            singleChatMode.data
+                                                ?.isSingleChatMode ?? false
+                                        }
+                                    >
+                                        <Columns className="w-3.5 h-3.5" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    {singleChatMode.data?.isSingleChatMode
+                                        ? "Exit single chat mode — all models still receive messages (⌘⇧S)"
+                                        : "Enter single chat mode ⌘⇧S"}
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
                         {isReply && (
                             <ManageModelsButtonCompare
                                 selectedModelConfigs={
@@ -862,6 +950,29 @@ export function ChatInput({
                                 }
                             },
                             selectedModelConfigId: replyToModelConfig?.id ?? "",
+                        }}
+                    />
+                )}
+
+                {!isReply && (
+                    <ManageModelsBox
+                        id={MANAGE_MODELS_SINGLE_CHAT_DIALOG_ID}
+                        mode={{
+                            type: "single",
+                            onSetModel: (modelId) => {
+                                const modelConfig = modelConfigs.data?.find(
+                                    (m) => m.id === modelId,
+                                );
+                                if (modelConfig) {
+                                    void updateSingleChatMode.mutateAsync({
+                                        chatId,
+                                        isSingleChatMode: true,
+                                        focusedModelId: modelConfig.id,
+                                    });
+                                }
+                            },
+                            selectedModelConfigId:
+                                singleChatMode.data?.focusedModelId ?? "",
                         }}
                     />
                 )}

@@ -905,6 +905,8 @@ function CompareBlockView({
     onToggleMinimize,
     movedRightModels,
     onModelStopped,
+    isSingleChatMode,
+    focusedModelId,
 }: {
     messageSetId: string;
     compareBlock: CompareBlock;
@@ -914,6 +916,8 @@ function CompareBlockView({
     onToggleMinimize: (modelId: string) => void;
     movedRightModels: Set<string>;
     onModelStopped: (modelId: string) => void;
+    isSingleChatMode?: boolean;
+    focusedModelId?: string | null;
 }) {
     const { chatId } = useParams();
     const queryClient = useQueryClient();
@@ -934,7 +938,7 @@ function CompareBlockView({
     const setModelOrder = useModelOrderStore((state) => state.setModelOrder);
 
     // Sort: custom order when set, else streaming first → non-moved-right → alphabetical
-    const sortedMessages = [...compareBlock.messages].sort((a, b) => {
+    let sortedMessages = [...compareBlock.messages].sort((a, b) => {
         if (customOrder) {
             const aIdx = customOrder.indexOf(a.model);
             const bIdx = customOrder.indexOf(b.model);
@@ -951,6 +955,15 @@ function CompareBlockView({
         if (aMoved !== bMoved) return aMoved ? 1 : -1;
         return getDisplayName(a.model).localeCompare(getDisplayName(b.model));
     });
+
+    if (isSingleChatMode && focusedModelId) {
+        const focusedMessages = sortedMessages.filter(
+            (message) => message.model === focusedModelId,
+        );
+        if (focusedMessages.length > 0) {
+            sortedMessages = focusedMessages;
+        }
+    }
 
     const synthesisMessage = compareBlock.synthesis;
     const isSynthesisSelected = synthesisMessage?.selected ?? false;
@@ -1030,50 +1043,56 @@ function CompareBlockView({
         <LayoutGroup id={`compare-${messageSetId}`}>
             <div
                 className={`flex w-full h-fit pb-2 ${
-                    // get horizontal scroll bars, plus hackily disable y scrolling
-                    // because we're seeing scroll bars when we shouldn't
-                    "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
+                    isSingleChatMode
+                        ? "justify-center"
+                        : "overflow-x-auto scrollbar-only-on-hover overflow-y-hidden"
                 }`}
             >
-                <div className="flex-none w-10 mt-1">
-                    {isLastRow && totalVisibleCount > 1 && (
-                        <Tooltip>
-                            {/* synthesis button */}
-                            <TooltipTrigger asChild>
-                                {isSynthesisSelected ? (
-                                    <button
-                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                        onClick={() => {
-                                            deselectSynthesis.mutate({
-                                                chatId: chatId!,
-                                                messageSetId,
-                                            });
-                                        }}
-                                    >
-                                        <SplitIcon className="w-3 h-3" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
-                                        onClick={() => {
-                                            selectSynthesis.mutate({
-                                                chatId: chatId!,
-                                                messageSetId,
-                                            });
-                                        }}
-                                    >
-                                        <MergeIcon className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </TooltipTrigger>
-                            <TooltipContent side="top" align="start">
-                                {isSynthesisSelected
-                                    ? "Revert to original responses"
-                                    : "Synthesize replies into a single message (⌘S)"}
-                            </TooltipContent>
-                        </Tooltip>
-                    )}
-                </div>
+                {!(
+                    isSingleChatMode &&
+                    sortedMessages.length <= 1 &&
+                    !isSynthesisSelected
+                ) && (
+                    <div className="flex-none w-10 mt-1">
+                        {isLastRow && totalVisibleCount > 1 && (
+                            <Tooltip>
+                                {/* synthesis button */}
+                                <TooltipTrigger asChild>
+                                    {isSynthesisSelected ? (
+                                        <button
+                                            className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                            onClick={() => {
+                                                deselectSynthesis.mutate({
+                                                    chatId: chatId!,
+                                                    messageSetId,
+                                                });
+                                            }}
+                                        >
+                                            <SplitIcon className="w-3 h-3" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className="text-sm h-7 w-7 rounded-full bg-badge hover:bg-accent flex items-center justify-center"
+                                            onClick={() => {
+                                                selectSynthesis.mutate({
+                                                    chatId: chatId!,
+                                                    messageSetId,
+                                                });
+                                            }}
+                                        >
+                                            <MergeIcon className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </TooltipTrigger>
+                                <TooltipContent side="top" align="start">
+                                    {isSynthesisSelected
+                                        ? "Revert to original responses"
+                                        : "Synthesize replies into a single message (⌘S)"}
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                    </div>
+                )}
 
                 {/* Synthesis message (pinned, not draggable) */}
                 {synthesisMessage && isSynthesisSelected && (
@@ -1104,7 +1123,7 @@ function CompareBlockView({
                     onDragOver={onDragOver}
                     onDragEnd={onDragEnd}
                 >
-                    <div className="flex">
+                    <div className={`flex ${isSingleChatMode ? "w-full" : ""}`}>
                         {sortedMessages.map((message, index) => {
                             const isMinimized = minimizedModels.has(
                                 message.model,
@@ -1134,9 +1153,11 @@ function CompareBlockView({
                                         } ${
                                             isMinimized
                                                 ? "flex-none"
-                                                : isQuickChatWindow
-                                                  ? ""
-                                                  : "flex-1 w-full min-w-[400px] max-w-[550px]"
+                                                : isSingleChatMode
+                                                  ? "w-full max-w-prose"
+                                                  : isQuickChatWindow
+                                                    ? ""
+                                                    : "flex-1 w-full min-w-[400px] max-w-[550px]"
                                         } w-full max-w-prose`}
                                     >
                                         {(listeners) =>
@@ -1229,11 +1250,15 @@ function ChatBlockView({
     chatBlock,
     isLastRow = false,
     isQuickChatWindow,
+    isSingleChatMode,
+    focusedModelId: _focusedModelId,
 }: {
     messageSetId: string;
     chatBlock: ChatBlock;
     isLastRow: boolean;
     isQuickChatWindow: boolean;
+    isSingleChatMode?: boolean;
+    focusedModelId?: string | null;
 }) {
     const { chatId } = useParams();
 
@@ -1310,10 +1335,20 @@ function ChatBlockView({
     const smallMessages = reviewMessages.filter((r) => !r.displayBig);
     return (
         <div
-            className={`${isQuickChatWindow ? "" : "ml-10"} flex w-full select-none`}
+            className={`${
+                isSingleChatMode && !isQuickChatWindow
+                    ? "flex w-full select-none"
+                    : isQuickChatWindow
+                      ? "flex w-full select-none"
+                      : "ml-10 flex w-full select-none"
+            }`}
         >
             <div
-                className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} w-full max-w-prose`}
+                className={`mr-2 ${isQuickChatWindow ? "pt-0" : "pt-2"} ${
+                    isSingleChatMode && !isQuickChatWindow
+                        ? "w-full max-w-prose mx-auto"
+                        : "w-full max-w-prose"
+                }`}
             >
                 {message && (
                     <AIMessageView
@@ -1350,7 +1385,7 @@ function ChatBlockView({
                     )}
                 </div>
             </div>
-            {!isQuickChatWindow && (
+            {!isQuickChatWindow && !isSingleChatMode && (
                 <div className="w-64 h-fit flex-none sticky top-0 ml-4 ">
                     {!reviewsEnabled ? (
                         <button

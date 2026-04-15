@@ -63,6 +63,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "./ui/select";
+import { Toggle } from "./ui/toggle";
 
 // Helper function to filter models by search terms
 const normalizeSearchValue = (value: string): string =>
@@ -477,9 +478,13 @@ function ProfileSelector() {
 export function ManageModelsBox({
     mode,
     id,
+    isSingleChatMode,
+    onToggleSingleChatMode,
 }: {
     mode: ModelPickerMode;
     id: string; // Allow any string ID for flexibility
+    isSingleChatMode?: boolean;
+    onToggleSingleChatMode?: (enable: boolean) => void;
 }) {
     const { data: apiKeys } = AppMetadataAPI.useApiKeys();
     const navigate = useNavigate();
@@ -729,7 +734,6 @@ export function ManageModelsBox({
                 console.error("Can't find the scroll container");
                 return;
             }
-            console.log("resetting scroll on", listRef.current.scrollTop);
             listRef.current.scrollTop = 0;
         });
     }, [searchQuery]);
@@ -894,7 +898,21 @@ export function ManageModelsBox({
                         }
                     />
                     <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
-                        <ProfileSelector />
+                        <div className="flex items-center gap-2">
+                            <ProfileSelector />
+                            {onToggleSingleChatMode && (
+                                <Toggle
+                                    size="sm"
+                                    pressed={isSingleChatMode}
+                                    onPressedChange={(pressed) =>
+                                        onToggleSingleChatMode(pressed)
+                                    }
+                                    title="Toggle single/multi model mode"
+                                >
+                                    {isSingleChatMode ? "Single" : "Multi"}
+                                </Toggle>
+                            )}
+                        </div>
                         {mode.type === "default" && (
                             <Button
                                 type="button"
