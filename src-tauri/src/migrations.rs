@@ -2773,6 +2773,16 @@ You have full access to bash commands on the user''''s computer. If you write a 
                     ('mode-socratic', '?', 'Socratic', 'Answers only with questions until you commit.', 'Respond only with clarifying questions until the user has committed to a specific direction. Do not provide direct answers, solutions, or recommendations - guide the user to their own conclusions through questioning.', 'custom', 'system');
             "#,
         },
+        // REWORK-MIGRATION: renumber at rebase (W6 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 149,
+            description: "add chats.view_mode and messages.grades_json columns",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE chats ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'columns' CHECK (view_mode IN ('columns', 'focus', 'fused'));
+                ALTER TABLE messages ADD COLUMN grades_json TEXT DEFAULT NULL;
+            "#,
+        },
     ];
 }
 

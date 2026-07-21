@@ -48,6 +48,27 @@ export interface IMode {
     updatedAt: string;
 }
 
+// ----------------------------------
+// View modes (W6 rework — frozen export per docs/rework/00-ARCHITECTURE.md §5)
+// ----------------------------------
+
+/**
+ * Per-chat presentation mode for multi-model responses (`chats.view_mode`,
+ * migration 149; default "columns" = today's existing behavior, unchanged).
+ * "focus" and "fused" are purely presentational reinterpretations of the
+ * same underlying `ToolsBlock.chatMessages` fan-out — see
+ * docs/rework/w6-chat-recon.md §5/§6. Consumed by `ChatAPI.ts`'s `Chat.viewMode`
+ * and the segmented control in `MultiChat.tsx`'s header.
+ */
+export type ViewMode = "columns" | "focus" | "fused";
+export const VIEW_MODES: ViewMode[] = ["columns", "focus", "fused"];
+// `as ViewMode` here only widens the array's element type for the .includes
+// check itself; the function's real job (and the only thing callers rely
+// on) is the `value is ViewMode` predicate, which IS runtime-checked below —
+// same established idiom as this file's own isBlockType, just above.
+export const isViewMode = (value: string): value is ViewMode =>
+    VIEW_MODES.includes(value as ViewMode);
+
 export type MessageSetDetail = MessageSet & {
     userBlock: UserBlock;
     chatBlock: ChatBlock;

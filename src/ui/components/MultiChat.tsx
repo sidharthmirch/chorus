@@ -39,6 +39,7 @@ import {
     ArrowLeftIcon,
     ArrowRightIcon,
     ChevronRightIcon,
+    ChevronLeftIcon,
     FolderOpenIcon,
     ReplyIcon,
     Trash2Icon,
@@ -154,6 +155,7 @@ import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
 import * as ModesAPI from "@core/chorus/api/ModesAPI";
+import { ViewModeControl } from "./ViewModeControl";
 import SimpleCopyButton from "./unused/CopyButton";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import {
@@ -1296,6 +1298,7 @@ export function ToolsMessageView({
     onDeselect,
     dragHandleProps,
     modeId,
+    isMain,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
@@ -1309,6 +1312,10 @@ export function ToolsMessageView({
     // Mode/stance active for this message's set, if any (design/chat.md's
     // "✓ assist" sender-row badge). See docs/rework/w6-chat-recon.md §4.
     modeId?: string;
+    // Cosmetic role label (design/chat.md's Columns "main"/"hidden" role
+    // badge) — undefined means "don't show a role badge at all" (single-model
+    // chats). true = main, false = hidden. See docs/rework/w6-chat-recon.md §2.
+    isMain?: boolean;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
@@ -1464,6 +1471,17 @@ export function ToolsMessageView({
                                                 {displayModelConfig?.displayName ??
                                                     displayModelId}
                                             </span>
+                                            {isMain !== undefined && (
+                                                <span
+                                                    className={`ml-1.5 text-[10px] font-mono uppercase tracking-wider ${
+                                                        isMain
+                                                            ? "text-accent-foreground"
+                                                            : "text-helper"
+                                                    }`}
+                                                >
+                                                    {isMain ? "main" : "hidden"}
+                                                </span>
+                                            )}
                                             {activeMode && (
                                                 <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-sm border border-border px-[5px] py-px text-[10px] font-mono text-muted-foreground align-middle">
                                                     {activeMode.icon}
@@ -1806,6 +1824,11 @@ function ToolsBlockView({
         [modelConfigsQuery.data],
     );
     const selectedModelConfigs = chatCompareModelConfigs;
+    // "main" is purely a cosmetic label (index 0 of the chat's selection
+    // order) — no pipeline/data-model concept, matches W4's own comment on
+    // SelectedPreviewPanel.tsx's identical convention. See
+    // docs/rework/w6-chat-recon.md §2.
+    const mainModelId = selectedModelConfigs[0]?.id;
     const currentModelIds = useMemo(
         () => new Set(toolsBlock.chatMessages.map((m) => m.model)),
         [toolsBlock.chatMessages],
@@ -2075,6 +2098,13 @@ function ToolsBlockView({
                                                         .length === 1
                                                 }
                                                 modeId={modeId}
+                                                isMain={
+                                                    toolsBlock.chatMessages
+                                                        .length > 1
+                                                        ? message.model ===
+                                                          mainModelId
+                                                        : undefined
+                                                }
                                                 onMinimize={
                                                     toolsBlock.chatMessages
                                                         .length > 1
@@ -2162,6 +2192,135 @@ function ToolsBlockView({
     );
 }
 
+/**
+ * Focus view mode (design/chat.md): the primary ("main") model's response
+ * shown full-width, with the other selected models' responses tucked behind
+ * a small carousel pager ("‹ 2/3 ›") instead of side-by-side columns.
+ * Defined here (not a separate file) specifically so it can call
+ * `ToolsMessageView` directly without a cross-file circular import (this
+ * file already imports view components FROM `MultiChatDeprecationPath.tsx`,
+ * not the reverse — keeping that same one-directional shape).
+ *
+ * Purely presentational — reads the exact same `ToolsBlock.chatMessages`
+ * `ToolsBlockView` reads (hidden models still answer normally via the
+ * existing fan-out; nothing here changes what gets sent to any model). See
+ * docs/rework/w6-chat-recon.md §5.
+ */
+function FocusBlockView({
+    isLastRow = false,
+    isQuickChatWindow,
+    toolsBlock,
+    minimizedModels,
+    onMinimize,
+    modeId,
+}: {
+    messageSetId: string;
+    toolsBlock: ToolsBlock;
+    isLastRow: boolean;
+    isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    modeId?: string;
+}) {
+    const { chatId } = useParams();
+    const chatCompareModelConfigs =
+        ModelConfigChatAPI.useChatCompareModelConfigs(chatId!);
+    const mainModelId = chatCompareModelConfigs[0]?.id;
+
+    const activeMessages = toolsBlock.chatMessages.filter(
+        (m) => !minimizedModels.has(m.model),
+    );
+    const orderedIds = chatCompareModelConfigs.map((c) => c.id);
+    const sorted = [...activeMessages].sort((a, b) => {
+        const aIdx = orderedIds.indexOf(a.model);
+        const bIdx = orderedIds.indexOf(b.model);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        return a.model.localeCompare(b.model);
+    });
+
+    const primary = sorted.find((m) => m.model === mainModelId) ?? sorted[0];
+    const hidden = sorted.filter((m) => m !== primary);
+
+    const [pagerIndex, setPagerIndex] = useState(0);
+
+    if (!primary) {
+        return null;
+    }
+
+    const clampedIndex =
+        hidden.length === 0
+            ? 0
+            : ((pagerIndex % hidden.length) + hidden.length) %
+              hidden.length;
+    const pagedMessage = hidden[clampedIndex];
+
+    return (
+        <div
+            className={`flex flex-col gap-3 w-full ${
+                isQuickChatWindow ? "" : "px-10"
+            }`}
+        >
+            <div className="w-full max-w-prose">
+                <ToolsMessageView
+                    message={primary}
+                    isLastRow={isLastRow}
+                    isQuickChatWindow={isQuickChatWindow}
+                    isOnlyMessage={hidden.length === 0}
+                    modeId={modeId}
+                    isMain={hidden.length > 0 ? true : undefined}
+                    onMinimize={() => onMinimize(primary.model)}
+                    onStop={() => onMinimize(primary.model)}
+                />
+            </div>
+
+            {pagedMessage && (
+                <div className="w-full max-w-prose border border-dashed border-border rounded-md p-3">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <button
+                                type="button"
+                                aria-label="Previous hidden response"
+                                disabled={hidden.length < 2}
+                                onClick={() => setPagerIndex((i) => i - 1)}
+                                className="disabled:opacity-30 hover:text-foreground"
+                            >
+                                <ChevronLeftIcon className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[11px] font-mono tabular-nums">
+                                {clampedIndex + 1}/{hidden.length}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Next hidden response"
+                                disabled={hidden.length < 2}
+                                onClick={() => setPagerIndex((i) => i + 1)}
+                                className="disabled:opacity-30 hover:text-foreground"
+                            >
+                                <ChevronRightIcon className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-helper">
+                            hidden
+                        </span>
+                    </div>
+                    <ToolsMessageView
+                        message={pagedMessage}
+                        isLastRow={isLastRow}
+                        isQuickChatWindow={isQuickChatWindow}
+                        isOnlyMessage={false}
+                        modeId={modeId}
+                        isMain={false}
+                        onMinimize={() => onMinimize(pagedMessage.model)}
+                        onStop={() => onMinimize(pagedMessage.model)}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function UserBlockView({
     userBlock,
     userMessageRef,
@@ -2213,6 +2372,13 @@ const MessageSetView = memo(
         onMinimize,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
+        // Focus/Columns/Fused (P3) — read here (not prop-threaded) following
+        // this file's existing convention of block-view components fetching
+        // their own chat-scoped data (see e.g. ToolsBlockView's own
+        // useChatCompareModelConfigs call). TanStack Query dedupes this
+        // against MultiChat()'s own useChat(chatId!) call, so this is not an
+        // extra DB read.
+        const chatQuery = ChatAPI.useChat(chatId!);
 
         const messageSetQuery = MessageAPI.useMessageSet(chatId!, messageSetId);
 
@@ -2277,15 +2443,32 @@ const MessageSetView = memo(
                             isQuickChatWindow={isQuickChatWindow}
                         />
                     ) : messageSet.selectedBlockType === "tools" ? (
-                        <ToolsBlockView
-                            messageSetId={messageSetId}
-                            toolsBlock={messageSet.toolsBlock}
-                            isLastRow={isLastRow}
-                            isQuickChatWindow={isQuickChatWindow}
-                            minimizedModels={minimizedModels}
-                            onMinimize={onMinimize}
-                            modeId={messageSet.modeId}
-                        />
+                        // Focus/Columns/Fused (P3/P4) — purely presentational
+                        // branch on the chat's viewMode; "columns" (default)
+                        // renders the exact pre-existing ToolsBlockView, kept
+                        // pixel-stable. See docs/rework/w6-chat-recon.md §5/§6.
+                        chatQuery.data?.viewMode === "focus" &&
+                        !isQuickChatWindow ? (
+                            <FocusBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        ) : (
+                            <ToolsBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        )
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
                             brainstormBlock={messageSet.brainstormBlock}
@@ -2333,6 +2516,9 @@ export default function MultiChat() {
     // (design/chat.md's "✓ Assist · default"). The composer (P2) is the
     // interactive surface for changing it; this just displays it.
     const activeChatMode = ModesAPI.useChatMode(chatId!);
+    // Focus/Columns/Fused (P3) — presentation only, see
+    // docs/rework/w6-chat-recon.md §5/§6.
+    const updateChatViewMode = ChatAPI.useUpdateChatViewMode();
     const { open: isSidebarOpen } = useSidebar();
 
     const navigate = useNavigate();
@@ -3268,6 +3454,19 @@ export default function MultiChat() {
 
                     {/* chat actions - show as individual icon buttons if there are multiple message sets AND we're not in quick chat */}
                     <div className="flex items-center gap-1">
+                        {!isQuickChatWindow && chatQuery.data && (
+                            <div className="mr-1">
+                                <ViewModeControl
+                                    value={chatQuery.data.viewMode}
+                                    onChange={(viewMode) =>
+                                        updateChatViewMode.mutate({
+                                            chatId: chatId!,
+                                            viewMode,
+                                        })
+                                    }
+                                />
+                            </div>
+                        )}
                         {!isQuickChatWindow && activeChatMode && (
                             <div className="flex items-center h-7 rounded-full bg-muted px-3 gap-1 text-xs text-muted-foreground mr-1">
                                 {activeChatMode.icon && (
