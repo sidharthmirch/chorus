@@ -15,7 +15,7 @@ cross-cutting decisions and the environment.
 | W6 | Chat rework | claude/rework-chat | YES | progress/W6.md |
 | W3 | Settings rework | claude/rework-settings | pending | - |
 | W7 | Fleet | claude/rework-fleet | YES | progress/W7.md |
-| W8 | Wiki | claude/rework-wiki | pending | - |
+| W8 | Wiki | claude/rework-wiki | YES | progress/W8.md |
 
 ## Orchestrator follow-ups (tracked, not blocking parallel work)
 - W1 connect flow: connect/disconnect mutations are stub-only; wire the real

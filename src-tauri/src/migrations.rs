@@ -2783,6 +2783,27 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 ALTER TABLE messages ADD COLUMN grades_json TEXT DEFAULT NULL;
             "#,
         },
+        // REWORK-MIGRATION: renumber at rebase (W8 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 150,
+            description: "add wiki_index table (derived vault index cache, rebuildable)",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS wiki_index (
+                    vault_path TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    folder TEXT NOT NULL,
+                    frontmatter_json TEXT NOT NULL DEFAULT '{}',
+                    links_json TEXT NOT NULL DEFAULT '[]',
+                    body_cache TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    indexed_at TEXT NOT NULL,
+                    PRIMARY KEY (vault_path, path)
+                );
+                CREATE INDEX IF NOT EXISTS idx_wiki_index_vault_path ON wiki_index(vault_path);
+            "#,
+        },
     ];
 }
 

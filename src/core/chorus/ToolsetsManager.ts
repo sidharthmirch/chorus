@@ -25,6 +25,11 @@ import { ToolsetGithub } from "./toolsets/github";
 // import { ToolsetNotion } from "./toolsets/notion";
 // import { ToolsetFiles } from "./toolsets/files";
 // import { ToolsetMessages } from "./toolsets/messages";
+// REWORK-W8: wiki-mcp builtin toolset (read_note/write_note/search_vault/
+// get_backlinks) -- see wiki/wikiToolset.ts. Not in 01-COORDINATION.md's
+// shared-file list, but registering a new builtin toolset necessarily
+// touches this one array; kept to this single import + single array entry.
+import { ToolsetWiki } from "./wiki/wikiToolset";
 
 export class ToolsetsManager {
     private _builtInToolsets: Toolset[] = [];
@@ -46,6 +51,7 @@ export class ToolsetsManager {
                 // new ToolsetSlack(),
                 // new ToolsetMessages(),
                 // new ToolsetNotion(),
+                new ToolsetWiki(),
             ];
         }
 
