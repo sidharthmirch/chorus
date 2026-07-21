@@ -1,86 +1,73 @@
 # W2 Progress — Inline Artifacts
 
-## State: P3 — ArtifactPanel complete (tsc/lint/vitest green); ready for P4 wiring
+## State: P4 — MultiChat wiring landed (tsc/lint/vitest green); ready for P5 polish
 
 ## NEXT ACTION
-Do the P4 MultiChat wiring in ONE minimal commit. Read
-`.rework/PROGRESS.md`'s "Landmines" section below FIRST for the exact
-MultiChat.tsx line ranges (already re-confirmed against the current file).
-Steps:
-1. In MultiChat.tsx, add chat-level state: `artifacts: IArtifact[]`
-   (built via `useMemo` — see types.ts's note: extraction must be memoized
-   per message, keyed on messageId+text, or ids/createdAt won't stay
-   referentially stable across re-renders), `selectedArtifactIndex: number`,
-   `artifactPanelOpen: boolean`. Build the artifacts list by mapping over
-   the messages currently rendered (both call sites at MultiChat.tsx:658 and
-   :940 — confirm exact line numbers again after your own edits shift them)
-   through `extractArtifacts(part.content / fullText, { messageId, chatId,
-   modelName: <the column's model id/display name> })` and flattening.
-   Order chronologically by message creation time (NOT `IArtifact.createdAt`
-   — that's extraction-time, see types.ts) for P5 later; P4 can start with
-   simple append-order since true chronological sort is explicitly a P5 task.
-2. Read `AppMetadataAPI.ts`'s existing hook pattern (e.g.
-   `useShowOpenRouter`/`useSetShowOpenRouter` at lines ~101-104 and ~83-99)
-   and add an analogous `useDetectArtifacts`/`useSetDetectArtifacts` pair
-   for the `detect_artifacts` app_metadata key, default-on (mirror
-   `useShowOpenRouter`'s `=== "true"` check but treat MISSING key as `true`
-   default — e.g. `appMetadata?.["detect_artifacts"] !== "false"` — since
-   `useShowOpenRouter` defaults to off/false-when-missing and we need the
-   opposite default). Put these two hooks in AppMetadataAPI.ts (core API
-   file — read the ownership table: not explicitly owned by another
-   workstream, safe to extend) OR co-locate in your own
-   `src/core/chorus/artifacts/` if you'd rather not touch a shared file;
-   DECIDE which and record it here once done (leaning: put it in
-   AppMetadataAPI.ts next to the other flag hooks, for consistency — it's
-   additive, not a shared-file conflict risk).
-3. Auto-open: when a NEW artifact appears (the memoized list grows) AND
-   `useDetectArtifacts()` is true, set `artifactPanelOpen = true` and
-   `selectedArtifactIndex` to the new last index. Use a `useEffect` keyed on
-   `artifacts.length` (compare against a previous-length ref/state) — this
-   is exactly the kind of "genuinely time-based/state-transition UX" the
-   orchestrator's forbidden-feature policy already covers for `useRef`; a
-   plain `useState` holding previous length also works and avoids `useRef`
-   entirely, prefer that.
-4. Mount `<ArtifactPanel>` as the THIRD `ResizablePanel` sibling, immediately
-   after the existing `repliesDrawerOpen && (...)` block (currently ends
-   around MultiChat.tsx:3374, right before the closing
-   `</ResizablePanelGroup>` at :3376 — RE-VERIFY these exact numbers first,
-   they will have shifted from step 1's edits). Follow the exact
-   `ResizableHandle` + `ResizablePanel` shape used for RepliesDrawer
-   (:3362-3373), with `defaultSize={35}`, `minSize={25}` or similar per
-   artifacts.md's "~35-40%, min 380px" guidance (ResizablePanel uses
-   percentage sizes, not pixels — 380px min isn't directly expressible;
-   approximate with `minSize` as a percentage and note the approximation
-   here). Gate the whole block on `artifactPanelOpen && artifacts.length >
-   0`, passing `artifacts`, `selectedArtifactIndex`,
-   `onSelectIndex={setSelectedArtifactIndex}`,
-   `onClose={() => setArtifactPanelOpen(false)}`.
-5. `MessageMarkdown` gains the optional `onArtifactDetected` prop (additive
-   — default undefined, existing call sites in MultiChatDeprecationPath.tsx
-   and SummaryDialog.tsx keep compiling untouched). Simplest correct
-   implementation: MessageMarkdown itself doesn't need to call
-   `extractArtifacts` internally (that would duplicate step 1's work) —
-   instead, thread whether the CURRENT message produced artifacts as a
-   boolean/count down from MultiChat's own already-computed list, OR (if
-   you want MessageMarkdown to stay self-contained and this prop genuinely
-   useful for OTHER callers later) have it independently detect and report
-   via the callback while MultiChat's own `useMemo` remains the source of
-   truth for the panel's actual content — pick whichever keeps the
-   MultiChat diff smaller; record the choice here.
-6. CodeBlock.tsx gets an "Open preview" affordance (small button, next to
-   the existing copy/run buttons at CodeBlock.tsx:121-152) that calls up
-   through props to whatever MultiChat wires — needs a new optional prop on
-   CodeBlock (e.g. `onOpenArtifactPreview?: () => void`) rendered only when
-   provided, so the two OTHER CodeBlock call sites (Code tab inside
-   ArtifactPanel itself, and any other renderer usage) don't get an
-   affordance that makes no sense there. Wire MultiChat to pass a handler
-   that opens the panel at the matching artifact's index (match by
-   `messageId` + fence position, or simplest: by matching `code`/`content`
-   string against `artifacts[i].code`).
-Keep the ENTIRE diff to MultiChat.tsx to mount + state + the two callback
-props — no new business logic there; anything more complex belongs in your
-own files under `src/core/chorus/artifacts/` or
-`src/ui/components/artifacts/`.
+Do P5 (versions + polish). Concretely, in order:
+1. **Chronological cross-message ordering.** `collectChatArtifacts.ts`
+   currently orders by message-SET iteration order (whatever order
+   `messageSetsQuery.data` comes back in, which is presumably already
+   creation-order from `fetchMessageSets`'s SQL, but this hasn't been
+   explicitly verified against `messages`/`message_sets` table `ORDER BY`
+   clauses in MessageAPI.ts — check `fetchMessageSets`'s SQL there first).
+   Within a single message SET, `messagesFromSet()` currently orders by
+   block-kind (chatBlock, then toolsBlock, then compareBlock, then
+   brainstorm) rather than by actual message timestamp — if a set's
+   `compareBlock.synthesis` message was created AFTER its `toolsBlock`
+   siblings chronologically (likely, since synthesis runs after the
+   compared responses), the current order doesn't reflect that. Decide
+   whether this matters enough to fix (probably: add each message's own
+   `createdAt`/ordering field if `Message` exposes one — spot-checked
+   ChatState.ts's `Message` interface and it does NOT currently carry a
+   timestamp field, only `MessageSet.createdAt` does — so true per-message
+   chronological sort may require joining back to `MessageSet.createdAt`
+   plus a stable tiebreaker, OR accepting message-set-order as "good
+   enough" chronological granularity for v1 and only reordering block-kinds
+   within a set by removing the artificial chat/tools/compare/brainstorm
+   grouping bias). RECORD the decision either way — this is exactly the
+   kind of thing that's easy to get subtly wrong without being able to run
+   the app with real multi-model compare/brainstorm data.
+2. **Regeneration append verification.** Confirm (by reading, since this
+   can't be run) that when a message is regenerated/restarted
+   (`useRestartMessage` in MessageAPI.ts), the OLD message row is preserved
+   (new message, old kept, both present in `messageSetsQuery.data`) rather
+   than being overwritten in place — `collectChatArtifacts` only produces
+   an "immutable log" naturally if the underlying data already is one. If
+   regeneration mutates the existing message row in place instead of
+   creating a new one, the "regeneration appends, never overwrites" design
+   requirement isn't actually satisfiable from data alone and needs a
+   different approach (e.g. tracking a version history separately) — this
+   is a case where reading `useRestartMessage`'s implementation matters
+   more than writing code; report back if this reveals a real gap rather
+   than silently working around it.
+3. **`esc` closes panel when focused.** Add a `keydown` listener (window
+   level, mirroring `ArtifactPanel`'s own existing fullscreen-escape effect)
+   that closes the panel — needs to NOT fire when a text input inside the
+   panel has focus (there currently isn't one, so this is low-risk) and
+   needs to not fight with `ArtifactFrame`'s sandboxed iframe (key events
+   inside a cross-origin-opaque iframe do NOT bubble to the parent window,
+   so this is naturally scoped to the panel chrome, not the artifact's own
+   content — verify this reasoning holds, don't just assume).
+4. **Reduced-motion.** Audit `ArtifactPanel.tsx`'s `fullscreen` CSS toggle
+   (currently `fixed inset-0 z-50`, no transition classes added at all —
+   so there's nothing to guard yet) and `ArtifactFrame.tsx`'s
+   `RetroLoadingBar` (this animates via `setInterval` regardless of
+   `prefers-reduced-motion` — decide whether to skip/simplify it under
+   reduced motion, e.g. render a static "Loading…" label instead via a
+   `useMediaQuery`-style check; there's no existing reduced-motion hook in
+   the codebase to reuse — search for one before writing a new one).
+5. **Per-model attribution pill polish** — revisit the P3 decision that the
+   model pill shows `IArtifact.modelName` verbatim: now that P4 actually
+   resolves a display name via `modelConfigsQuery.data?.find(...)
+   ?.displayName ?? modelId` in MultiChat.tsx (see `chatArtifacts`'s
+   `useMemo` there), verify this reads naturally in the header (falls back
+   to the raw model id string when a config lookup misses, e.g. for a
+   since-removed/renamed model — acceptable but worth a glance).
+Also carry forward from P3/P4 (not strictly "P5" but unresolved):
+   `openArtifactWindow.ts` is untested end-to-end (see User-test queue);
+   CodeBlock's `onOpenPreview` prop exists but has no caller anywhere yet
+   (see Decisions log) — wiring it is optional polish, not required for
+   "Done means".
 
 ## Phase checklist
 - [x] P1 — Core extraction (pure TS, no UI): `types.ts` + `extract.ts` +
@@ -102,9 +89,12 @@ own files under `src/core/chorus/artifacts/` or
       log for why). Still dead code — nothing outside this subtree imports
       `ArtifactPanel` yet except the new App.tsx route (which is inert
       until something actually opens such a window).
-- [ ] P4 — MultiChat wiring (single minimal commit: mount + state + callback)   <- current
+- [x] P4 — MultiChat wiring. Two commits (prep, then the actual mount) per
+      the resumability convention — see the git log; the MultiChat.tsx diff
+      itself is ONE commit, +58/-0 lines, purely additive (verified via
+      `git diff --stat`). See Landmines for exact line ranges.
 - [ ] P5 — Versions + polish (chronological ordering, attribution pill,
-      regeneration append, esc-to-close, reduced-motion)
+      regeneration append, esc-to-close, reduced-motion)   <- current
 
 ## Decisions log
 - 2026-07-21 `IArtifact.modelName` kept as required `string` (not `string |
@@ -229,8 +219,91 @@ own files under `src/core/chorus/artifacts/` or
   prefer passing a display name if one is readily available at the
   `extractArtifacts` call site, since `IArtifact.modelName` has no separate
   display-name field per the frozen §3.1 shape.
+- 2026-07-21 (P4) Chose to compute the chat's artifact list via a NEW pure
+  helper (`collectChatArtifacts.ts`) fed by data MultiChat ALREADY has
+  loaded (`messageSetsQuery.data`, `modelConfigsQuery.data` — both already
+  queried at the top of `MultiChat()`, lines ~2316-2317), rather than
+  threading an `onArtifactDetected` callback down through
+  `MessagePartView`/`ToolsAIMessageViewInner` (the actual per-message
+  rendering path, ~6+ component layers below the top-level `MultiChat`
+  function per `ToolsAIMessageViewInner`'s own call site at line ~1653,
+  itself nested inside a per-model-column component). Threading a callback
+  that deep would have touched many more functions/signatures across the
+  152KB file — clearly not "mount + state + callback only" — and would have
+  been unverifiable without running the app. `collectChatArtifacts`
+  flattens EVERY message across EVERY block kind (chat/tools/compare/
+  brainstorm) in EVERY message set, deliberately ignoring each set's
+  `selectedBlockType` — see that file's own doc comment for why this is
+  actually closer to the design's "immutable log" versioning intent, not
+  just an expedient shortcut. `MessageMarkdown`'s `onArtifactDetected` prop
+  (added in the P4-prep commit) is consequently NOT used by MultiChat's own
+  wiring at all — it's there as a self-contained, independently-testable
+  additive API for callers that only have one message's text in hand (its
+  own doc comment says as much). Model name resolution
+  (`modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+  modelId`) mirrors the EXACT pattern already used elsewhere in
+  MultiChat.tsx for the same lookup (e.g. `ToolsMessageFullScreenDialogView`
+  at line ~869, `DeepResearchNotificationHandler` at ~954) — not a new
+  convention.
+- 2026-07-21 (P4) `detectArtifactsEnabled` is read directly off
+  `appMetadata["detect_artifacts"]` (the `useWaitForAppMetadata()` context
+  value already destructured at the top of `MultiChat()`), NOT via the new
+  `AppMetadataAPI.useDetectArtifacts()` hook added in the same commit —
+  matches this file's OWN established local convention (see e.g. line ~547
+  `appMetadata["cautious_enter"] === "true"`, ~2787 `vision_mode_enabled`)
+  of reading flags straight off the context inside MultiChat rather than
+  via a second `useAppMetadata()` subscription. The `AppMetadataAPI.ts` hook
+  pair still exists and is exported for OTHER future consumers (a W3
+  Settings toggle) that don't already hold this context.
+- 2026-07-21 (P4) The "previous artifact count" used to detect a NEW
+  artifact arriving (to auto-open + auto-select-newest) is tracked via
+  `useState` + the functional-setState form inside the `useEffect`
+  (`setPreviousArtifactCount((previousCount) => {...; return
+  chatArtifacts.length;})`), specifically to AVOID `useRef` for this —
+  the orchestrator's pre-authorization for `useRef` is scoped to "DOM refs
+  (focus, scroll, iframe handles, measuring)", and a "remember the previous
+  render's value" ref is a different (broader) use that policy doesn't
+  clearly cover, so this sidesteps the question entirely rather than
+  stretching the authorization.
+- 2026-07-21 (P4) The artifact panel and `RepliesDrawer` CAN both be open
+  simultaneously (a 3-way `ResizablePanelGroup` split: chat | replies |
+  artifact) — there is no mutual-exclusion logic. This is UNVERIFIED
+  visually (cannot run the app) and may be cramped on a typical window
+  width; flagged in the User-test queue rather than guessed around blindly.
+- 2026-07-21 (P4) The artifact panel does NOT get the mobile/narrow-window
+  treatment `RepliesDrawer` has (a full-screen overlay swap at `@2xl`
+  breakpoints, MultiChat.tsx's `repliesDrawerOpen && (...)` block right
+  after `</ResizablePanelGroup>`). Chorus is a Mac desktop app (per
+  CLAUDE.md) so very narrow windows are an edge case; accepted as a v1 gap
+  rather than adding unverifiable responsive logic. If this matters,
+  the fix is a `<div>` sibling to that existing mobile-overlay block,
+  following its exact `@2xl:hidden` pattern.
 
 ## Landmines / do-not
+- (P4) Exact current MultiChat.tsx line ranges (re-verify with `grep -n` if
+  you're picking this up cold, since line numbers drift with every edit):
+  imports added at ~163-164 (`collectChatArtifacts`, `ArtifactPanel`, right
+  after the existing `AppMetadataAPI`/`chatCreationDefaults` imports);
+  top-level state/memo/effect at ~2326-2359, inside `export default
+  function MultiChat()` (starts line 2308), placed right after the
+  pre-existing `const [searchParams] = useSearchParams();` and before the
+  "One-time backfill" `useEffect`; the panel mount JSX at ~3414-3431, as a
+  third conditional block inside the `ResizablePanelGroup` (starts ~3361),
+  immediately after the existing `{repliesDrawerOpen && (...)}` block and
+  before the group's own closing tag (~3434). The ENTIRE MultiChat.tsx diff
+  is +58/-0 lines (verified via `git diff --stat` right after committing) —
+  if a future edit to this file shows unrelated deletions/reformatting
+  mixed in, something went wrong; the append-only intent was to touch
+  nothing else.
+- (P4) `MessagePartView`/`ToolsAIMessageViewInner` (the actual per-message
+  render path, `MultiChat.tsx` ~649-668 and ~1038+) were deliberately NOT
+  touched — do not add artifact-detection logic there; `collectChatArtifacts`
+  is the single source of truth for the panel's content, operating on
+  `messageSetsQuery.data` directly rather than on what's currently rendered.
+  If a future need arises to know "did THIS specific on-screen message
+  produce an artifact" (e.g. to finally wire `CodeBlock`'s `onOpenPreview`),
+  matching by `messageId` against `chatArtifacts` (already computed at the
+  top level) is far cheaper than re-deriving it from the render tree.
 - Pre-existing, UNRELATED tsc failure on a clean checkout: `src/ui/components/
   Draggable.tsx(2,21): error TS2307: Cannot find module '@dnd-kit/utilities'`.
   `@dnd-kit/utilities` is imported by Draggable.tsx but is NOT listed in
@@ -258,24 +331,48 @@ own files under `src/core/chorus/artifacts/` or
   `deriveMermaidTitle`, `HTML_ARTIFACT_CSP`, `SVG_ARTIFACT_CSP`) that are
   independently useful to P2/P3. If you need to unit-test grouping directly,
   add exports rather than duplicating the regex logic elsewhere.
-- MultiChat.tsx has NOT been touched yet (P4 is a single dedicated commit).
-  Current read-only notes on the mount point (confirmed by reading the file):
-  the `ResizablePanelGroup` + `RepliesDrawer` precedent is at
-  MultiChat.tsx:3323-3376 (desktop layout) with a matching mobile-overlay
-  block immediately after (~3379-3389). The artifact panel will be a THIRD
-  `ResizablePanel` sibling inside the same `ResizablePanelGroup` (after the
-  `repliesDrawerOpen && (...)` block), following the same
-  `ResizableHandle` + `ResizablePanel` shape. `MessageMarkdown` is invoked at
-  MultiChat.tsx:658 and :940 (and also in MultiChatDeprecationPath.tsx:597,
-  :715, :1521, and SummaryDialog.tsx:126 — those are NOT ours to touch;
-  `onArtifactDetected` is an OPTIONAL prop so those call sites keep
-  compiling untouched).
+- UPDATE (P4 landed): MultiChat.tsx IS now touched — see the dedicated (P4)
+  landmine entry above for current line ranges instead of this note.
+  `MessageMarkdown` is still invoked without the new optional props at
+  MultiChat.tsx:658/:940 (MultiChat's own wiring doesn't use them — see
+  Decisions log) and unchanged at MultiChatDeprecationPath.tsx:597/:715/:1521
+  and SummaryDialog.tsx:126 (not ours to touch; the props are optional so
+  these keep compiling untouched).
 
 ## User-test queue
 
-Nothing is reachable from the running app yet (ArtifactPanel/ArtifactFrame
-are dead code until P4 mounts them) — these can't be tested until then,
-listed here so they aren't forgotten:
+The core flow is now reachable from the running app (P4 landed) — this is
+the FIRST point in the workstream where the user can actually test
+anything. Priority: the primary end-to-end flow first, then the P3
+action-button items below it (still none of which have been runtime-verified):
+
+- **Primary flow**: open a chat, send a prompt like "make me a pong game in
+  one html file", wait for the response to complete. Expected: the artifact
+  panel auto-opens on the right (third resizable pane) showing a live
+  preview of the game; the header shows a title + model pill; Code tab
+  shows the merged HTML/CSS/JS source; the game should actually be
+  playable inside the sandboxed preview (keyboard input works — sandbox is
+  `allow-scripts allow-forms`, keyboard events aren't gated by either token
+  so this should work, but hasn't been runtime-verified).
+- Ask a follow-up in the SAME chat that produces a second HTML artifact
+  (e.g. "now make it single-player against an AI paddle"). Expected: panel
+  auto-jumps to the new version, version stepper reads "v2 of 2", `‹` steps
+  back to the pong game from before.
+- Toggle the `detect_artifacts` app_metadata flag off (no Settings UI for
+  this yet — set it directly via SQL:
+  `UPDATE app_metadata SET value='false' WHERE key='detect_artifacts';`
+  or `INSERT` it if missing) and confirm a new artifact-bearing response no
+  longer auto-opens the panel.
+- Regression: existing mermaid/svg/plain-code-block rendering INLINE in the
+  chat should be completely unchanged (MessageMarkdown's `Code` component
+  wasn't modified, only new optional props were added around it).
+- Regression: RepliesDrawer still opens/closes/resizes normally, and
+  (unverified — see Decisions log) opening it AT THE SAME TIME as the
+  artifact panel doesn't produce a broken 3-way layout.
+- Regression: Cmd+F find-in-page still works normally while the artifact
+  panel is open (the panel's content is plain DOM except for the sandboxed
+  iframe, whose content is naturally excluded from find-in-page — this is
+  expected/correct, not a bug, since the iframe is a separate document).
 
 - "Open in window" (`openArtifactWindow.ts`) is completely untested against
   a real Tauri build — verify a new detached window actually opens, shows

@@ -161,6 +161,8 @@ import {
 } from "@core/chorus/ChatCompareSelection";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { applyDefaultPromptProfileForChat } from "@core/chorus/chatCreationDefaults";
+import { collectChatArtifacts } from "@core/chorus/artifacts/collectChatArtifacts";
+import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import {
     isPermissionGranted,
     requestPermission,
@@ -2321,6 +2323,42 @@ export default function MultiChat() {
     const savedCompareLegacyInitRef = useRef<string | null>(null);
     const [searchParams] = useSearchParams();
 
+    // W2 — Inline Artifacts. Chat-scoped state for the artifact panel; the
+    // actual extraction logic lives in collectChatArtifacts.ts (pure,
+    // tested) — this just memoizes over data already loaded above
+    // (messageSetsQuery/modelConfigsQuery), per collectChatArtifacts.ts's
+    // "memoize per message" note.
+    const chatArtifacts = useMemo(
+        () =>
+            collectChatArtifacts(
+                messageSetsQuery.data ?? [],
+                (modelId) =>
+                    modelConfigsQuery.data?.find((m) => m.id === modelId)
+                        ?.displayName ?? modelId,
+            ),
+        [messageSetsQuery.data, modelConfigsQuery.data],
+    );
+    const [selectedArtifactIndex, setSelectedArtifactIndex] = useState(0);
+    const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+    const [, setPreviousArtifactCount] = useState(0);
+    const detectArtifactsEnabled = appMetadata["detect_artifacts"] !== "false";
+    // Auto-open + auto-select-newest when a NEW artifact arrives (design's
+    // "auto-jump to newest" versioning behavior). Tracks the previous count
+    // via the functional setState form so it never needs to be a dependency
+    // (avoids a stale-closure bug without needing useRef for this).
+    useEffect(() => {
+        setPreviousArtifactCount((previousCount) => {
+            if (
+                detectArtifactsEnabled &&
+                chatArtifacts.length > previousCount
+            ) {
+                setSelectedArtifactIndex(chatArtifacts.length - 1);
+                setArtifactPanelOpen(true);
+            }
+            return chatArtifacts.length;
+        });
+    }, [chatArtifacts.length, detectArtifactsEnabled]);
+
     // One-time backfill: older main chats have no saved_model_configs_chats row yet
     useEffect(() => {
         if (!chatId || !chatQuery.data) return;
@@ -3369,6 +3407,26 @@ export default function MultiChat() {
                                     <RepliesDrawer
                                         onOpenChange={setRepliesDrawerOpen}
                                         replyChatId={replyChatId}
+                                    />
+                                </ResizablePanel>
+                            </>
+                        )}
+                        {artifactPanelOpen && chatArtifacts.length > 0 && (
+                            <>
+                                <ResizableHandle className="shadow-lg" />
+                                <ResizablePanel
+                                    defaultSize={38}
+                                    minSize={28}
+                                    maxSize={55}
+                                    className="shadow-lg"
+                                >
+                                    <ArtifactPanel
+                                        artifacts={chatArtifacts}
+                                        selectedIndex={selectedArtifactIndex}
+                                        onSelectIndex={setSelectedArtifactIndex}
+                                        onClose={() =>
+                                            setArtifactPanelOpen(false)
+                                        }
                                     />
                                 </ResizablePanel>
                             </>
