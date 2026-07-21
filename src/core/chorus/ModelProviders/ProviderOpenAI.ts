@@ -14,6 +14,7 @@ import { IProvider } from "./IProvider";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
 import { UserToolCall, getUserToolNamespacedName } from "@core/chorus/Toolsets";
 import { O3_DEEP_RESEARCH_SYSTEM_PROMPT } from "@core/chorus/prompts/prompts";
+import { resolveNineRouterCredential } from "@core/chorus/accounts/resolveCredential";
 
 export class ProviderOpenAI implements IProvider {
     async streamResponse({
@@ -50,15 +51,30 @@ export class ProviderOpenAI implements IProvider {
 
         const imageSupport = modelId !== "o3-mini" && modelId !== "o1";
 
-        const { canProceed, reason } = canProceedWithProvider(
+        // Credential-resolution step (W1 — docs/rework/w1-provider-notes.md
+        // §4): route through 9router when the user has a connected
+        // OpenAI/Codex account there AND this model has a verified 9router
+        // upstream mapping; otherwise fall through to the existing API-key
+        // path unchanged. As of this writing NINEROUTER_MODEL_MAP.openai has
+        // zero verified entries (9router's codex registry doesn't overlap
+        // with Chorus's OpenAI catalog) — this resolves to undefined today,
+        // but the wiring is in place for whenever that map gains an entry.
+        const nineRouterCredential = await resolveNineRouterCredential(
             "openai",
-            apiKeys,
+            modelId,
         );
 
-        if (!canProceed) {
-            throw new Error(
-                reason || "Please add your OpenAI API key in Settings.",
+        if (!nineRouterCredential) {
+            const { canProceed, reason } = canProceedWithProvider(
+                "openai",
+                apiKeys,
             );
+
+            if (!canProceed) {
+                throw new Error(
+                    reason || "Please add your OpenAI API key in Settings.",
+                );
+            }
         }
 
         // Process the conversation with a dedicated converter
@@ -130,7 +146,7 @@ export class ProviderOpenAI implements IProvider {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const createParams: any = {
-            model: modelId,
+            model: nineRouterCredential?.model ?? modelId,
             input: messages,
             tools: openaiTools || [],
             tool_choice:
@@ -171,8 +187,8 @@ export class ProviderOpenAI implements IProvider {
         }
 
         const client = new OpenAI({
-            apiKey: apiKeys.openai,
-            baseURL: customBaseUrl,
+            apiKey: nineRouterCredential?.apiKey ?? apiKeys.openai,
+            baseURL: nineRouterCredential?.baseUrl ?? customBaseUrl,
             dangerouslyAllowBrowser: true,
             defaultHeaders: {
                 ...(additionalHeaders ?? {}),

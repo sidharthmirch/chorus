@@ -4,6 +4,7 @@ import { StreamResponseParams } from "../Models";
 import { IProvider, ModelDisabled } from "./IProvider";
 import OpenAICompletionsAPIUtils from "@core/chorus/OpenAICompletionsAPIUtils";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
+import { resolveNineRouterCredential } from "@core/chorus/accounts/resolveCredential";
 import JSON5 from "json5";
 
 interface ProviderError {
@@ -72,19 +73,33 @@ export class ProviderGoogle implements IProvider {
             throw new Error(`Unsupported model: ${modelName}`);
         }
 
-        const { canProceed, reason } = canProceedWithProvider(
+        // Credential-resolution step (W1 — docs/rework/w1-provider-notes.md
+        // §4): if the user has a connected Google account forwarded through
+        // 9router AND this specific model has a verified 9router upstream
+        // mapping, route there instead of requiring a direct API key. Falls
+        // through to existing behavior (undefined) in every other case —
+        // including when 9router isn't running or the model has no mapping.
+        const nineRouterCredential = await resolveNineRouterCredential(
             "google",
-            apiKeys,
+            googleModelName,
         );
 
-        if (!canProceed) {
-            throw new Error(
-                reason || "Please add your Google AI API key in Settings.",
+        if (!nineRouterCredential) {
+            const { canProceed, reason } = canProceedWithProvider(
+                "google",
+                apiKeys,
             );
+
+            if (!canProceed) {
+                throw new Error(
+                    reason || "Please add your Google AI API key in Settings.",
+                );
+            }
         }
 
         // Google AI uses the generativelanguage.googleapis.com endpoint with OpenAI compatibility
         const baseURL =
+            nineRouterCredential?.baseUrl ||
             customBaseUrl ||
             "https://generativelanguage.googleapis.com/v1beta/openai";
 
@@ -103,7 +118,7 @@ export class ProviderGoogle implements IProvider {
         };
         const client = new OpenAI({
             baseURL,
-            apiKey: apiKeys.google,
+            apiKey: nineRouterCredential?.apiKey ?? apiKeys.google,
             defaultHeaders: headers,
             dangerouslyAllowBrowser: true,
         });
@@ -128,7 +143,7 @@ export class ProviderGoogle implements IProvider {
         }
 
         const streamParams: OpenAI.ChatCompletionCreateParamsStreaming = {
-            model: googleModelName,
+            model: nineRouterCredential?.model ?? googleModelName,
             messages: messages,
             stream: true,
         };

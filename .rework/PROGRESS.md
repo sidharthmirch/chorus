@@ -1,35 +1,40 @@
 # W1 Progress — Accounts: Provider OAuth Forward + Quota Meters (9router pivot)
 
-## State: P4 done — client, lifecycle detection, and reference onboarding UI all in place on stub data. Starting P5 (forwarding).
+## State: P5 done (forwarding, with one known gap — see below). Starting P6 (QuotaService).
 
 ## NEXT ACTION
-Add the credential-resolution step to `ModelProviders/*` (P5). Read
-`src/core/chorus/ModelProviders/ProviderAnthropic.ts`,
-`ProviderOpenAI.ts`, `ProviderGoogle.ts` and `src/core/utilities/ProxyUtils.ts`
-(`canProceedWithProvider`/`hasApiKey`) to find exactly where `apiKeys` gets
-turned into a request (Anthropic/OpenAI already read via `Read` this session
-— OpenAI: `client = new OpenAI({ apiKey: apiKeys.openai, baseURL: customBaseUrl, ... })`
-around ProviderOpenAI.ts:173). Add a small shared helper (probably
-`src/core/chorus/accounts/resolveCredential.ts`) that, given a provider name,
-returns either `{ kind: "9router", baseUrl: "http://localhost:20128/v1",
-apiKey: <chorus 9router key>, modelId: "<alias>/<upstream-id>" }` or
-`{ kind: "api-key" }`/`{ kind: "backend-proxy" }` to fall through to existing
-behavior — call it from each provider class right where `apiKeys.<provider>`
-is currently read, per-provider request shaping stays inside each class as
-the architecture requires. This needs: (a) a real 9router API key acquired
-via `nineRouterClient.createApiKey`/`listApiKeys` and persisted somewhere
-non-secret-tier (app_metadata is the natural fit, following the
-`getCustomBaseUrl`/`useCustomBaseUrl` pattern in `AppMetadataAPI.ts`); (b) the
-per-provider Chorus-model-id → 9router-upstream-model-id static map flagged
-as a TODO/assumption in `nineRouterClient.ts`'s file header (documented in
-`docs/rework/w1-provider-notes.md` §4 already — this map itself doesn't exist
-in code yet, only the alias map does); (c) 401 handling that flips the
-account to `expired` via `useProviderAccountsAPI`'s (still-stub) store and
-falls through to the existing API-key/backend-proxy path for that turn.
-Since `ProviderAccountsAPI.ts` is still stub-backed (P6 not started), P5's
-"mark expired" step should call `stubDisconnectProviderAccount`-shaped logic
-or a new `stubMarkProviderAccountExpired` — add that mutation now rather than
-inventing ad hoc state, so P6 has one seam to replace.
+Build `src/core/chorus/accounts/QuotaService.ts` (P6): for each connected
+9router account (`nineRouterClient.listConnections()` filtered to active +
+mapped via `NINEROUTER_OAUTH_PROVIDER_MAP`), call
+`nineRouterClient.getUsage(connectionId)` and reduce its `quotas` map to a
+single `IQuotaSnapshot` using the derivation strategy already recorded in
+`docs/rework/w1-provider-notes.md` §2.4 (prefer the most-urgent window;
+`usedFraction = unlimited ? 0 : (total===100 ? used/100 : used/total)`,
+guarding divide-by-zero; `resetsAt` from the window's `resetAt`). Cache the
+result in the `provider_accounts` table (migration 147's `quota_json` +
+`status` columns — this is the point where that table finally gets used;
+P2/P4 deliberately left it unused, see decisions log below). Then replace
+`ProviderAccountsAPI.ts`'s `fetchProviderAccounts`/`fetchProviderAccount`
+stub bodies with real reads from that table (falling back to the existing
+stub seed for providers 9router doesn't know about, e.g. `openrouter`/
+`local`), keeping `useProviderAccounts()`/`useQuota()`'s signatures
+unchanged. Refresh triggers: on-use (call from `resolveCredential.ts` after
+a successful 9router-routed request — the resolution step already knows the
+connection id) + an interval (reuse the `useNineRouterStatus` 10s-poll
+pattern in `ProviderAccountsAPI.ts`, but slower — usage endpoints are
+rate-limited upstream per `docs/rework/w1-provider-notes.md`'s Claude usage
+notes, so don't poll faster than ~60s).
+
+**Known gap to fix opportunistically, not blocking P6:** P5 does not detect
+401s from 9router and flip the account to `expired`/surface reauthorize —
+see the P5 checklist entry below and `w1-provider-notes.md` §4 point 5 for
+why it was deliberately deferred (risk of touching untestable streaming
+internals). If picking this up, the safest shape is a thin wrapper around
+each provider class's public `streamResponse` (try/catch around the whole
+existing body, not touching internals) that checks
+`error?.status === 401 || error?.status === 403` and, only when
+`nineRouterCredential` was in play, marks that provider's account `expired`
+(P6's real store, once it exists) before rethrowing unchanged.
 
 ## Phase checklist
 - [x] Research: 9router API surface, launch/data-dir, provider-id mapping,
@@ -68,12 +73,45 @@ inventing ad hoc state, so P6 has one seam to replace.
       **Not wired into any route/Settings surface** — per the brief, this is
       a standalone reference component for W3 to mount; W1 does not touch
       `Settings.tsx`.
-- [ ] P5 — forwarding: credential-resolution step in `ModelProviders/*`
-      (oauth via 9router → API key → backend proxy), 401 → `expired` →
-      reauthorize. <- current, see NEXT ACTION.
+- [x] P5 — forwarding. `src/core/chorus/accounts/resolveCredential.ts`:
+      `resolveNineRouterCredential(providerId, chorusModelId)` — the
+      credential-resolution step, gated on (a) a 9router oauth mapping
+      existing for the provider, (b) a **verified** Chorus-model-id →
+      9router-upstream-id entry in `NINEROUTER_MODEL_MAP` (deliberately
+      sparse — see below), (c) 9router actually running, (d) an active
+      connection for that provider. Returns `undefined` on any failure —
+      callers must treat that as "use existing behavior." `ensureNineRouterApiKey`
+      creates+caches a 9router API key via `AppMetadataAPI.getNineRouterApiKey`/
+      `setNineRouterApiKey` (new, additive, mirrors the existing
+      `getCustomBaseUrl` pattern). 11 unit tests via an injected client double.
+      Wired into all three eligible provider classes
+      (`ProviderAnthropic.ts`, `ProviderOpenAI.ts`, `ProviderGoogle.ts`) with
+      a minimal diff each: swap `baseURL`/`apiKey`/outgoing `model` when a
+      credential resolves, skip the `canProceedWithProvider` early-throw in
+      that case, otherwise byte-for-byte unchanged. This was possible with
+      **zero request/response translation** because a second research pass
+      (see `docs/rework/w1-provider-notes.md` §2.6, updated) found 9router
+      mirrors each SDK's *native* wire format at a dedicated path
+      (`/v1/messages` for Anthropic, `/v1/responses` for OpenAI's Responses
+      API, `/v1/chat/completions` for Google's existing OpenAI-shim client) —
+      not just a single OpenAI-Chat-Completions surface as first assumed.
+      **Known, deliberate gap:** `NINEROUTER_MODEL_MAP` has only 3 verified
+      entries total (1 Anthropic, 0 OpenAI, 2 Google) because Chorus's model
+      catalog and 9router's registries mostly don't overlap (different
+      version numbering/releases tracked) — verified by reading full
+      registry files, not guessed. This means forwarding will rarely
+      actually trigger against today's real catalogs even when a user has
+      connected accounts; the infrastructure is correct and ready, coverage
+      is the follow-up (see NEXT ACTION). **Also deliberately NOT done:**
+      401 → `expired` → reauthorize detection — flagged in NEXT ACTION as
+      the most important remaining P5 gap, deferred because fixing it safely
+      means touching each provider's untestable streaming error internals.
+      67 tests total repo-wide, all green; tsc/lint clean (only the
+      pre-existing unrelated Draggable.tsx error).
 - [ ] P6 — `QuotaService.ts`: derive real usage from 9router, cache in
       `provider_accounts` (migration 147's `quota_json` column), wire into
-      P2's API replacing the stub, refresh on-use + interval.
+      P2's API replacing the stub, refresh on-use + interval. <- current, see
+      NEXT ACTION.
 - [ ] P7 (later, gated, separate PR) — remote/OAuth MCP servers. Do not
       start before P1–P6 are PR-ready.
 
@@ -154,6 +192,32 @@ inventing ad hoc state, so P6 has one seam to replace.
   `design/accounts-oauth.md`'s bar-label example `"62% · 3h"` (no "resets"
   word). Treated the frozen-contract doc comment as more authoritative than
   the mock-derived example when the two disagree on wording (not substance).
+- 2026-07-21 Before wiring P5, re-cloned 9router (sparse checkout, same
+  scratch-dir-outside-repo discipline, deleted after) specifically to verify
+  two things the first research pass hadn't checked: whether 9router mirrors
+  Anthropic's/OpenAI's *native* SDK wire formats (not just OpenAI Chat
+  Completions), and whether Chorus's actual model catalog strings overlap
+  with 9router's registries. Both turned out to matter a lot — see the
+  updated `docs/rework/w1-provider-notes.md` §2.6. Worth the extra research
+  pass: it changed the implementation from "rewrite each provider's request
+  building to speak one shared wire format" (large, risky, untestable here)
+  to "swap 3 fields on the existing client construction" (small, safe).
+- 2026-07-21 `NINEROUTER_MODEL_MAP` (`resolveCredential.ts`) intentionally
+  ships with only 3 verified entries (not a broader guessed table) — see the
+  P5 checklist entry and `w1-provider-notes.md` §2.6's comparison table.
+  Every unmapped Chorus model is a deliberate no-op (falls back to existing
+  behavior), not a bug. Do not "helpfully" add guessed entries for other
+  models without re-verifying against a fresh 9router clone first — a wrong
+  entry would silently misroute a chat request to a nonexistent upstream
+  model id.
+- 2026-07-21 Chose not to implement 401→`expired` detection in P5 (see
+  `w1-provider-notes.md` §4 point 5 and the NEXT ACTION suggested shape).
+  The risk/reward didn't clear the bar given no way to run the app here:
+  the safest-shaped fix (wrap each provider's whole `streamResponse` body in
+  try/catch rather than touching internals) is still an editorial judgment
+  call about where exactly to place the wrapper in three different
+  large, delicate streaming-response methods — better done by whoever can
+  actually test the result.
 
 ## Landmines / do-not
 - `src/ui/components/Draggable.tsx` fails `tsc --noEmit` with
@@ -192,9 +256,26 @@ inventing ad hoc state, so P6 has one seam to replace.
   for `anthropic`/`openai`/`google`/`copilot` — `openrouter`/`local` are
   intentionally absent (those auth kinds never go through 9router). Don't
   add fallback entries for them "for completeness."
+- `ModelProviders/ProviderAnthropic.ts`, `ProviderOpenAI.ts`,
+  `ProviderGoogle.ts` each have exactly one new import
+  (`resolveNineRouterCredential`) and a small, mechanical diff right before
+  their existing `canProceedWithProvider`/client-construction code — this is
+  W1's one explicitly-authorized touch into files W1 does not otherwise own
+  ("`ModelProviders/*` (credential step)" per `00-ARCHITECTURE.md §8`'s file
+  ownership table). Do not expand W1's footprint in those files beyond the
+  credential swap (e.g. don't "fix" unrelated things noticed while in
+  there) — if something else needs changing, flag it instead.
+- `NINEROUTER_MODEL_MAP` is intentionally near-empty (3 entries). If you're
+  tempted to "fill it in" from memory of what models exist, don't — every
+  entry so far came from reading 9router's *actual* registry source and
+  cross-checking against Chorus's *actual* catalog constant, not from
+  general knowledge of model names. A plausible-sounding but wrong entry is
+  worse than a missing one (silent misroute vs. safe fallback).
 
 ## User-test queue
-(Nothing user-testable yet — P1-P4 are stub-backed/non-networked. The first
+(Nothing user-testable yet — P1-P5 are stub-backed/non-networked (P5's
+forwarding code is real and wired, but with today's `NINEROUTER_MODEL_MAP`
+coverage it will rarely actually engage — see the P5 checklist entry). The first
 genuinely user-testable item will land with P5/P6: whether Chorus correctly
 detects a real running 9router instance, and whether a real OAuth
 connect→chat→disconnect round trip works. The agent cannot start a live

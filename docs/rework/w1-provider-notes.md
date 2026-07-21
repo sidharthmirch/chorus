@@ -251,25 +251,91 @@ key already tagged that way) and cache the plaintext `key` value app-side
 (non-secret-tier: it only grants access to the user's own local 9router
 instance, which already holds the real provider tokens — still, don't log it).
 
-### 2.6 The OpenAI-compatible proxy (what Chorus actually chats through)
+### 2.6 The multi-format proxy (what Chorus actually chats through)
+
+**Update (second verification pass, same session):** 9router's proxy is
+*not* only OpenAI-Chat-Completions-shaped — it mirrors **four** wire formats
+at four different paths, all funneling into the same
+`src/sse/handlers/chat.js` → `handleChat` pipeline via a
+`initTranslators()`/format-auto-detection layer
+(`open-sse/translator/formats.js`'s `detectFormatByEndpoint`). Confirmed by
+reading each route file directly (not just README):
+
 ```
+POST /v1/chat/completions   — OpenAI Chat Completions format
+POST /v1/responses          — OpenAI Responses API format
+POST /v1/messages           — Anthropic Messages API format (native x-api-key OR Bearer)
+POST /v1beta/models/{model}:generateContent
+POST /v1beta/models/{model}:streamGenerateContent
+                             — Gemini native REST format (native x-goog-api-key,
+                               Bearer, or ?key= query param; streaming choice is
+                               the :generateContent vs :streamGenerateContent
+                               URL suffix, not a body field)
+
 GET  /v1/models
 → 200 { object: "list", data: [{ id: "<alias>/<modelId>", object: "model", owned_by: "<alias>" }, ...] }
-
-POST /v1/chat/completions
-  headers: Authorization: Bearer <9router-api-key>
-  body: standard OpenAI chat.completions request, model = "<alias>/<modelId>"
-→ streaming or non-streaming OpenAI-shaped response
 ```
-(`src/app/api/v1/models/route.js`, `src/app/api/v1/chat/completions/route.js`
-→ delegates to `src/sse/handlers/chat.js`, which requires
-`Authorization: Bearer <key>` and validates via `isValidApiKey` — confirmed by
-reading the handler; 401 on missing/invalid key.)
 
-Model id format is **`<providerAlias>/<modelId>`**, e.g.
+**This matters a lot for P5 (forwarding):** each of Chorus's provider
+classes can point its *existing* SDK client at 9router with only a
+`baseURL`/`apiKey`/`model` swap — no request/response translation needed —
+because each already speaks the wire format 9router mirrors natively:
+- `ProviderAnthropic.ts` uses `@anthropic-ai/sdk`'s `client.messages.stream()`
+  → hits `/v1/messages`, same shape.
+- `ProviderOpenAI.ts` uses `openai` SDK's `client.responses.create()`
+  (Responses API, not Chat Completions) → hits `/v1/responses`, same shape.
+- `ProviderGoogle.ts` uses the `openai` SDK's `client.chat.completions.create()`
+  pointed at Google's own OpenAI-compat shim (`generativelanguage.googleapis.com/v1beta/openai`)
+  → hits 9router's `/v1/chat/completions`, same shape (Chorus never touches
+  9router's native-Gemini `/v1beta/models/...` mirror at all, since it
+  wasn't using Gemini's native format to begin with).
+
+**Auth on all four paths** goes through the same `extractApiKey`
+(`src/sse/services/auth.js`): checks `Authorization: Bearer <key>` first,
+then the Anthropic-native `x-api-key` header — so the Anthropic SDK's
+default auth header works unmodified against `/v1/messages`. The Gemini
+native mirror additionally accepts `x-goog-api-key` and a `?key=` query
+param (irrelevant to us, since we go through the OpenAI-shaped Google
+provider, not the native one). **Enforcement is conditional**: auth is only
+checked at all when `settings.requireApiKey` is true in 9router's own
+settings (`src/sse/handlers/chat.js`: `if (settings.requireApiKey) { ... }
+else { /* "No API key provided (local mode)" */ }`) — meaning a 9router
+instance running for pure local/single-user use may not enforce a key at
+all. Chorus should still always send the key it creates via `/api/keys`
+(§2.5) regardless, both because we can't know the user's setting and because
+it's harmless when not enforced.
+
+Model id format on **all four proxy paths** is **`<providerAlias>/<modelId>`**
+(the native-Gemini mirror builds this from the URL path segments — see its
+route source — everywhere else it's the request body's `model` field), e.g.
 `cc/claude-sonnet-5`, `cx/gpt-5.6-sol`, `gh/gpt-5.2`. This confirms the
 orchestration doc's "model-name mapping `provider-code/model`" — the
 "provider-code" is 9router's **alias**, not its full provider id.
+
+**Model catalogs do NOT line up with Chorus's own catalog — verified, not
+assumed.** Read the full `models:` array (not just the first few entries) for
+all three OAuth-mirrored providers we ship model support for. Chorus's own
+supported-model lists come from `ANTHROPIC_MODELS` in `ProviderAnthropic.ts`,
+the hardcoded `modelId !==` chain in `ProviderOpenAI.ts`, and
+`getGoogleModelName`'s allow-list in `ProviderGoogle.ts`.
+
+| 9router provider (registry `models:`) | Overlaps with Chorus's own catalog |
+|---|---|
+| `claude`: `claude-fable-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-haiku-4-5-20251001` | **One exact match:** `claude-haiku-4-5-20251001` (both use the same dated model string). Everything else in Chorus's catalog uses `-latest`-style aliases (`claude-sonnet-4-latest`, `claude-opus-4-latest`, ...) or different dated ids (`claude-sonnet-4-5-20250929`, `claude-opus-4-5-20251101`) that don't appear in 9router's list at all — 9router's registry evidently tracks newer/different model releases than Chorus's catalog does as of this clone. |
+| `codex`: `gpt-5.6-sol(-review)`, `gpt-5.6-terra(-review)`, `gpt-5.6-luna(-review)`, `gpt-5.5(-review)`, `gpt-5.4(-review)`, `gpt-5.4-mini(-review)`, `gpt-5.3-codex-spark(-review)`, `gpt-5.5-image` | **Zero matches.** None of Chorus's OpenAI ids (`gpt-4o`, `gpt-4.1*`, `o1*`, `o3*`, `o4-mini`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`) appear in 9router's codex registry at all. |
+| `gemini-cli`: `gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` | **Two exact matches:** `gemini-2.5-flash`, `gemini-2.5-flash-lite`. Chorus's `gemini-2.5-pro-preview-03-25` does NOT match 9router's bare `gemini-2.5-pro`. |
+
+**Conclusion for P5:** ship a deliberately *minimal, verified* static
+Chorus-model-id → 9router-upstream-model-id map (only the three confirmed
+exact matches above) rather than a guessed broad one — sending a model id
+9router's connected provider doesn't actually have would fail at request
+time with no graceful way to detect it in advance. Every Chorus model not in
+that tiny map falls back to existing behavior (API key / backend proxy)
+even when a 9router account is connected. This is a real, known limitation,
+not an oversight — see `.rework/PROGRESS.md`. Widening coverage later needs
+either manual re-curation against a fresh 9router clone, or switching to a
+live-`/v1/models`-lookup-plus-fuzzy-match strategy (more robust to both
+catalogs moving, more code, deferred).
 
 ## 3. Provider id / alias mapping (Chorus ↔ 9router)
 
@@ -294,26 +360,39 @@ implemented as `NINEROUTER_OAUTH_PROVIDER_MAP` in that file. If 9router adds
 a proper "copilot"/"anthropic-oauth"-named id in a later release, only that
 map needs updating.
 
-## 4. What P5 (forwarding) actually calls
+## 4. What P5 (forwarding) actually calls (implemented — see `resolveCredential.ts`)
 
 For a chat request on a model whose provider has a **connected** 9router
-OAuth account:
-1. Resolve `alias` for the Chorus provider via §3's map (e.g. `anthropic`+`oauth` → `cc`).
-2. Resolve the upstream model id 9router expects — **not** the same string
-   Chorus's own catalog uses (e.g. Chorus's `claude-sonnet-4-5-20250929` vs.
-   9router/Claude Code's exposed `claude-sonnet-5`). This mapping is
-   provider-specific and not guessable from Chorus's model catalog alone; v1
-   ships a small per-provider static map (documented as an assumption/TODO in
-   `nineRouterClient.ts`) rather than trying to auto-derive it, and falls
-   back cleanly (see below) when a given Chorus model has no known 9router
-   equivalent.
-3. `POST http://localhost:20128/v1/chat/completions` with
-   `Authorization: Bearer <chorus-9router-key>`, `model: "<alias>/<upstream-model-id>"`.
-4. On non-2xx (esp. 401 from 9router — meaning **9router's own refresh
-   failed**, i.e. the underlying provider token is actually dead): mark the
-   `IProviderAccount` `expired`, and the existing provider class's fallback
-   path (API key → chorus backend proxy per architecture §4.2) takes over for
-   that turn, exactly like today's `canProceedWithProvider` short-circuit.
+OAuth account and a **known model mapping** (§2.6's verified table — this is
+the gate that most often says "no"):
+1. Resolve the 9router provider ref (`id`+`alias`) via
+   `NINEROUTER_OAUTH_PROVIDER_MAP` (e.g. `anthropic`+`oauth` → `{id: "claude", alias: "cc"}`).
+2. Resolve the upstream model id via the small verified static map in
+   `resolveCredential.ts` (`NINEROUTER_MODEL_MAP`) — **not** a guess; only
+   the three cross-checked exact matches from §2.6 are present. No entry ⇒
+   no 9router route for that specific model, full stop; the calling provider
+   class falls through to its pre-existing apiKeys/backend-proxy logic
+   completely unchanged.
+3. Ensure a Chorus-owned 9router API key exists (create via `POST /api/keys`
+   once, cache the plaintext in `app_metadata` — see
+   `AppMetadataAPI.getNineRouterApiKey`/`setNineRouterApiKey`).
+4. Each provider class swaps **only** `baseURL`, `apiKey`, and the outgoing
+   `model` field on its *existing* SDK client call — no request/response
+   translation, because 9router mirrors each SDK's native wire format
+   (§2.6): `ProviderAnthropic.ts` → `/v1/messages`, `ProviderOpenAI.ts` →
+   `/v1/responses`, `ProviderGoogle.ts` → `/v1/chat/completions` (via its
+   existing OpenAI-shaped client). `customBaseUrl`/direct API key are only
+   used when no 9router credential resolved.
+5. **401/expiry handling is NOT wired in this pass.** Detecting "this
+   request failed because 9router's own token refresh failed" and flipping
+   the `IProviderAccount` to `expired` would require touching each
+   provider's existing streaming error-handling internals (Anthropic's
+   `stream.on("error", ...)`, OpenAI's typed SSE event loop, Google's
+   `isProviderError` catch) — judged too risky to do blind (no way to run
+   the app here) inside otherwise-working production chat code. Flagged as
+   the top follow-up in `.rework/PROGRESS.md`; today a 401 from 9router
+   surfaces as a generic stream error to the user, same as any other
+   provider error, rather than a friendly "reauthorize" prompt.
 
 ## 5. Assumptions / things NOT verified against a live instance
 
