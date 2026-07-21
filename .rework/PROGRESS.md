@@ -11,7 +11,7 @@ cross-cutting decisions and the environment.
 |--------|---------|--------|---------|--------|
 | W1 | Provider accounts (9router) + quota | claude/rework-provider-oauth | YES | progress/W1.md |
 | W2 | Inline artifacts | claude/rework-artifacts | YES | progress/W2.md |
-| W4 | Model select | claude/rework-model-select | pending | - |
+| W4 | Model select | claude/rework-model-select | YES | progress/W4.md |
 | W6 | Chat rework | claude/rework-chat | pending | - |
 | W3 | Settings rework | claude/rework-settings | pending | - |
 | W7 | Fleet | claude/rework-fleet | pending | - |
