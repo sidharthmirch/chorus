@@ -5,22 +5,24 @@ integration branch, which already has W1 + W2 merged — `success`/`warning`
 tokens confirmed present in `src/ui/themes/index.ts` + `tailwind.config.cjs`
 before P1 started).
 
-## State: P2 complete — Board view
+## State: P3 complete — Worktrees view
 
 ## NEXT ACTION
 
-Start P3 (Worktrees view): replace the placeholder
-`src/ui/components/fleet/WorktreesView.tsx` with the real feature/ticket
-tree — `FeatureCard.tsx` (branch/title header + `formatFeatureBadge`,
-ticket rows via `formatTicketMeta`, a small "Worker" role chip on tickets
-with status `running`/`awaiting-merge` only — see Decisions log below for
-why not on `merged`/`queued`), a supervisor strip (state + `pulse` via
-`FleetStatusDot`'s existing `pulse` prop + note text), and the exact
-explanatory paragraph from the design mock ("Every ticket runs in its own
-git worktree branched off the feature worktree...", bolding "spawned on
-demand"). Wire `useFleetFeatures()` (already built in P1) into it from
-`FleetView.tsx` (currently unused there — grep confirms). Segmented
-Board/Worktrees control already exists (`FleetHeader.tsx`).
+Start P4 (cost presets + machines strip): wire the already-written
+`MachinesStrip.tsx` (built during P2, deliberately left uncommitted/
+unwired until now) into `FleetView.tsx` — render it for BOTH Board and
+Worktrees views (per design/fleet.md's two ASCII layouts: Board shows cost
+presets + machines + footer; Worktrees shows machines + footer, no cost
+presets — so `MachinesStrip` is shared, `CostPresetsPanel` is Board-only).
+Build `CostPresetsPanel.tsx`: a `Tabs`-based segmented control
+(Economy/Balanced/Max quality, same active-pill styling as
+`FleetHeader.tsx`'s Board/Worktrees tabs) driven by
+`useFleetCostPresetId()`/`useSetFleetCostPresetId()` (P1, already built) +
+`useFleetCostPresets()`/`useActiveFleetCostPreset()` (P1, already built);
+role chips from `FLEET_ROLES` (`copy.ts`, already built) joined against the
+active preset's `roles` map; estimate line below. Persist on pick (mutation
+already exists, just call `.mutate(preset.id)` on click).
 
 ## Phase checklist
 
@@ -37,8 +39,11 @@ Board/Worktrees control already exists (`FleetHeader.tsx`).
       picker `Popover`) and pause/resume are wired against the adapter,
       not just rendered inert — drag-and-drop is the only thing P2
       explicitly defers to v2)
-- [ ] P3 — Worktrees view (feature/ticket tree, supervisor strip)   <- current
-- [ ] P4 — Cost presets + machines strip
+- [x] P3 — Worktrees view (`FeatureCard.tsx`, real `WorktreesView.tsx`;
+      `copy.ts` gained `FLEET_SUPERVISOR_LABEL`/`FLEET_SUPERVISOR_TONE`/
+      `FLEET_TICKET_WORKER_CHIP_STATUSES`; wired `useFleetFeatures()` into
+      `FleetView.tsx`, including its own `isInitialLoad` branch)
+- [ ] P4 — Cost presets + machines strip                            <- current
 - [ ] P5 — Sidebar Sessions cluster
 
 ## Decisions log
@@ -180,6 +185,34 @@ Board/Worktrees control already exists (`FleetHeader.tsx`).
   with load fractions"). Left untracked/unstaged on purpose so the P2
   commit stays scoped to what P2 actually asked for; P4 both stages it and
   wires it into `FleetView.tsx`.
+
+- **P3 — supervisor label drops the fixture's embedded "●".** The design
+  fixture's `supState` string for the active case is literally
+  `"● reviewing now"` — a text bullet baked into the label. Since
+  `FeatureCard.tsx` renders a real `FleetStatusDot` (with its own `pulse`)
+  right next to the label, keeping the bullet in the text too would
+  duplicate the same signal twice. `FLEET_SUPERVISOR_LABEL` (`copy.ts`)
+  holds the plain label ("idle" / "reviewing now"); the dot carries the
+  "active" signal.
+- **P3 — "Worker" ticket chip shown on `running`/`awaiting-merge` only.**
+  Reverse-engineered from the fixture rather than stated as a rule
+  anywhere: T-103 (running) and T-201/T-202 (awaiting-merge) all show
+  `[● Worker]` in the Worktrees ASCII mock; T-101/T-102 (merged) don't.
+  Reads as "still worker-owned, not yet merged" → `queued` (no fixture
+  example either way) was extrapolated to also hide it, on the reasoning
+  that a ticket with no dispatched worker yet shouldn't claim one.
+  `FLEET_TICKET_WORKER_CHIP_STATUSES` (`copy.ts`) holds the 2-status list.
+- **P3 — `now` must be real wall-clock time, not `feature.updatedAt`.**
+  First draft of `FeatureCard.tsx` passed `feature.updatedAt` down to each
+  `TicketRow` as "now" for `formatTicketMeta`'s elapsed-time math — wrong:
+  that pins a still-running ticket's "12m" reading to whenever fleetd last
+  touched the *feature* record, not the actual current time. Fixed:
+  `WorktreesView.tsx` computes a real `new Date()` per render (no
+  `useMemo` — nothing about "now" depends on `features`, and it's cheap
+  enough to just recompute; an earlier attempt to memoize it against
+  `[features]` tripped `react-hooks/exhaustive-deps` since `features`
+  isn't actually read inside the factory) and threads it down through
+  `FeatureCard`/`TicketRow` as an explicit `now` prop.
 
 ## Landmines / do-not
 

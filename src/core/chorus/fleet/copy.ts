@@ -9,6 +9,7 @@ import {
     FleetMetaTone,
     FleetRoleId,
     FleetSessionStatus,
+    FleetSupervisorState,
     MachineStatus,
 } from "./protocol";
 
@@ -51,6 +52,29 @@ export const FLEET_MACHINE_DOT_TONE: Record<MachineStatus, FleetMetaTone> = {
     idle: "muted",
     offline: "muted",
 };
+
+/**
+ * Supervisor strip label + tone. The design fixture embeds a literal "●"
+ * inside the reviewing-state label string itself ("● reviewing now") —
+ * since the UI renders a real `FleetStatusDot` (with its own `pulse` prop)
+ * right next to this label, duplicating a text bullet would be redundant;
+ * the dot carries that signal and the label stays plain text.
+ */
+export const FLEET_SUPERVISOR_LABEL: Record<FleetSupervisorState, string> = {
+    idle: "idle",
+    reviewing: "reviewing now",
+};
+
+export const FLEET_SUPERVISOR_TONE: Record<FleetSupervisorState, FleetMetaTone> = {
+    idle: "muted",
+    reviewing: "success",
+};
+
+/** Ticket statuses that still show a small "Worker" role chip — a ticket that's merged (worker's job for it is done) or not yet started (queued — no fixture example, but no worker has been assigned yet either) doesn't get one. Matches every ticket in the design fixture exactly (T-103 running + T-201/T-202 awaiting-merge all show "[● Worker]"; T-101/T-102 merged do not). */
+export const FLEET_TICKET_WORKER_CHIP_STATUSES: readonly string[] = [
+    "running",
+    "awaiting-merge",
+];
 
 export interface IFleetRoleInfo {
     id: FleetRoleId;

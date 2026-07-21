@@ -6,6 +6,7 @@ import {
 import { useFleetEndpoint } from "@core/chorus/fleet/fleetSettings";
 import {
     useFleetConnectionState,
+    useFleetFeatures,
     useFleetMachines,
     useFleetSessions,
 } from "@core/chorus/fleet/useFleet";
@@ -28,13 +29,17 @@ export default function FleetView() {
     const endpoint = useFleetEndpoint();
     const sessionsQuery = useFleetSessions();
     const machinesQuery = useFleetMachines();
+    const featuresQuery = useFleetFeatures();
 
     // Only the default (no-endpoint) Mock adapter reports "connected"
     // instantly — a real, misconfigured/unreachable fleetd should show an
     // honest empty state rather than an empty board (fleet-protocol.md §5).
     const isReachable = connectionState === "connected";
     const isInitialLoad =
-        isReachable && (sessionsQuery.isPending || machinesQuery.isPending);
+        isReachable &&
+        (view === "board"
+            ? sessionsQuery.isPending || machinesQuery.isPending
+            : featuresQuery.isPending);
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-background">
@@ -57,7 +62,7 @@ export default function FleetView() {
                         machines={machinesQuery.data ?? []}
                     />
                 ) : (
-                    <WorktreesView />
+                    <WorktreesView features={featuresQuery.data ?? []} />
                 )}
             </div>
 
