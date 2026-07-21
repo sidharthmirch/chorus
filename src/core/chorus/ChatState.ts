@@ -16,7 +16,37 @@ export type MessageSet = {
     level: number;
     selectedBlockType: BlockType;
     createdAt: string;
+    // Which mode/stance (see IMode below) was active when this set was
+    // created, if any. Written once at creation time on the "ai" set of a
+    // turn; undefined means no mode was active (raw model, mode off).
+    modeId?: string;
 };
+
+// ----------------------------------
+// Modes / stances (W6 rework — frozen export per docs/rework/00-ARCHITECTURE.md §5)
+// ----------------------------------
+
+/**
+ * A reusable system-prompt "stance" (Assist/Critic/Socratic, or a
+ * user-created one) that can be applied per-chat (default) or per-message-set
+ * (override for a single send). Backed by the `modes` table
+ * (src-tauri/src/migrations.rs, migration 148); CRUD lives in
+ * `api/ModesAPI.ts`. Consumed by W3's Settings > Modes section as well as
+ * this workstream's composer picker — do not change this shape without
+ * updating 00-ARCHITECTURE.md §5 and flagging it in the PR.
+ */
+export interface IMode {
+    id: string;
+    icon?: string;
+    name: string;
+    description: string;
+    prompt: string;
+    tag: "app-default" | "per-chat" | "custom";
+    usageCount: number;
+    author: "user" | "system";
+    createdAt: string;
+    updatedAt: string;
+}
 
 export type MessageSetDetail = MessageSet & {
     userBlock: UserBlock;

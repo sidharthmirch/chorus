@@ -63,6 +63,10 @@ import {
 import { SettingsManager } from "@core/utilities/Settings";
 import { Attachment, AttachmentDBRow, readAttachment } from "./AttachmentsAPI";
 import { fetchChatPromptProfileSystemPrompt } from "./PromptProfilesAPI";
+import {
+    fetchMessageSetModeSystemPrompt,
+    incrementModeUsageCount,
+} from "./ModesAPI";
 import { toolsDisabledActions } from "@core/infra/ToolsDisabledStore";
 import {
     buildProviderVisibilityMap,
@@ -93,6 +97,7 @@ export type MessageSetDBRow = {
     level: number;
     selected_block_type: BlockType;
     created_at: string;
+    mode_id: string | null;
 };
 
 export function readMessageSet(row: MessageSetDBRow): MessageSet {
@@ -103,6 +108,7 @@ export function readMessageSet(row: MessageSetDBRow): MessageSet {
         level: row.level,
         selectedBlockType: row.selected_block_type,
         createdAt: row.created_at,
+        modeId: row.mode_id ?? undefined,
     };
 }
 
@@ -189,7 +195,7 @@ export async function fetchMessageSets(chatId: string) {
         await Promise.all([
             db
                 .select<MessageSetDBRow[]>(
-                    `SELECT id, chat_id, type, selected_block_type, level, created_at
+                    `SELECT id, chat_id, type, selected_block_type, level, created_at, mode_id
                  FROM message_sets
                  WHERE chat_id = ?
                  ORDER BY level, id`,
@@ -1495,6 +1501,8 @@ export function useStreamMessagePart() {
             });
             const promptProfileSystemPrompt =
                 await fetchChatPromptProfileSystemPrompt(chatId);
+            const modeSystemPrompt =
+                await fetchMessageSetModeSystemPrompt(messageSetId);
             const modelConfig = Prompts.injectSystemPrompts(modelConfigRaw, {
                 toolsetInfo: toolsets.map((toolset) => ({
                     displayName: toolset.displayName,
@@ -1504,6 +1512,7 @@ export function useStreamMessagePart() {
                 isInProject: project.id !== "default",
                 universalSystemPrompt: appMetadata["universal_system_prompt"],
                 promptProfileSystemPrompt,
+                modeSystemPrompt,
             });
 
             const customBaseUrl = await getCustomBaseUrl();
@@ -1577,10 +1586,13 @@ export function useStreamMessageLegacy() {
             });
             const promptProfileSystemPrompt =
                 await fetchChatPromptProfileSystemPrompt(chatId);
+            const modeSystemPrompt =
+                await fetchMessageSetModeSystemPrompt(messageSetId);
             const modelConfig = Prompts.injectSystemPrompts(modelConfigRaw, {
                 isInProject: project.id !== "default",
                 universalSystemPrompt: appMetadata["universal_system_prompt"],
                 promptProfileSystemPrompt,
+                modeSystemPrompt,
             });
 
             const projectContext = await getProjectContext(project.id, chatId);
@@ -1859,10 +1871,16 @@ export function useCreateMessageSetPair() {
             chatId,
             userMessageSetParent,
             selectedBlockType,
+            modeId,
         }: {
             chatId: string;
             userMessageSetParent: MessageSet | undefined;
             selectedBlockType: BlockType;
+            // Active mode/stance for this send (chat default, or a
+            // per-message override), if any. Recorded once on the "ai" set
+            // only — see docs/rework/w6-chat-recon.md §3/§4. Callers pass
+            // undefined until a mode is actually selected (None).
+            modeId?: string;
         }) => {
             const userMessageSetId = uuidv4();
             const aiMessageSetId = uuidv4();
@@ -1890,9 +1908,27 @@ export function useCreateMessageSetPair() {
             const aiLevel = userLevel + 1;
 
             await db.execute(
-                "INSERT INTO message_sets (id, chat_id, level, type, selected_block_type) VALUES ($1, $2, $3, $4, $5)",
-                [aiMessageSetId, chatId, aiLevel, "ai", selectedBlockType],
+                "INSERT INTO message_sets (id, chat_id, level, type, selected_block_type, mode_id) VALUES ($1, $2, $3, $4, $5, $6)",
+                [
+                    aiMessageSetId,
+                    chatId,
+                    aiLevel,
+                    "ai",
+                    selectedBlockType,
+                    modeId ?? null,
+                ],
             );
+
+            // Count this send toward the mode's usage, once per send (not
+            // once per fanned-out model — see ModesAPI.incrementModeUsageCount's
+            // doc comment). Best-effort: don't fail the send if this errors.
+            if (modeId) {
+                try {
+                    await incrementModeUsageCount(modeId);
+                } catch (error) {
+                    console.error("Failed to increment mode usage count", error);
+                }
+            }
 
             return { userMessageSetId, aiMessageSetId };
         },

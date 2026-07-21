@@ -153,6 +153,7 @@ import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
+import * as ModesAPI from "@core/chorus/api/ModesAPI";
 import SimpleCopyButton from "./unused/CopyButton";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import {
@@ -1294,6 +1295,7 @@ export function ToolsMessageView({
     onStop,
     onDeselect,
     dragHandleProps,
+    modeId,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
@@ -1304,10 +1306,16 @@ export function ToolsMessageView({
     onStop?: () => void;
     onDeselect?: () => void;
     dragHandleProps?: DragListeners;
+    // Mode/stance active for this message's set, if any (design/chat.md's
+    // "✓ assist" sender-row badge). See docs/rework/w6-chat-recon.md §4.
+    modeId?: string;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
     // const [streamStartTime, setStreamStartTime] = useState<Date>();
+
+    const modesQuery = ModesAPI.useModes();
+    const activeMode = modesQuery.data?.find((m) => m.id === modeId);
 
     const selectMessage = MessageAPI.useSelectMessage();
     const stopMessage = MessageAPI.useStopMessage();
@@ -1456,6 +1464,12 @@ export function ToolsMessageView({
                                                 {displayModelConfig?.displayName ??
                                                     displayModelId}
                                             </span>
+                                            {activeMode && (
+                                                <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-sm border border-border px-[5px] py-px text-[10px] font-mono text-muted-foreground align-middle">
+                                                    {activeMode.icon}
+                                                    {activeMode.name.toLowerCase()}
+                                                </span>
+                                            )}
                                             {routingBadgeText !== undefined && (
                                                 <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                                                     {routingBadgeText}
@@ -1741,6 +1755,7 @@ function ToolsBlockView({
     isQuickChatWindow,
     minimizedModels,
     onMinimize,
+    modeId,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
@@ -1748,6 +1763,10 @@ function ToolsBlockView({
     isQuickChatWindow: boolean;
     minimizedModels: Set<string>;
     onMinimize: (modelId: string) => void;
+    // Mode/stance active when this message set was created, if any — see
+    // docs/rework/w6-chat-recon.md §4. Rendered as a small sender-row badge
+    // in ToolsMessageView (design/chat.md's "✓ assist" per-message tag).
+    modeId?: string;
 }) {
     const { chatId } = useParams();
     const queryClient = useQueryClient();
@@ -2055,6 +2074,7 @@ function ToolsBlockView({
                                                     toolsBlock.chatMessages
                                                         .length === 1
                                                 }
+                                                modeId={modeId}
                                                 onMinimize={
                                                     toolsBlock.chatMessages
                                                         .length > 1
@@ -2264,6 +2284,7 @@ const MessageSetView = memo(
                             isQuickChatWindow={isQuickChatWindow}
                             minimizedModels={minimizedModels}
                             onMinimize={onMinimize}
+                            modeId={messageSet.modeId}
                         />
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
@@ -2308,6 +2329,10 @@ export const SHARE_CHAT_DIALOG_ID = "share-chat-dialog";
 export default function MultiChat() {
     const { chatId } = useParams();
     const chatQuery = ChatAPI.useChat(chatId!);
+    // Chat-level default mode/stance, for the read-only header badge
+    // (design/chat.md's "✓ Assist · default"). The composer (P2) is the
+    // interactive surface for changing it; this just displays it.
+    const activeChatMode = ModesAPI.useChatMode(chatId!);
     const { open: isSidebarOpen } = useSidebar();
 
     const navigate = useNavigate();
@@ -3243,6 +3268,19 @@ export default function MultiChat() {
 
                     {/* chat actions - show as individual icon buttons if there are multiple message sets AND we're not in quick chat */}
                     <div className="flex items-center gap-1">
+                        {!isQuickChatWindow && activeChatMode && (
+                            <div className="flex items-center h-7 rounded-full bg-muted px-3 gap-1 text-xs text-muted-foreground mr-1">
+                                {activeChatMode.icon && (
+                                    <span>{activeChatMode.icon}</span>
+                                )}
+                                <span>{activeChatMode.name}</span>
+                                {activeChatMode.tag === "app-default" && (
+                                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                                        · default
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {!isQuickChatWindow &&
                             messageSetsQuery.data &&
                             messageSetsQuery.data.length > 1 && (

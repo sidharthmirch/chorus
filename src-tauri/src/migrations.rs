@@ -2738,6 +2738,41 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 );
             "#,
         },
+        // REWORK-MIGRATION: renumber at rebase (W6 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 148,
+            description: "add modes and chat_modes tables, message_sets.mode_id column, seed Assist/Critic/Socratic",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE modes (
+                    id TEXT PRIMARY KEY,
+                    icon TEXT,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    tag TEXT NOT NULL DEFAULT 'custom' CHECK (tag IN ('app-default', 'per-chat', 'custom')),
+                    usage_count INTEGER NOT NULL DEFAULT 0,
+                    author TEXT NOT NULL DEFAULT 'user' CHECK (author IN ('user', 'system')),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE chat_modes (
+                    id TEXT PRIMARY KEY,
+                    chat_id TEXT NOT NULL UNIQUE,
+                    mode_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                ALTER TABLE message_sets ADD COLUMN mode_id TEXT DEFAULT NULL;
+
+                INSERT INTO modes (id, icon, name, description, prompt, tag, author) VALUES
+                    ('mode-assist', '✓', 'Assist', 'Do exactly what''s asked. No pushback, no scope creep.', 'Do exactly what the user asks. Do not push back on the request, question its premise, or expand scope beyond what was asked. Be direct and efficient.', 'app-default', 'system'),
+                    ('mode-critic', '✕', 'Critic', 'Attack every claim. Chase every avenue to prove you wrong.', 'Adopt a critical, skeptical stance. Attack every claim made in this conversation, including your own prior claims. Actively look for counterarguments, edge cases, and reasons the current approach could be wrong. Do not soften criticism for the sake of politeness.', 'app-default', 'system'),
+                    ('mode-socratic', '?', 'Socratic', 'Answers only with questions until you commit.', 'Respond only with clarifying questions until the user has committed to a specific direction. Do not provide direct answers, solutions, or recommendations - guide the user to their own conclusions through questioning.', 'custom', 'system');
+            "#,
+        },
     ];
 }
 
