@@ -1,27 +1,23 @@
 # W6 Progress — Chat Rework (View Modes, Stances, Composer, Prompt Optimizer)
 
-## State: P4 done (commits e685fe6 P0, 9e6a761 P1, 138b0db P2, 3a05d46 P3,
-59b398b P4). Starting P5 (Prompt Optimizer) — the last phase.
+## State: ALL PHASES DONE (P0-P5). Commits: e685fe6 P0, 9e6a761 P1, 138b0db P2,
+3a05d46 P3, 59b398b P4, 9ba6495 P5, 79d561d/[[this commit]] docs. tsc 0
+errors, eslint 0 issues (checked broadly across `src/core/chorus` +
+`MultiChat.tsx`/`ChatInput.tsx`/`ViewModeControl.tsx`/`composer/`, not just
+the files touched in the last phase), vitest 217/217, zero regressions
+throughout. Ready for orchestrator review/merge.
 
 ## NEXT ACTION
 
-Implement P5: flesh out `src/ui/components/composer/PromptOptimizerDialog.tsx`
-(currently P2's presentable placeholder — mount/dialog-id wiring in
-`ChatInput.tsx` is done, only this file's body + its own props need to grow)
-into the real modal per `docs/rework/design/prompt-optimizer.md`: Structured
-(default) vs Before/After tabs (`ui/tabs.tsx` or plain toggle buttons), Intent
-radios (`ui/radio-group.tsx`: Just chat / Hand to agent — build / Plan first),
-model-set pills (Chat trio / Coding / Fast-cheap) with per-model checkbox
-toggles, rewrite via `simpleLLM()` (no modelConfigId — same "let it auto-pick"
-reasoning as P4's grading call, see recon §10 and the Decisions log entry
-below), "use ↵" calls `onApply`/`setDraft` back in `ChatInput.tsx` with an
-undo affordance (stash the pre-optimize draft in local state, one-shot revert
-— NOT a schema change, see recon §9), "⧉ copy" to clipboard. Model-set preset
-selection on confirm should update the chat's selection via the SAME
-callbacks `ChatInput.tsx` already built for the model popover
-(`toggleCompareModelConfig`/`persistMainChatCompareIds` — thread them down as
-new props, or lift the apply logic up into `ChatInput.tsx` and have the
-dialog just report "apply this model set" via a callback prop).
+None outstanding for W6. If resumed: re-run the three gates (`tsc --noEmit`,
+`eslint` on the paths above, `vitest run`) to confirm nothing drifted since,
+then read "Open questions for the orchestrator" in the final handoff (the
+agent's last chat message) before merging — the two real open items are (1)
+whether "Fused"/"Focus" should be visually verified in both themes before
+shipping (not done here, cannot run the app) and (2) the model-set-curation
+honesty tradeoff in `promptOptimizer.ts` (Coding == Chat trio's heuristic;
+only Fast/cheap has a real data signal) — flagged as a documented
+simplification, not silently guessed.
 
 ## Phase checklist
 
@@ -95,9 +91,18 @@ dialog just report "apply this model set" via a callback prop).
       `isPending`, not a ref); renders the grade table + reuses
       `MessageCostDisplay`. Wired into P3's `viewMode` switch — "Fused" now
       does something.
-- [ ] P5 — Prompt Optimizer modal (P2 already built the button + a
-      placeholder dialog + the mount wiring; undo via in-memory stash, not a
-      schema change — see recon §9) <- current
+- [x] P5 — Prompt Optimizer. Replaced P2's placeholder
+      `PromptOptimizerDialog.tsx` body with the real modal: Structured
+      (default) vs Before/After tabs, Intent radios (Just chat / Hand to
+      agent / Plan first, default hand-to-agent), model-set pills (Chat trio
+      default / Coding / Fast-cheap) with per-model toggles, copy/use
+      actions. Auto-reoptimizes on a 600ms debounce (`setTimeout`, logged
+      below) as draft/intent/model-set/toggles change while open. New
+      `src/core/chorus/promptOptimizer.ts` (pure — prompt building, XML
+      wrapping, model-set curation, 17 unit tests). `ChatInput.tsx`:
+      `handleApplyOptimizedDraft` (stash+`setDraft`+undo toast) and passes
+      `selectAllCompareModelConfigs` straight through as `onApplyModelSet`
+      (no new mutation needed — it already existed). ALL 5 PHASES NOW DONE.
 
 ## Decisions log
 
@@ -185,6 +190,43 @@ implementation* that post-date the recon doc.
   of ref falls under the orchestrator's "DOM refs" pre-authorization (it
   doesn't clearly), same reasoning W2's PROGRESS.md already used for its
   "previous artifact count" tracking.
+- 2026-07-21 P5: **`setTimeout` used** — `PromptOptimizerDialog.tsx`'s
+  auto-reoptimize effect debounces 600ms (`AUTO_OPTIMIZE_DEBOUNCE_MS`) before
+  calling `simpleLLM()`, so it doesn't fire a completion request on every
+  keystroke while the modal is open. This is exactly the
+  "`setTimeout` for genuinely time-based UX (debounce...)" case
+  `.rework/ORCHESTRATION.md` pre-authorizes; cleaned up via the effect's
+  return function (`clearTimeout`), no dangling timers.
+- 2026-07-21 P5: discovered (the hard way — a failing test, not a hunch) that
+  `promptOptimizer.ts` importing `Models.getProviderName` as a VALUE (not
+  just the `ModelConfig` type) drags in `Models.ts`'s full runtime import
+  chain, which transitively reaches `DB.ts`'s **module-top-level**
+  `await Database.load(...)` — this needs a Tauri webview `window` and
+  throws under vitest's plain-Node test environment. `ChatState.ts` already
+  sidesteps this by only ever `import type`-ing from `Models.ts`. Fixed by
+  reimplementing `getProviderName`'s one-line logic
+  (`modelId.split("::")[0]`) locally in `promptOptimizer.ts` instead of
+  importing the real function — worth remembering for ANY future pure-logic
+  file that needs a `ModelConfig`-adjacent helper: check whether it's a type
+  or a value import from `Models.ts`, because only the latter triggers this.
+- 2026-07-21 P5: model-set curation honesty tradeoff, worth flagging to the
+  orchestrator explicitly (not just buried in code comments): Chorus's model
+  catalog (`Models.ts`'s `ModelConfig`) has no "good at coding" / "general
+  chat" capability tags, so "Coding" and "Chat trio" presets use the
+  IDENTICAL selection heuristic (one model per distinct provider, preferring
+  the chat's current selection) — verified by reading the actual schema, not
+  assumed. Only "Fast / cheap" has a real, data-backed distinction (sorts by
+  actual `promptPricePerToken`/`completionPricePerToken`). Considered
+  fabricating a fake distinction (e.g. name-substring matching "code"/"coder")
+  and rejected it as actively worse — a heuristic that's wrong some of the
+  time is worse than an honest "these two presets currently do the same
+  thing." If real capability metadata is added to the catalog later (a W3/W4
+  concern, not W6's), `chooseModelSet` in `src/core/chorus/promptOptimizer.ts`
+  is the single place to wire it in.
+- 2026-07-21 P5: "use ↵" applies whichever text is CURRENTLY DISPLAYED in the
+  active tab (Structured → the XML-wrapped version, Before/After → the plain
+  prose "after" text), not always one fixed format — reasoned that a user
+  looking at the Structured tab specifically wants that format pasted in.
 
 ## Landmines / do-not
 
@@ -227,6 +269,14 @@ implementation* that post-date the recon doc.
   `docs/rework/MIGRATIONS-LEDGER.md` ("W6 | 2 | planned") — update its
   description text (not the count) if the final split of what's in each
   migration drifts from recon §14's plan.
+- Any NEW pure-logic file under `src/core/chorus/` that needs anything
+  `ModelConfig`-shaped: import the TYPE from `./Models` (`import type {
+  ModelConfig } from "./Models"`), never a VALUE (function/const) from it,
+  or vitest will crash with "window is not defined" — see the P5 Decisions
+  log entry above for the full chain (`Models.ts` → provider classes → …
+  → `DB.ts`'s top-level `await Database.load(...)`). `ChatState.ts`,
+  `fusedGrading.ts`, and `promptOptimizer.ts` all follow this rule; keep it
+  that way.
 
 ## User-test queue
 
@@ -243,10 +293,28 @@ implementation* that post-date the recon doc.
   "✓ assist" (per-message-set history should not retroactively change).
 - Pick "None". Expect both pill and header badge to clear; new sends show no
   stance badge.
-- Click "Optimize" in the composer. Expect a modal titled "✦ Optimize prompt"
-  showing your current draft text read-only, with a "coming soon" note (full
-  Structured/Before-After UI is P5). Closing it (×/Escape) should return
-  focus to the composer, draft untouched.
+- Type a draft (e.g. "make me a dashboard for the fleet agents"), click
+  "Optimize" in the composer. Expect a modal titled "✦ Optimize prompt" with
+  Structured/Before-After tabs (top right), your draft shown read-only on
+  the left, Intent radios (Hand to agent selected by default), model-set
+  pills (Chat trio selected by default) with small per-model chip toggles
+  below them. After a brief "Optimizing…" state (~1-2s), the right panel
+  should fill with a rewritten version — XML-ish `<task>...</task>` on the
+  Structured tab, or a before/after comparison on the other tab. Toggling a
+  per-model chip off (click it, it should gray out) or switching Intent
+  should trigger a fresh "Optimizing…" after you stop interacting for about
+  half a second.
+- Click "use ↵". Expect: modal closes (or at least the draft updates), the
+  composer's text box now shows the optimized version, and a toast appears
+  ("Draft replaced with optimized prompt") with an "Undo" button — clicking
+  Undo should restore your original draft exactly. If the model set had any
+  toggled-off models, the chat's model selection (the model pill) should
+  also update to match the curated set.
+- Click "⧉ copy" — expect a "Copied to clipboard" toast and the optimized
+  text (whichever tab is active) actually on your clipboard.
+- If you have NO API key configured for any provider, opening the optimizer
+  with a draft typed in should show a clear error message in the output
+  panel rather than a silent failure or a crash.
 - Regression: existing model picker ("Manage models" pill), attach button,
   tools box, prompt-profile pill should all look/behave exactly as before —
   nothing about their layout should have shifted beyond the two new items
