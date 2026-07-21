@@ -9,7 +9,7 @@ import {
 } from "../../ui/tooltip";
 import { Button } from "../../ui/button";
 import { CustomToolsetConfig } from "@core/chorus/Toolsets";
-import { RECOMMENDED_TOOLSETS } from "./CustomToolsetRow";
+import { RECOMMENDED_TOOLSETS } from "./recommendedToolsets";
 
 /** The "Quick start" grid — new local/remote MCP, Claude Desktop import, and
  *  one-click recommended-server buttons. Extracted verbatim from the

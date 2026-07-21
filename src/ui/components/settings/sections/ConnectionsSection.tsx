@@ -17,10 +17,8 @@ import {
     RemoteToolsetForm,
     ToolsetForm,
 } from "../connections/ToolsetForms";
-import {
-    CustomToolsetRow,
-    RECOMMENDED_TOOLSETS,
-} from "../connections/CustomToolsetRow";
+import { CustomToolsetRow } from "../connections/CustomToolsetRow";
+import { RECOMMENDED_TOOLSETS } from "../connections/recommendedToolsets";
 import {
     QuickStartGrid,
     GitHubManageConnectionButton,
