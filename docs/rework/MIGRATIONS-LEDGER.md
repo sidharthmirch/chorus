@@ -13,4 +13,4 @@ numbering is assigned at the last rebase before merge, in merge order
 | W6 | `modes` table + seeds; `chats.view_mode` column | 2 | planned |
 | W3 | — (none planned) | 0 | n/a |
 | W7 | — (endpoint/presets via app_metadata) | 0 | n/a |
-| W8 | `wiki_index` cache table (derived, rebuildable) | 1 | planned |
+| W8 | `wiki_index` cache table (derived, rebuildable) | 1 | shipped as v148 on `claude/rework-wiki` (renumber at final rebase) |
