@@ -3,6 +3,7 @@ import {
     extractHeadings,
     extractWikilinks,
     folderOfPath,
+    getBlockSeparatorRanges,
     getImmuneRanges,
     noteTitle,
     parseFrontmatter,
@@ -193,6 +194,47 @@ describe("getImmuneRanges", () => {
             [6, 7],
             [8, 11],
         ]);
+    });
+});
+
+describe("getBlockSeparatorRanges", () => {
+    it("finds a simple blank-line separator between two paragraphs", () => {
+        const text = "Intro.\n\nOutro.";
+        expect(getBlockSeparatorRanges(text)).toEqual([[6, 8]]);
+    });
+
+    it("excludes a blank line that falls inside a fenced code block", () => {
+        const before = "Intro.";
+        const fenced = "```\nline one\n\nline two (blank line above, still fenced)\n```";
+        const after = "Outro.";
+        const text = `${before}\n\n${fenced}\n\n${after}`;
+
+        const firstGapStart = before.length;
+        const firstGapEnd = firstGapStart + 2;
+        const secondGapStart = firstGapEnd + fenced.length;
+        const secondGapEnd = secondGapStart + 2;
+
+        // exactly the separator before and after the fence -- NOT the blank
+        // line inside `fenced`, between "line one" and "line two"
+        expect(getBlockSeparatorRanges(text)).toEqual([
+            [firstGapStart, firstGapEnd],
+            [secondGapStart, secondGapEnd],
+        ]);
+        // sanity: slicing at these ranges reconstructs each block cleanly,
+        // with the fence's internal blank line preserved intact
+        expect(text.slice(0, firstGapStart)).toBe(before);
+        expect(text.slice(firstGapEnd, secondGapStart)).toBe(fenced);
+        expect(text.slice(secondGapEnd)).toBe(after);
+    });
+
+    it("treats a gap right after a closing fence as a real separator", () => {
+        const text = "```\ncode\n```\n\nAfter the fence.";
+        const ranges = getBlockSeparatorRanges(text);
+        expect(ranges).toEqual([[12, 14]]);
+    });
+
+    it("returns no separators for a single block with no blank lines", () => {
+        expect(getBlockSeparatorRanges("just one paragraph, no gaps")).toEqual([]);
     });
 });
 

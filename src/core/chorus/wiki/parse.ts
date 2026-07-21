@@ -84,6 +84,40 @@ function computeFencedLines(lines: LineInfo[]): boolean[] {
 const INLINE_CODE_RE = /`[^`\n]*`/g;
 
 /**
+ * Ranges of blank-line runs (2+ consecutive `\n`) that are real markdown
+ * block separators -- i.e. NOT bridging two points still inside the same
+ * fenced code block. Used by inline.ts's note-body block splitter so a
+ * fenced block containing a blank line doesn't fragment into pieces that
+ * each carry only half a fence. A gap only counts as "still inside a
+ * fence" when the line immediately before AND the line immediately after
+ * are both fenced -- if either side has already closed (or not yet
+ * opened) the fence, the gap is a real separator.
+ */
+export function getBlockSeparatorRanges(text: string): Array<[number, number]> {
+    const lines = splitLinesWithOffsets(text);
+    const fencedLines = computeFencedLines(lines);
+
+    const ranges: Array<[number, number]> = [];
+    const gapRe = /\n{2,}/g;
+    let match: RegExpExecArray | null;
+    while ((match = gapRe.exec(text))) {
+        const gapStart = match.index;
+        const gapEnd = match.index + match[0].length;
+        const lineBeforeIdx = lines.findIndex((l) => l.start + l.text.length === gapStart);
+        const lineAfterIdx = lines.findIndex((l) => l.start === gapEnd);
+        const stillInsideFence =
+            lineBeforeIdx !== -1 &&
+            lineAfterIdx !== -1 &&
+            fencedLines[lineBeforeIdx] &&
+            fencedLines[lineAfterIdx];
+        if (!stillInsideFence) {
+            ranges.push([gapStart, gapEnd]);
+        }
+    }
+    return ranges;
+}
+
+/**
  * Char-offset ranges (into the full text) that wikilink matching must
  * ignore: fenced code blocks in full, plus inline code spans on
  * non-fenced lines. Exported for testing; also useful if a future caller

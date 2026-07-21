@@ -1,26 +1,49 @@
 # W8 Progress — Wiki Vault (Obsidian-style)
 
-## State: P1 — vault core (parse + fs layer) done
+## State: P2 — index + hooks done
 ## NEXT ACTION
-Implement `src/core/chorus/wiki/index.ts` (P2): link graph, backlinks with
-context snippets, search cache in the new `wiki_index` table (migration v148
-already added), full rebuild + incremental per-file update. Pure
-graph/snippet logic should be factored out and unit-tested the same way
-parse.ts was.
+Build the `/wiki` route (P3): append the route in `App.tsx`, add the single
+Wiki nav entry in `AppSidebar.tsx` (near the top of `AppSidebarInner`'s
+`SidebarMenu`, right after the "Start New Chat" button and BEFORE the
+Minimized-models/`FleetSessionsCluster` block at ~line 841 — do not touch
+that block), then build `src/ui/components/wiki/`: `WikiView.tsx` (tree +
+tabs + content panel via `ResizablePanelGroup`), `VaultTree.tsx`, an empty
+state for "no vault chosen yet" (wire to `usePickVault`), `NoteView.tsx` +
+`FrontmatterTable.tsx` + `WikiNoteBody.tsx` (renders `splitNoteBodyIntoBlocks`
+output: markdown blocks through `MessageMarkdown`, linked blocks through a
+small local renderer + `WikiLinkToken.tsx`) + `BacklinksList.tsx` +
+`LocalGraph.tsx` (1-hop static SVG; needs a small deterministic layout
+helper -- write it as `src/core/chorus/wiki/graphLayout.ts` + tests, mirrors
+how vaultTree.ts/folderColors.ts were split out).
 
 ## Phase checklist
 - [x] P1 — `parse.ts` (frontmatter via gray-matter, wikilink extraction incl.
-      aliases + embeds + code-fence immunity, headings, target resolution) +
-      30 vitest cases. `vault.ts` (dialog picker, `wiki_vault_path`
-      app_metadata persistence, recursive `.md` walk, read/write/delete,
-      debounced watch). Migration v148 (`wiki_index` table) + ledger row.
-- [ ] P2 — `index.ts`: link graph, backlinks + snippets, search cache,
-      rebuild + incremental update.        <- current
+      aliases + embeds + code-fence immunity, headings, target resolution).
+      `vault.ts` (dialog picker, `wiki_vault_path` app_metadata persistence,
+      recursive `.md` walk, read/write/delete, debounced watch). Migration
+      v148 (`wiki_index` table) + ledger row.
+- [x] P2 — `linkGraph.ts` (mention resolution, backlink counts),
+      `snippets.ts` (context-snippet extraction), `folderColors.ts`
+      (deterministic legend colors), `vaultTree.ts` (flat files -> nested
+      tree), `inline.ts` (note-body block splitting + inline tokenizer for
+      wikilink-bearing blocks -- see decisions log on WHY this exists),
+      `index.ts` (the `wiki_index` DB orchestration: rebuild, incremental
+      update, getNote/getBacklinks/searchVault/getGraph/getLocalGraph/
+      getVaultTree/getResolvableFiles), `relink.ts` (v2 typed stub),
+      `useWiki.ts` (React Query hooks, mirrors `fleet/useFleet.ts`).
+      109 vitest cases total across the pure modules (parse/linkGraph/
+      snippets/folderColors/vaultTree/inline) — `useWiki.ts`/`index.ts`/
+      `vault.ts` are DB/fs orchestration glue and intentionally untested
+      the same way `fleet/useFleet.ts` and this repo's `AttachmentsHelpers.ts`
+      are (they'd need a real Tauri runtime; `../DB`'s top-level
+      `await Database.load(...)` would hang under plain vitest/Node -- kept
+      entirely out of every test file's import graph, verified empirically).
 - [ ] P3 — `/wiki` route, sidebar nav entry, vault tree, note view
-      (properties table, wikilink-aware body, backlinks, local graph).
+      (properties table, wikilink-aware body, backlinks, local graph).  <- current
 - [ ] P4 — Search view, full graph view, folder color legend.
 - [ ] P5 — wiki-mcp builtin toolset (read_note/write_note/search_vault/
-      get_backlinks), `relink.ts` v2 stub.
+      get_backlinks), enable-toggle in the Wiki header (Settings.tsx isn't
+      built on this branch yet).
 
 ## Decisions log
 - 2026-07-21 Read order per brief: CLAUDE.md, DESIGN.md,
@@ -69,6 +92,21 @@ parse.ts was.
   This is a wrapper-only solution — zero edits under `renderers/**`. Noting
   for the PR: if W2 ever wants to support this more natively, the minimal
   hook would be an optional `components` override prop on `MessageMarkdown`.
+- 2026-07-21 **A test caught a real bug in the first cut of block-splitting.**
+  The initial `inline.ts` split note bodies into blocks on raw `\n{2,}`
+  matches, filtering out any match whose *start offset* fell inside
+  `parse.ts`'s (per-line) immune ranges. That's wrong: a `\n{2,}` match's
+  start offset lands on the newline *between* two lines, which is never
+  itself "inside" either line's own char range, so a blank line nested
+  inside a fenced code block was never recognized as immune — it would have
+  fragmented the fence into two blocks, each missing half its own fence
+  markers, and each rendered independently by MessageMarkdown. Fixed by
+  adding `parse.ts`'s `getBlockSeparatorRanges` (single source of truth,
+  tested there), which instead checks whether the line *before* and the
+  line *after* the gap are BOTH fenced — correctly keeps an internal blank
+  line as part of the block, and correctly still splits right after a
+  closing fence. `inline.test.ts`'s "does not fragment a fenced code block
+  that itself contains a blank line" is the regression test.
 - 2026-07-21 **`reagraph` (already a dependency) is intentionally unused.**
   It's a WebGL force-directed/physics graph lib; the brief and
   00-ARCHITECTURE.md §7 both explicitly require a static, hand-placed-node
