@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@300..700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
+body{font-family:'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+a:hover{color:#cda174}
+[data-theme="dark"]{--bg:#1c1a17;--card:#22201d;--sb:#252220;--fg:#fafaf7;--mfg:#bfbab5;--helper:#948d84;--bd:#3e3b37;--bd2:#514d48;--mut:#2b2825;--hl:#5c4a38;--hlfg:#f8f2e9;--acc:#cda174;--acc2:#b0885f;--ok:#7fae7f;--warn:#d1a35d;--err:#e0705f;--shadow:0 8px 30px rgba(0,0,0,.45)}
+[data-theme="light"]{--bg:#ffffff;--card:#ffffff;--sb:#fdfdfa;--fg:#292524;--mfg:#6e6862;--helper:#bfbab5;--bd:#edeae8;--bd2:#ddd9d4;--mut:#f6f6f3;--hl:#f8f2e9;--hlfg:#6a5442;--acc:#b0885f;--acc2:#8a6a48;--ok:#4e8a52;--warn:#b07f36;--err:#d05045;--shadow:0 8px 30px rgba(40,30,20,.12)}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:5px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="height:100vh;display:flex;background:var(--bg);color:var(--fg);font-size:14px;overflow:hidden">
+
+<!-- ============ SIDEBAR ============ -->
+<div data-screen-label="Sidebar" style="width:256px;flex:none;background:var(--sb);border-right:1px solid var(--bd);display:flex;flex-direction:column;min-height:0">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 14px 10px 16px">
+    <div style="display:flex;gap:8px">
+      <div style="width:12px;height:12px;border-radius:50%;background:#f16158"></div>
+      <div style="width:12px;height:12px;border-radius:50%;background:#f5bd4f"></div>
+      <div style="width:12px;height:12px;border-radius:50%;background:#57c353"></div>
+    </div>
+    <button onClick="{{ toggleTheme }}" title="Toggle light/dark" style="border:none;background:none;color:var(--helper);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px" style-hover="color:var(--fg)">◐</button>
+  </div>
+  <button onClick="{{ goNvda }}" style="display:flex;align-items:center;justify-content:space-between;margin:4px 8px 10px;padding:8px 12px;border:none;border-radius:8px;background:none;color:var(--mfg);font:inherit;font-size:14px;cursor:pointer;text-align:left" style-hover="background:var(--mut);color:var(--fg)">
+    <span style="display:flex;align-items:center;gap:8px"><span style="font-size:15px;line-height:1">⊞</span>Start New Chat</span>
+    <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper)">⌘N</span>
+  </button>
+  <div style="flex:1;overflow-y:auto;min-height:0;padding:0 8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px">
+      <span style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--helper)">Fleet</span>
+      <button onClick="{{ navFleet }}" style="border:none;background:none;color:var(--helper);font-family:'Geist Mono',monospace;font-size:10px;cursor:pointer;padding:0" style-hover="color:var(--acc)">board →</button>
+    </div>
+    <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="3">
+      <div onClick="{{ s.go }}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer" style-hover="background:var(--mut)">
+        <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ s.dot }};animation:{{ s.anim }}"></span>
+        <span style="flex:1;min-width:0">
+          <span style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+          <span style="display:block;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.meta }}</span>
+        </span>
+        <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ s.timeColor }};flex:none">{{ s.time }}</span>
+      </div>
+    </sc-for>
+    <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--helper);padding:12px 8px 4px">Projects</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:14px" style-hover="background:var(--mut)"><span style="color:var(--mfg)">▾</span> LangAlpha Research</div>
+    <div style="margin-left:18px;border-left:1px solid var(--bd);padding-left:10px">
+      <sc-for list="{{ projectChats }}" as="c" hint-placeholder-count="2">
+        <div onClick="{{ c.go }}" style="padding:6px 8px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:{{ c.bg }};color:{{ c.color }}" style-hover="background:var(--mut)">{{ c.title }}</div>
+      </sc-for>
+    </div>
+    <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--helper);padding:12px 8px 4px">Today</div>
+    <sc-for list="{{ todayChats }}" as="c" hint-placeholder-count="3">
+      <div onClick="{{ c.go }}" style="padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:{{ c.bg }};color:{{ c.color }}" style-hover="background:var(--mut)">{{ c.title }}</div>
+    </sc-for>
+    <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--helper);padding:12px 8px 4px">Yesterday</div>
+    <sc-for list="{{ ydayChats }}" as="c" hint-placeholder-count="2">
+      <div style="padding:7px 8px;border-radius:8px;font-size:13px;color:var(--mfg);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" style-hover="background:var(--mut)">{{ c.title }}</div>
+    </sc-for>
+  </div>
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--bd)">
+    <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer" style-hover="color:var(--fg)">Feedback</button>
+    <div style="display:flex;gap:4px">
+      <button onClick="{{ toggleNotes }}" title="Design notes" style="border:none;background:none;color:var(--helper);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px" style-hover="color:var(--fg);background:var(--mut)">ⓘ</button>
+      <button onClick="{{ navSettings }}" title="Settings ⌘," style="border:none;background:none;color:var(--helper);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px" style-hover="color:var(--fg);background:var(--mut)">⚙</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MAIN ============ -->
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+
+<!-- ===== CHAT SCREEN ===== -->
+<sc-if value="{{ isChat }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Chat" style="display:flex;height:100%;min-height:0">
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--bd);gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mfg);min-width:0">
+      <span style="white-space:nowrap">▤ LangAlpha Research</span><span style="color:var(--helper)">›</span>
+      <span style="color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ chatTitle }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;background:var(--mut);color:var(--mfg);font-size:12px" title="Chat default mode">✓ Assist <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">default</span></span>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow-y:auto;min-height:0">
+    <div style="max-width:768px;margin:0 auto;padding:28px 24px 180px">
+
+    <!-- ========== CHAT: NVDA ========== -->
+    <sc-if value="{{ isNvda }}" hint-placeholder-val="{{ true }}">
+      <div style="margin:0 0 20px"><div style="display:inline-block;max-width:100%;background:var(--hl);color:var(--hlfg);border-radius:6px;padding:12px 20px;font-size:14.5px;line-height:1.55">Pull NVIDIA's latest quarter. I want data-center revenue trend, then compare segments against AMD. Cite the filings.</div></div>
+
+      <div style="margin:0 0 28px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:18px;height:18px;border-radius:50%;background:#d97757;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">A</span>
+          <span style="font-size:13px;color:var(--mfg)">Claude Sonnet 4.5</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">✓ assist</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">· oauth · financial-lookup tools</span>
+        </div>
+        <div style="font-size:14.5px;line-height:1.6"><p style="margin:0 0 12px">Q3 FY26 results are in. Data-center revenue hit <strong>$39.1B</strong>, up 25% QoQ — the eighth consecutive record quarter. Trend from the filings:</p></div>
+
+        <div data-comment-anchor="chart-artifact" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden;margin:0 0 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13px;font-weight:500">Data-center revenue, quarterly</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--ok);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">interactive</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">src: 10-Q × 8</span>
+              <button onClick="{{ openChartPanel }}" title="Open in side panel" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:14px;padding:0" style-hover="color:var(--fg)">⿻</button>
+            </div>
+          </div>
+          <div style="padding:14px 14px 6px">
+            <svg viewBox="0 0 640 190" style="width:100%;display:block">
+              <polygon points="{{ chartArea }}" fill="var(--hl)" opacity="0.55"></polygon>
+              <polyline points="{{ chartPoints }}" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round"></polyline>
+              <circle cx="{{ chartLastX }}" cy="{{ chartLastY }}" r="4" fill="var(--acc)"></circle>
+            </svg>
+            <div style="display:flex;justify-content:space-between;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);padding:6px 2px 8px">
+              <span>Q4·24</span><span>Q1·25</span><span>Q2·25</span><span>Q3·25</span><span>Q4·25</span><span>Q1·26</span><span>Q2·26</span><span>Q3·26</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:14.5px;line-height:1.6">
+          <p style="margin:0 0 4px">Growth is driven almost entirely by Blackwell-generation systems; supply remains
+          <span style="position:relative;display:inline-block">
+            <button onMouseEnter="{{ citePdfIn }}" onMouseLeave="{{ citeOut }}" style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);border:1px solid var(--bd);border-radius:4px;padding:0 5px;background:var(--mut);cursor:pointer;vertical-align:1px">10-Q · p.34</button>
+            <sc-if value="{{ showPdfCite }}" hint-placeholder-val="{{ false }}">
+              <span style="position:absolute;bottom:24px;left:0;z-index:30;width:300px;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--shadow);padding:10px;display:block;animation:fadeUp .12s ease">
+                <span style="display:block;height:88px;border-radius:6px;background:repeating-linear-gradient(0deg,var(--mut),var(--mut) 6px,var(--card) 6px,var(--card) 12px);border:1px solid var(--bd);position:relative">
+                  <span style="position:absolute;left:8%;right:22%;top:38px;height:12px;background:var(--hl);border-radius:2px;display:block"></span>
+                </span>
+                <span style="display:block;font-size:11.5px;line-height:1.45;color:var(--mfg);margin:8px 0 6px">"…demand for Blackwell architecture products continued to exceed supply during the quarter…"</span>
+                <a href="#" style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--acc)">sources/nvda-10q-q3fy26.pdf · p.34 ↗</a>
+              </span>
+            </sc-if>
+          </span>
+          constrained through H1 FY27, echoed by
+          <span style="position:relative;display:inline-block">
+            <button onMouseEnter="{{ citeWebIn }}" onMouseLeave="{{ citeOut }}" style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);border:1px solid var(--bd);border-radius:4px;padding:0 5px;background:var(--mut);cursor:pointer;vertical-align:1px">reuters.com</button>
+            <sc-if value="{{ showWebCite }}" hint-placeholder-val="{{ false }}">
+              <span style="position:absolute;bottom:24px;left:0;z-index:30;width:300px;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--shadow);padding:10px;display:block;animation:fadeUp .12s ease">
+                <span style="display:block;height:64px;border-radius:6px;background:repeating-linear-gradient(45deg,var(--mut),var(--mut) 8px,var(--card) 8px,var(--card) 16px);border:1px solid var(--bd)"></span>
+                <span style="display:block;font-size:12px;font-weight:500;margin:8px 0 2px">Nvidia signals supply crunch easing by mid-2027</span>
+                <span style="display:block;font-size:11.5px;color:var(--mfg);line-height:1.45">Chipmaker says CoWoS packaging capacity doubles this year…</span>
+                <a href="#" style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--acc)">reuters.com/technology/… ↗</a>
+              </span>
+            </sc-if>
+          </span>
+          reporting on packaging capacity.</p>
+        </div>
+      </div>
+
+      <div style="margin:0 0 20px"><div style="display:inline-block;max-width:100%;background:var(--hl);color:var(--hlfg);border-radius:6px;padding:12px 20px;font-size:14.5px;line-height:1.55">Now the segment comparison vs AMD — and give me a wiki card for NVIDIA I can pin.</div></div>
+
+      <!-- assistant 2 — view modes -->
+      <div style="margin:0 0 8px">
+        <!-- FOCUS -->
+        <sc-if value="{{ vmFocus }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:18px;height:18px;border-radius:50%;background:{{ carDotBg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">{{ carDotLetter }}</span>
+              <span style="font-size:13px;color:var(--mfg)">{{ carModelName }}</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ carBadge }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onClick="{{ carPrev }}" style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:1" style-hover="background:var(--mut)">‹</button>
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper)">{{ carLabel }}</span>
+              <button onClick="{{ carNext }}" style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:1" style-hover="background:var(--mut)">›</button>
+              <div style="display:flex;border:1px solid var(--bd);border-radius:999px;overflow:hidden;margin-left:6px">
+                <sc-for list="{{ viewModes }}" as="v" hint-placeholder-count="3">
+                  <button onClick="{{ v.pick }}" style="border:none;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }}">{{ v.name }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="overflow:hidden">
+            <div style="display:flex;width:300%;transition:transform .35s cubic-bezier(.4,0,.2,1);transform:{{ carTransform }}">
+              <div style="width:33.333%;flex:none;min-width:0;padding-right:2px">
+                <div style="font-size:14.5px;line-height:1.6"><p style="margin:0 0 12px">Side-by-side for the latest quarter. NVIDIA's data-center segment is now <strong>10×</strong> AMD's; AMD leads only in embedded:</p></div>
+                <div data-comment-anchor="table-artifact" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden;margin:0 0 12px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd)">
+                    <span style="font-size:13px;font-weight:500">Segment revenue — NVDA vs AMD ($B)</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">dataframe · 4×4</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;font-size:13px">
+                    <div style="padding:8px 14px;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bd)">Segment</div>
+                    <div style="padding:8px 10px;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bd);text-align:right">NVDA</div>
+                    <div style="padding:8px 10px;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bd);text-align:right">AMD</div>
+                    <div style="padding:8px 14px 8px 10px;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bd);text-align:right">Ratio</div>
+                    <sc-for list="{{ segRows }}" as="r" hint-placeholder-count="4">
+                      <div style="display:contents">
+                        <div style="padding:9px 14px;border-bottom:1px solid var(--bd)">{{ r.name }}</div>
+                        <div style="padding:9px 10px;border-bottom:1px solid var(--bd);text-align:right;font-family:'Geist Mono',monospace;font-size:12.5px">{{ r.nvda }}</div>
+                        <div style="padding:9px 10px;border-bottom:1px solid var(--bd);text-align:right;font-family:'Geist Mono',monospace;font-size:12.5px">{{ r.amd }}</div>
+                        <div style="padding:9px 14px 9px 10px;border-bottom:1px solid var(--bd);text-align:right;font-family:'Geist Mono',monospace;font-size:12.5px;color:{{ r.ratioColor }}">{{ r.ratio }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div data-comment-anchor="wiki-card" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:14px;display:flex;gap:14px">
+                  <div style="width:52px;height:52px;flex:none;border-radius:10px;background:var(--mut);border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:9px;color:var(--helper);text-align:center">logo</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:15px;font-weight:600">NVIDIA Corporation</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">companies/NVIDIA.md</span>
+                    </div>
+                    <div style="font-size:12.5px;color:var(--mfg);line-height:1.5;margin:4px 0 8px">Fabless designer of GPUs and AI accelerators. Dominates data-center AI compute via the CUDA ecosystem and Blackwell architecture.</div>
+                    <div style="display:flex;gap:14px;font-family:'Geist Mono',monospace;font-size:11px;color:var(--mfg);flex-wrap:wrap">
+                      <span>MCAP <span style="color:var(--fg)">$4.6T</span></span>
+                      <span>REV/Q <span style="color:var(--fg)">$46.7B</span></span>
+                      <span>GM <span style="color:var(--fg)">74.2%</span></span>
+                      <span>DC MIX <span style="color:var(--fg)">84%</span></span>
+                    </div>
+                  </div>
+                  <div style="flex:none;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end">
+                    <svg viewBox="0 0 80 28" style="width:80px;height:28px"><polyline points="{{ sparkPoints }}" fill="none" stroke="var(--ok)" stroke-width="1.5"></polyline></svg>
+                    <button onClick="{{ navWiki }}" style="border:none;background:none;color:var(--acc);font:inherit;font-size:11.5px;font-family:'Geist Mono',monospace;cursor:pointer;padding:0" style-hover="color:var(--fg)">open in wiki →</button>
+                  </div>
+                </div>
+              </div>
+              <div style="width:33.333%;flex:none;min-width:0;padding:0 2px">
+                <div style="border:1px dashed var(--bd2);border-radius:12px;padding:16px;font-size:14px;line-height:1.6;color:var(--mfg)">
+                  <p style="margin:0 0 10px">AMD's MI355X ramp narrows the gap in inference, but the software moat matters more than the silicon delta:</p>
+                  <p style="margin:0 0 6px">1. NVDA DC $39.1B vs AMD $3.9B — but AMD grew 41% QoQ off the smaller base.</p>
+                  <p style="margin:0 0 6px">2. Hyperscaler capex guidance implies TAM expansion covers both through FY27.</p>
+                  <p style="margin:0">3. Watch ROCm 7 adoption; it's the leading indicator for share shift.</p>
+                </div>
+              </div>
+              <div style="width:33.333%;flex:none;min-width:0;padding-left:2px">
+                <div style="border:1px dashed var(--bd2);border-radius:12px;padding:16px;font-size:14px;line-height:1.6;color:var(--mfg)">
+                  <p style="margin:0 0 10px">Cross-checked both 10-Qs. One discrepancy: AMD's "Data Center" includes Xilinx-derived accelerators; strict GPU-only would be $3.1B — ratio widens to 12.6×.</p>
+                  <p style="margin:0">Recommend normalizing segment definitions before charting; otherwise AMD's position is overstated ~20%.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- COLUMNS (classic multi-model) -->
+        <sc-if value="{{ vmColumns }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <span style="font-size:13px;color:var(--mfg)">3 models · side by side</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">artifacts stay with the main model</span>
+            </div>
+            <div style="display:flex;border:1px solid var(--bd);border-radius:999px;overflow:hidden;flex:none">
+              <sc-for list="{{ viewModes }}" as="v" hint-placeholder-count="3">
+                <button onClick="{{ v.pick }}" style="border:none;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }}">{{ v.name }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;animation:fadeUp .2s ease">
+            <sc-for list="{{ colPanels }}" as="p" hint-placeholder-count="3">
+              <div style="border:1px solid {{ p.border }};border-radius:12px;background:var(--card);overflow:hidden;display:flex;flex-direction:column">
+                <div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--bd)">
+                  <span style="width:16px;height:16px;border-radius:50%;background:{{ p.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex:none">{{ p.letter }}</span>
+                  <span style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span>
+                  <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:9px;color:{{ p.roleColor }};flex:none">{{ p.role }}</span>
+                </div>
+                <div style="padding:12px;font-size:12.5px;line-height:1.55;color:var(--mfg);flex:1">{{ p.text }}</div>
+                <div style="padding:8px 12px;border-top:1px solid var(--bd);font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper)">{{ p.foot }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <!-- FUSED -->
+        <sc-if value="{{ vmFused }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mfg)"><span style="color:var(--acc)">⚭</span>Fused · 3 models</span>
+            <div style="display:flex;border:1px solid var(--bd);border-radius:999px;overflow:hidden;flex:none">
+              <sc-for list="{{ viewModes }}" as="v" hint-placeholder-count="3">
+                <button onClick="{{ v.pick }}" style="border:none;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }}">{{ v.name }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="border:1px solid var(--acc2);border-radius:12px;background:var(--card);overflow:hidden;animation:fadeUp .2s ease">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--bd)">
+              <span style="color:var(--acc)">⚭</span><span style="font-size:13px;font-weight:500">Fused response</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">3 models · graded by Haiku 4.5 · $0.004</span>
+            </div>
+            <div style="padding:14px;font-size:14.5px;line-height:1.6">
+              <p style="margin:0 0 10px">NVIDIA's data-center segment ($39.1B) is ~10× AMD's ($3.9B), though AMD is growing faster off its base (+41% QoQ). <span style="background:var(--hl);border-radius:3px;padding:0 3px">Normalize segment definitions first</span> — AMD's figure includes Xilinx-derived accelerators; GPU-only it's $3.1B (12.6×). Not zero-sum: hyperscaler capex guidance expands TAM for both through FY27; ROCm 7 adoption is the leading indicator for any share shift.</p>
+            </div>
+            <div style="border-top:1px solid var(--bd);padding:10px 14px 14px">
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Grading · influence weights</div>
+              <sc-for list="{{ grades }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+                  <span style="width:16px;height:16px;border-radius:50%;background:{{ g.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex:none">{{ g.letter }}</span>
+                  <span style="width:120px;flex:none;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.model }}</span>
+                  <span style="flex:1;height:6px;border-radius:3px;background:var(--mut);position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ g.w }};background:var(--acc);border-radius:3px;display:block"></span></span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--fg);width:64px;text-align:right;flex:none">{{ g.score }} <span style="color:var(--helper)">· {{ g.w }}</span></span>
+                  <span style="font-size:11px;color:var(--helper);width:150px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.note }}</span>
+                </div>
+              </sc-for>
+              <div style="font-size:11px;color:var(--helper);margin-top:6px">Weights = share of fused text traceable to each response. Low-scoring models auto-hide next turn.</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ========== CHAT: WIKI ========== -->
+    <sc-if value="{{ isWikiChat }}" hint-placeholder-val="{{ false }}">
+      <div style="margin:0 0 20px"><div style="display:inline-block;max-width:100%;background:var(--hl);color:var(--hlfg);border-radius:6px;padding:12px 20px;font-size:14.5px;line-height:1.55">The transformer-architecture note is stale. Rewrite it and relink related notes in the vault.</div></div>
+      <div style="margin:0 0 28px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:18px;height:18px;border-radius:50%;background:#4285f4;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">G</span>
+          <span style="font-size:13px;color:var(--mfg)">Gemini 3 Pro</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">✓ assist</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">· wiki-mcp write access</span>
+        </div>
+        <div style="font-size:14.5px;line-height:1.6"><p style="margin:0 0 12px">Rewrote it against the 2026 literature and re-ran the linker. Draft below — approve the relink queue and I'll commit to the vault:</p></div>
+
+        <!-- note artifact -->
+        <div data-comment-anchor="note-artifact" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden;margin:0 0 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13px;font-weight:500;font-family:'Geist Mono',monospace">concepts/transformer-architecture.md</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--warn);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">draft · uncommitted</span>
+            </div>
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">obsidian · _templates/concept.md</span>
+          </div>
+          <div style="padding:12px 14px;font-size:13px;line-height:1.6">
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper);background:var(--mut);border-radius:6px;padding:8px 10px;margin-bottom:10px">---<br>type: concept · tags: [architectures, attention]<br>updated: 2026-07-21 · by: gemini-3-pro<br>---</div>
+            <p style="margin:0 0 8px">The transformer maps token sequences through stacked self-attention and MLP blocks. Modern variants replace dense attention with <a href="#" style="color:var(--acc2)">[[sliding-window attention]]</a> and cache keys/values (<a href="#" style="color:var(--acc2)">[[kv-cache]]</a>) for autoregressive decoding…</p>
+            <p style="margin:0;color:var(--mfg)">Production models pair this with <a href="#" style="color:var(--acc2)">[[mixture-of-experts]]</a> routing and <a href="#" style="color:var(--acc2)">[[rotary-embeddings]]</a>. <span style="color:var(--helper)">(+34 lines)</span></p>
+          </div>
+          <div style="border-top:1px solid var(--bd);padding:10px 14px">
+            <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:6px">Relink queue · click to approve</div>
+            <sc-for list="{{ relinks }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.pick }}" style="display:flex;width:100%;align-items:center;gap:9px;border:none;background:none;padding:5px 0;font:inherit;font-size:12.5px;text-align:left;cursor:pointer;color:{{ r.color }}">
+                <span style="width:15px;height:15px;border-radius:4px;border:1.5px solid {{ r.boxBorder }};background:{{ r.boxBg }};color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex:none;box-sizing:border-box">{{ r.mark }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:12px">{{ r.text }}</span>
+                <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ r.kind }}</span>
+              </button>
+            </sc-for>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button style="border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:6px 14px;font:inherit;font-size:12px;cursor:pointer">Commit {{ approvedCount }} to vault</button>
+              <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:6px 14px;font:inherit;font-size:12px;cursor:pointer" style-hover="color:var(--fg)">Diff full note</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- graph artifact -->
+        <div data-comment-anchor="graph-artifact" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:500">Local graph · 1 hop</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--ok);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">interactive</span></div>
+            <button onClick="{{ openGraphPanel }}" title="Open in side panel" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:14px;padding:0" style-hover="color:var(--fg)">⿻</button>
+          </div>
+          <div style="position:relative;height:170px;margin:6px 10px 10px">
+            <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="{{ edgePath }}" stroke="var(--bd2)" stroke-width="0.35" fill="none"></path></svg>
+            <sc-for list="{{ graphNodes }}" as="n" hint-placeholder-count="6">
+              <div style="position:absolute;left:{{ n.left }};top:{{ n.top }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+                <span style="width:{{ n.size }};height:{{ n.size }};border-radius:50%;background:{{ n.fill }};border:1.5px solid {{ n.ring }};display:block"></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ n.labelColor }};white-space:nowrap">{{ n.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ========== CHAT: AGENT ========== -->
+    <sc-if value="{{ isAgentChat }}" hint-placeholder-val="{{ false }}">
+      <div style="margin:0 0 20px"><div style="display:inline-block;max-width:100%;background:var(--hl);color:var(--hlfg);border-radius:6px;padding:12px 20px;font-size:14.5px;line-height:1.55">Take the optimized spec ✦ and build the fleet dashboard. Show me a preview before handing off.</div></div>
+      <div style="margin:0 0 8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:18px;height:18px;border-radius:50%;background:#d97757;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">A</span>
+          <span style="font-size:13px;color:var(--mfg)">Claude Sonnet 4.5</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">✓ assist</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">· using ✦ optimized spec · 4 sections</span>
+        </div>
+        <div style="font-size:14.5px;line-height:1.6"><p style="margin:0 0 12px">Built against the spec. Live preview below — status list re-renders from the sessions socket, logs virtualize past 5k lines. Toggle the source if you want to review before handoff:</p></div>
+
+        <!-- preview artifact -->
+        <div data-comment-anchor="preview-artifact" style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13px;font-weight:500;font-family:'Geist Mono',monospace">AgentDashboard.tsx</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--ok);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">live preview</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="display:flex;border:1px solid var(--bd);border-radius:6px;overflow:hidden">
+                <button onClick="{{ artTabPreview }}" style="border:none;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;background:{{ tabPrevBg }};color:{{ tabPrevColor }}">preview</button>
+                <button onClick="{{ artTabCode }}" style="border:none;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;background:{{ tabCodeBg }};color:{{ tabCodeColor }}">code</button>
+              </div>
+              <button onClick="{{ openPreviewPanel }}" title="Open in side panel" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:14px;padding:0" style-hover="color:var(--fg)">⿻</button>
+            </div>
+          </div>
+          <sc-if value="{{ showArtPreview }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:14px;background:var(--mut)">
+              <div style="border:1px solid var(--bd);border-radius:8px;background:var(--bg);padding:10px;display:flex;gap:10px">
+                <div style="width:70px;flex:none;display:flex;flex-direction:column;gap:5px">
+                  <div style="height:8px;width:52px;border-radius:3px;background:var(--bd2)"></div>
+                  <div style="height:6px;width:44px;border-radius:3px;background:var(--bd)"></div>
+                  <div style="height:6px;width:48px;border-radius:3px;background:var(--bd)"></div>
+                  <div style="height:6px;width:38px;border-radius:3px;background:var(--bd)"></div>
+                </div>
+                <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                  <sc-for list="{{ miniCards }}" as="m" hint-placeholder-count="3">
+                    <div style="border:1px solid var(--bd);border-radius:6px;padding:8px">
+                      <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px"><span style="width:6px;height:6px;border-radius:50%;background:{{ m.dot }};display:inline-block"></span><span style="font-family:'Geist Mono',monospace;font-size:9px;color:var(--mfg)">{{ m.name }}</span></div>
+                      <div style="height:5px;border-radius:2px;background:var(--mut);position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ m.p }};background:{{ m.dot }};display:block"></span></div>
+                      <div style="font-family:'Geist Mono',monospace;font-size:8.5px;color:var(--helper);margin-top:5px">{{ m.log }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ showArtCode }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 14px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.7;color:var(--mfg);background:var(--mut);overflow-x:auto">
+              <div><span style="color:var(--acc2)">export function</span> <span style="color:var(--fg)">AgentDashboard</span>() {</div>
+              <div>&nbsp;&nbsp;<span style="color:var(--acc2)">const</span> sessions = useFleetSessions({ staleMs: <span style="color:var(--warn)">2000</span> });</div>
+              <div>&nbsp;&nbsp;<span style="color:var(--acc2)">return</span> (</div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span style="color:var(--fg)">SidebarLayout</span> tokens={theme}&gt;</div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span style="color:var(--fg)">SessionColumns</span> data={sessions} onOpen={openLogs} /&gt;</div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span style="color:var(--fg)">LogPane</span> virtualized after={<span style="color:var(--warn)">5000</span>} /&gt;</div>
+              <div>&nbsp;&nbsp;&nbsp;&nbsp;&lt;/<span style="color:var(--fg)">SidebarLayout</span>&gt;</div>
+              <div>&nbsp;&nbsp;);</div>
+              <div>}&nbsp;<span style="color:var(--helper)">// 214 lines · 0 new deps · light+dark ✓</span></div>
+            </div>
+          </sc-if>
+          <div style="border-top:1px solid var(--bd);padding:10px 14px;display:flex;align-items:center;gap:8px">
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">acceptance: 4/4 ✓ · 50 sessions @ 16ms/frame</span>
+            <button onClick="{{ navFleet }}" style="margin-left:auto;border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:6px 14px;font:inherit;font-size:12px;cursor:pointer">Hand off to fleet →</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    </div>
+  </div>
+
+  <!-- composer -->
+  <div data-screen-label="Composer" style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:center;pointer-events:none">
+    <div style="width:100%;max-width:768px;margin:0 24px;pointer-events:auto;position:relative">
+
+      <sc-if value="{{ optimizerOpen }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Prompt Optimizer" style="position:absolute;bottom:100%;left:0;right:0;margin-bottom:10px;background:var(--card);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;animation:fadeUp .18s ease">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--bd)">
+            <div style="display:flex;align-items:center;gap:8px"><span style="color:var(--acc)">✦</span><span style="font-size:13.5px;font-weight:500">Optimize prompt</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">function · not a mode</span></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="display:flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden">
+                <sc-for list="{{ optViews }}" as="v" hint-placeholder-count="2">
+                  <button onClick="{{ v.pick }}" style="border:none;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }}">{{ v.name }}</button>
+                </sc-for>
+              </div>
+              <button onClick="{{ toggleOptimizer }}" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:15px;padding:0 2px" style-hover="color:var(--fg)">×</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:0;max-height:400px">
+            <div style="flex:1;min-width:0;padding:14px 16px;border-right:1px solid var(--bd);display:flex;flex-direction:column;gap:10px;overflow-y:auto">
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper)">Your prompt · natural language ok</div>
+              <div style="font-size:13px;line-height:1.55;color:var(--mfg);background:var(--mut);border-radius:8px;padding:10px 12px">make me a dashboard for the fleet agents, live status, logs, should look like the rest of the app, react</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper)">Intent</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ optTargets }}" as="t" hint-placeholder-count="3">
+                  <button onClick="{{ t.pick }}" style="display:flex;align-items:center;gap:8px;border:1px solid {{ t.border }};border-radius:8px;padding:7px 10px;background:{{ t.bg }};color:var(--fg);font:inherit;font-size:12.5px;text-align:left;cursor:pointer" style-hover="border-color:var(--acc2)">
+                    <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid {{ t.dotBorder }};background:{{ t.dotBg }};flex:none;box-sizing:border-box"></span>
+                    <span style="flex:1">{{ t.name }}</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ t.hint }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper)">Curate for · model set</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ optSets }}" as="ms" hint-placeholder-count="3">
+                  <button onClick="{{ ms.pick }}" style="border:1px solid {{ ms.border }};background:{{ ms.bg }};color:{{ ms.color }};border-radius:999px;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer" style-hover="border-color:var(--acc2)">{{ ms.name }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ optModels }}" as="m" hint-placeholder-count="3">
+                  <button onClick="{{ m.pick }}" style="display:inline-flex;align-items:center;gap:5px;border:1px solid {{ m.border }};background:{{ m.bgc }};border-radius:999px;padding:3px 9px 3px 4px;font:inherit;font-size:11.5px;color:{{ m.color }};cursor:pointer;opacity:{{ m.op }}">
+                    <span style="width:14px;height:14px;border-radius:50%;background:{{ m.dot }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600">{{ m.letter }}</span>{{ m.name }}
+                  </button>
+                </sc-for>
+              </div>
+              <div style="font-size:10.5px;color:var(--helper)">Output style adapts: XML sections for Claude, markdown headers for GPT, terse bullets for Gemini.</div>
+            </div>
+            <div style="flex:1.2;min-width:0;padding:14px 16px;overflow-y:auto">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper)">Optimized · {{ optCuratedLabel }}</div>
+                <div style="display:flex;gap:8px">
+                  <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:6px;padding:3px 10px;font:inherit;font-size:11.5px;cursor:pointer" style-hover="color:var(--fg)">⧉ copy</button>
+                  <button style="border:none;background:var(--fg);color:var(--bg);border-radius:6px;padding:3px 10px;font:inherit;font-size:11.5px;cursor:pointer">use ↵</button>
+                </div>
+              </div>
+              <sc-if value="{{ optStructured }}" hint-placeholder-val="{{ true }}">
+                <div style="background:var(--mut);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.7;color:var(--mfg)">
+                  <div style="color:var(--acc2)">&lt;role&gt;</div>
+                  <div style="padding-left:14px">Senior frontend engineer inside the Chorus (Tauri + React 18) codebase.</div>
+                  <div style="color:var(--acc2)">&lt;/role&gt;<br>&lt;context&gt;</div>
+                  <div style="padding-left:14px">Fleet daemon exposes GET /sessions → id, agent, machine, status, log tail. Design tokens: src/ui/themes/index.ts.</div>
+                  <div style="color:var(--acc2)">&lt;/context&gt;<br>&lt;requirements&gt;</div>
+                  <div style="padding-left:14px">Route /agents · live status ≤2s stale · virtualized logs &gt;5k lines · reuse sidebar list + pill components.</div>
+                  <div style="color:var(--acc2)">&lt;/requirements&gt;<br>&lt;acceptance&gt;</div>
+                  <div style="padding-left:14px">50 sessions &lt;16ms/frame · socket reconnect · light+dark · zero new deps.</div>
+                  <div style="color:var(--acc2)">&lt;/acceptance&gt;</div>
+                </div>
+                <div style="font-size:11px;color:var(--helper);padding-top:8px">⚑ Coding intent + agent handoff detected → added acceptance criteria. Ambiguous intent would ask: <em>"build now, or plan first?"</em></div>
+              </sc-if>
+              <sc-if value="{{ optStacked }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">before</div>
+                <div style="background:var(--mut);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:var(--mfg)">make me a dashboard for the fleet agents, live status, logs, should look like the rest of the app, react</div>
+                <div style="text-align:center;color:var(--helper);padding:8px 0;font-size:13px">↓ ✦</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--acc2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">after · claude-curated</div>
+                <div style="border:1px solid var(--acc2);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6">Build an agent-fleet dashboard page for the existing Chorus app (Tauri + React 18). Data: fleet daemon <span style="font-family:'Geist Mono',monospace;font-size:11px">GET /sessions</span> — id, agent, machine, status, log tail. Match tokens in <span style="font-family:'Geist Mono',monospace;font-size:11px">src/ui/themes</span>; reuse sidebar list + pill components. Live status ≤2s stale; virtualize logs past 5k lines. Acceptance: 50 sessions under 16ms/frame, socket reconnect, light+dark, zero new deps.</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ modeMenuOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;bottom:100%;left:0;margin-bottom:10px;z-index:40;width:300px;background:var(--card);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--shadow);padding:6px;animation:fadeUp .15s ease">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);padding:6px 10px">Mode · next message</div>
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+            <button onClick="{{ m.pick }}" style="display:flex;width:100%;align-items:flex-start;gap:10px;padding:8px 10px;border:none;border-radius:8px;background:{{ m.bg }};color:var(--fg);font:inherit;text-align:left;cursor:pointer" style-hover="background:var(--mut)">
+              <span style="width:16px;text-align:center;color:var(--acc)">{{ m.icon }}</span>
+              <span style="flex:1"><span style="display:block;font-size:13px">{{ m.name }}</span><span style="display:block;font-size:11px;color:var(--mfg);line-height:1.4">{{ m.desc }}</span></span>
+              <sc-if value="{{ m.active }}" hint-placeholder-val="{{ false }}"><span style="color:var(--acc);font-size:12px">✓</span></sc-if>
+            </button>
+          </sc-for>
+          <div style="border-top:1px solid var(--bd);margin-top:4px;padding-top:4px">
+            <button onClick="{{ navSettingsModes }}" style="display:block;width:100%;border:none;background:none;color:var(--mfg);font:inherit;font-size:12px;padding:7px 10px;text-align:left;border-radius:8px;cursor:pointer" style-hover="background:var(--mut);color:var(--fg)">Manage modes…</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ modelsMenuOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ toggleModelsMenu }}" style="position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)">
+          <div onClick="{{ stopProp }}" data-screen-label="Manage Models" style="width:680px;max-width:92%;max-height:82%;background:var(--card);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;animation:fadeUp .18s ease">
+            <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--bd)">
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13.5px;font-weight:500">Manage models</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">⌘J</span></div>
+              <button onClick="{{ toggleModelsMenu }}" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:15px;padding:0" style-hover="color:var(--fg)">×</button>
+            </div>
+            <div style="flex:none;padding:10px 16px 0"><div style="display:flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--helper);font-size:13px"><span>⌕</span>Search models…</div></div>
+            <div style="flex:1;min-height:0;display:flex;gap:0;padding:12px 0 0">
+              <div style="flex:1.15;min-width:0;overflow-y:auto;padding:0 8px 12px 16px">
+                <sc-for list="{{ modelCatalog }}" as="m" hint-placeholder-count="6">
+                  <button onClick="{{ m.pick }}" style="display:flex;width:100%;align-items:center;gap:10px;padding:8px 8px;border:none;border-radius:8px;background:none;font:inherit;text-align:left;cursor:pointer" style-hover="background:var(--mut)">
+                    <span style="width:15px;height:15px;border-radius:4px;border:1.5px solid {{ m.boxBorder }};background:{{ m.boxBg }};color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex:none;box-sizing:border-box">{{ m.mark }}</span>
+                    <span style="width:18px;height:18px;border-radius:50%;background:{{ m.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex:none">{{ m.letter }}</span>
+                    <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;color:var(--fg)">{{ m.name }}</span><span style="display:block;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ m.auth }}</span></span>
+                    <span style="width:58px;flex:none"><span style="display:block;height:4px;border-radius:2px;background:var(--mut);position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ m.quota }};background:{{ m.quotaColor }};display:block;border-radius:2px"></span></span><span style="display:block;font-family:'Geist Mono',monospace;font-size:9px;color:var(--helper);margin-top:2px">{{ m.quotaLabel }}</span></span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="flex:1;min-width:0;border-left:1px solid var(--bd);overflow-y:auto;padding:0 16px 12px 14px">
+                <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);padding:2px 0 8px">Selected · {{ selCount }}</div>
+                <sc-for list="{{ selPreview }}" as="m" hint-placeholder-count="3">
+                  <div style="border:1px solid {{ m.border }};border-radius:10px;padding:9px 11px;margin-bottom:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="width:16px;height:16px;border-radius:50%;background:{{ m.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex:none">{{ m.letter }}</span>
+                      <span style="font-size:12.5px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.name }}</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ m.roleColor }};flex:none">{{ m.role }}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
+                      <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper)">profile</span>
+                      <span style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--bd);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--mfg);cursor:pointer" style-hover="border-color:var(--acc2)">{{ m.profile }} <span style="color:var(--helper);font-size:9px">▾</span></span>
+                    </div>
+                  </div>
+                </sc-for>
+                <div style="font-size:10.5px;color:var(--helper);line-height:1.5;padding-top:2px">First model is main; the rest answer hidden and fuse on demand. Profiles come from Settings › Models.</div>
+              </div>
+            </div>
+            <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-top:1px solid var(--bd)">
+              <button onClick="{{ clearSel }}" style="border:none;background:none;color:var(--mfg);font:inherit;font-size:12px;cursor:pointer;padding:0" style-hover="color:var(--fg)">Clear all <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">⌘⇧⌫</span></button>
+              <button onClick="{{ toggleModelsMenu }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:6px 16px;font:inherit;font-size:12.5px;cursor:pointer">Done</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="background:var(--bg);border:1px solid var(--bd);border-bottom:none;border-radius:12px 12px 0 0;box-shadow:var(--shadow);padding:10px 16px 12px">
+        <div style="font-size:14.5px;color:var(--helper);padding:6px 2px 14px;cursor:text">Ask me anything…</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;overflow-x:auto">
+            <button title="Attach" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;border:none;background:var(--mut);color:var(--mfg);font-size:15px;cursor:pointer;flex:none" style-hover="color:var(--fg)">＋</button>
+            <button onClick="{{ toggleModelsMenu }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;border:none;background:var(--mut);color:var(--fg);font:inherit;font-size:13px;cursor:pointer;flex:none" style-hover="background:var(--hl)">
+              <span style="display:inline-flex">
+                <span style="width:16px;height:16px;border-radius:50%;background:#d97757;border:2px solid var(--bg);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;box-sizing:border-box">A</span>
+                <span style="width:16px;height:16px;border-radius:50%;background:#10a37f;border:2px solid var(--bg);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;margin-left:-6px;box-sizing:border-box">O</span>
+                <span style="width:16px;height:16px;border-radius:50%;background:#4285f4;border:2px solid var(--bg);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;margin-left:-6px;box-sizing:border-box">G</span>
+              </span>
+              Sonnet 4.5 <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">+2</span>
+            </button>
+            <button onClick="{{ toggleModeMenu }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;border:none;background:var(--mut);color:var(--fg);font:inherit;font-size:13px;cursor:pointer;flex:none" style-hover="background:var(--hl)">{{ msgModeIcon }} {{ msgModeName }} <span style="color:var(--helper);font-size:10px">▾</span></button>
+            <button onClick="{{ toggleOptimizer }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;border:1px solid {{ optBtnBorder }};background:{{ optBtnBg }};color:{{ optBtnColor }};font:inherit;font-size:13px;cursor:pointer;flex:none" style-hover="border-color:var(--acc)">✦ Optimize</button>
+          </div>
+          <button title="Send ↵" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;border:none;background:var(--fg);color:var(--bg);font-size:15px;cursor:pointer;flex:none" style-hover="transform:scale(1.08)">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ===== ARTIFACT SIDE PANEL ===== -->
+  <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Artifact Panel" style="width:44%;min-width:380px;flex:none;border-left:1px solid var(--bd);background:var(--card);display:flex;flex-direction:column;min-height:0;animation:fadeUp .2s ease">
+      <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--bd)">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ panelTitle }}</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--ok);border:1px solid var(--bd);border-radius:4px;padding:1px 5px;flex:none">interactive</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex:none">
+          <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:3px 11px;font:inherit;font-size:11px;cursor:pointer" style-hover="color:var(--fg)">{{ panelAction }}</button>
+          <button onClick="{{ closePanel }}" title="Return inline" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:16px" style-hover="color:var(--fg)">×</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:18px">
+        <sc-if value="{{ panelChart }}" hint-placeholder-val="{{ false }}">
+          <svg viewBox="0 0 640 190" style="width:100%;display:block">
+            <polygon points="{{ chartArea }}" fill="var(--hl)" opacity="0.55"></polygon>
+            <polyline points="{{ chartPoints }}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linejoin="round"></polyline>
+            <circle cx="{{ chartLastX }}" cy="{{ chartLastY }}" r="3.5" fill="var(--acc)"></circle>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);padding:8px 2px 16px">
+            <span>Q4·24</span><span>Q1·25</span><span>Q2·25</span><span>Q3·25</span><span>Q4·25</span><span>Q1·26</span><span>Q2·26</span><span>Q3·26</span>
+          </div>
+          <div style="border:1px solid var(--bd);border-radius:10px;overflow:hidden">
+            <sc-for list="{{ chartRows }}" as="r" hint-placeholder-count="8">
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;border-bottom:1px solid var(--bd);font-family:'Geist Mono',monospace;font-size:11.5px"><span style="color:var(--mfg)">{{ r.q }}</span><span>{{ r.v }}</span><span style="color:{{ r.dColor }}">{{ r.d }}</span></div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ panelGraph }}" hint-placeholder-val="{{ false }}">
+          <div style="position:relative;height:300px;border:1px solid var(--bd);border-radius:10px;margin-bottom:14px">
+            <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="{{ edgePath }}" stroke="var(--bd2)" stroke-width="0.3" fill="none"></path></svg>
+            <sc-for list="{{ graphNodes }}" as="n" hint-placeholder-count="6">
+              <div style="position:absolute;left:{{ n.left }};top:{{ n.top }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+                <span style="width:{{ n.size }};height:{{ n.size }};border-radius:50%;background:{{ n.fill }};border:1.5px solid {{ n.ring }};display:block"></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ n.labelColor }};white-space:nowrap">{{ n.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Linked notes</div>
+          <sc-for list="{{ graphList }}" as="l" hint-placeholder-count="5">
+            <div style="display:flex;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--bd);font-size:12.5px"><span style="font-family:'Geist Mono',monospace;font-size:12px;color:var(--acc2)">{{ l.file }}</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ l.n }} links</span></div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ panelPreview }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid var(--bd);border-radius:8px;background:var(--bg);padding:12px;display:flex;gap:12px;margin-bottom:14px">
+            <div style="width:90px;flex:none;display:flex;flex-direction:column;gap:6px">
+              <div style="height:9px;width:64px;border-radius:3px;background:var(--bd2)"></div>
+              <div style="height:7px;width:52px;border-radius:3px;background:var(--bd)"></div>
+              <div style="height:7px;width:58px;border-radius:3px;background:var(--bd)"></div>
+              <div style="height:7px;width:44px;border-radius:3px;background:var(--bd)"></div>
+            </div>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+              <sc-for list="{{ miniCards }}" as="m" hint-placeholder-count="3">
+                <div style="border:1px solid var(--bd);border-radius:6px;padding:10px">
+                  <div style="display:flex;align-items:center;gap:5px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:{{ m.dot }};display:inline-block"></span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--mfg)">{{ m.name }}</span></div>
+                  <div style="height:6px;border-radius:3px;background:var(--mut);position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ m.p }};background:{{ m.dot }};display:block"></span></div>
+                  <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper);margin-top:7px">{{ m.log }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper);line-height:1.7">route /agents · socket wss://fleet.local/sessions · reconnect ✓<br>render 50 sessions: 11.2ms/frame · logs virtualized &gt;5k ✓</div>
+          <button onClick="{{ navFleet }}" style="margin-top:14px;border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer">Hand off to fleet →</button>
+        </sc-if>
+      </div>
+      <div style="flex:none;border-top:1px solid var(--bd);padding:9px 16px;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ panelFoot }} · × returns it inline, chat stays put</div>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ===== FLEET SCREEN ===== -->
+<sc-if value="{{ isFleet }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Fleet Board" style="display:flex;flex-direction:column;height:100%;min-height:0">
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--bd);gap:10px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onClick="{{ goNvda }}" style="border:none;background:none;color:var(--helper);font:inherit;font-size:12px;cursor:pointer;padding:0" style-hover="color:var(--fg)">←</button>
+      <span style="font-size:16px;font-weight:600">Fleet</span>
+      <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">self-hosted runner mesh · fleetd v0.3</span>
+      <div style="display:flex;border:1px solid var(--bd);border-radius:999px;overflow:hidden;margin-left:6px">
+        <sc-for list="{{ fleetViews }}" as="v" hint-placeholder-count="2">
+          <button onClick="{{ v.pick }}" style="border:none;padding:5px 13px;font:inherit;font-size:12px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }}">{{ v.name }}</button>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <sc-for list="{{ machines }}" as="m" hint-placeholder-count="3">
+        <span style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:999px;padding:4px 11px;font-family:'Geist Mono',monospace;font-size:11px;color:var(--mfg)"><span style="width:6px;height:6px;border-radius:50%;background:{{ m.dot }};display:inline-block"></span>{{ m.name }} <span style="color:var(--helper)">{{ m.load }}</span></span>
+      </sc-for>
+      <button style="border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:6px 14px;font:inherit;font-size:12.5px;cursor:pointer">＋ New task</button>
+    </div>
+  </div>
+  <div style="flex:1;min-height:0;overflow:auto;padding:18px 20px">
+    <sc-if value="{{ fleetBoard }}" hint-placeholder-val="{{ true }}">
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:14px;min-width:960px;align-items:start">
+      <sc-for list="{{ kanban }}" as="col" hint-placeholder-count="4">
+        <div style="background:var(--sb);border:1px solid var(--bd);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 6px">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ col.dot }};display:inline-block"></span>
+            <span style="font-size:12.5px;font-weight:500">{{ col.name }}</span>
+            <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ col.count }}</span>
+          </div>
+          <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="2">
+            <div style="background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;cursor:pointer" style-hover="border-color:var(--bd2)">
+              <div style="font-size:13px;line-height:1.4;margin-bottom:6px">{{ c.title }}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                <span style="width:14px;height:14px;border-radius:50%;background:{{ c.agentBg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;flex:none">{{ c.agentLetter }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--mfg)">{{ c.agent }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);margin-left:auto">{{ c.machine }}</span>
+              </div>
+              <sc-if value="{{ c.hasBar }}" hint-placeholder-val="{{ false }}">
+                <div style="height:4px;border-radius:2px;background:var(--mut);position:relative;overflow:hidden;margin-bottom:7px"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ c.p }};background:{{ c.barColor }};display:block"></span></div>
+              </sc-if>
+              <sc-if value="{{ c.hasLog }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:7px">{{ c.log }}</div>
+              </sc-if>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ c.branch }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ c.metaColor }};margin-left:auto">{{ c.meta }}</span>
+              </div>
+              <sc-if value="{{ c.hasReview }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:6px;margin-top:8px">
+                  <button style="border:none;background:var(--fg);color:var(--bg);border-radius:6px;padding:4px 10px;font:inherit;font-size:11px;cursor:pointer">Open diff</button>
+                  <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:6px;padding:4px 10px;font:inherit;font-size:11px;cursor:pointer" style-hover="color:var(--fg)">Discuss in chat</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- worktrees view -->
+    <sc-if value="{{ fleetTree }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Fleet Worktrees" style="max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:14px;animation:fadeUp .2s ease">
+      <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13.5px;font-weight:500">Cost policy</div>
+            <div style="font-size:11.5px;color:var(--helper);margin-top:2px">Roles are pinned to the workflow; the policy decides which model fills each role.</div>
+          </div>
+          <div style="display:flex;border:1px solid var(--bd);border-radius:999px;overflow:hidden">
+            <sc-for list="{{ costPresets }}" as="c" hint-placeholder-count="3">
+              <button onClick="{{ c.pick }}" style="border:none;padding:5px 13px;font:inherit;font-size:12px;cursor:pointer;background:{{ c.bg }};color:{{ c.color }}">{{ c.name }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+          <sc-for list="{{ roleChips }}" as="r" hint-placeholder-count="3">
+            <div style="border:1px solid var(--bd);border-radius:10px;padding:9px 12px;flex:1;min-width:200px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--helper)">{{ r.role }}</span>
+                <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);border-radius:999px;padding:2px 9px 2px 3px;font-size:11.5px">
+                  <span style="width:14px;height:14px;border-radius:50%;background:{{ r.dot }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:600">{{ r.letter }}</span>{{ r.model }}
+                </span>
+              </div>
+              <div style="font-size:10.5px;color:var(--helper);margin-top:6px;line-height:1.45">{{ r.note }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);margin-top:10px">{{ costEst }}</div>
+      </div>
+
+      <sc-for list="{{ features }}" as="f" hint-placeholder-count="2">
+        <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bd);flex-wrap:wrap">
+            <span style="width:8px;height:8px;border-radius:50%;background:{{ f.dot }};flex:none"></span>
+            <span style="font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--fg)">{{ f.branch }}</span>
+            <span style="font-size:13px;color:var(--mfg)">{{ f.title }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ f.wt }}</span>
+            <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:{{ f.badgeColor }};border:1px solid var(--bd);border-radius:4px;padding:2px 6px">{{ f.badge }}</span>
+          </div>
+          <div style="padding:10px 14px 12px 22px">
+            <sc-for list="{{ f.tickets }}" as="t" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0 8px 14px;border-left:1px solid var(--bd)">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ t.dot }};flex:none;margin-left:-18px;border:2px solid var(--card);box-sizing:content-box"></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper);width:44px;flex:none">{{ t.id }}</span>
+                <span style="flex:1;min-width:0">
+                  <span style="display:block;font-size:13px">{{ t.title }}</span>
+                  <span style="display:block;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper)">{{ t.wt }}</span>
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);border-radius:999px;padding:2px 9px 2px 3px;font-size:11px;color:var(--mfg);flex:none">
+                  <span style="width:13px;height:13px;border-radius:50%;background:{{ workerDot }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:600">{{ workerLetter }}</span>{{ workerModel }}
+                </span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ t.metaColor }};flex:none;width:96px;text-align:right">{{ t.meta }}</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:10px 12px;border:1px dashed var(--bd2);border-radius:10px">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ f.supDotColor }};flex:none;animation:{{ f.supAnim }}"></span>
+              <span style="font-size:12.5px;font-weight:500;flex:none">Supervisor</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);border-radius:999px;padding:2px 9px 2px 3px;font-size:11px;color:var(--mfg);flex:none">
+                <span style="width:13px;height:13px;border-radius:50%;background:{{ supDot }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:600">{{ supLetter }}</span>{{ supModel }}
+              </span>
+              <span style="font-size:11px;color:var(--mfg);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.supNote }}</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ f.supStateColor }};flex:none">{{ f.supState }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+      <div style="font-size:11px;color:var(--helper);line-height:1.6;padding:0 2px">Every ticket runs in its own git worktree branched off the feature worktree. When all tickets land, a supervisor is <strong style="color:var(--mfg)">spawned on demand</strong>: it reviews each diff, merges child worktrees into the feature branch, then opens the PR to main and exits.</div>
+    </div>
+    </sc-if>
+  </div>
+  <div style="flex:none;border-top:1px solid var(--bd);padding:9px 20px;display:flex;gap:16px;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper)">
+    <span>own protocol · paseo-compatible runners · fusion-style fan-out planned</span><span style="margin-left:auto">{{ fleetFootHint }}</span>
+  </div>
+</div>
+</sc-if>
+
+<!-- ===== WIKI SCREEN (Obsidian vault) ===== -->
+<sc-if value="{{ isWiki }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Wiki Vault" style="display:flex;height:100%;min-height:0">
+  <div style="width:240px;flex:none;border-right:1px solid var(--bd);display:flex;flex-direction:column;min-height:0;background:var(--sb)">
+    <div style="padding:14px 12px 6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px">
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--mfg)">▦ statement-analysis <span style="color:var(--helper)">· vault</span></span>
+        <button onClick="{{ wikiGoGraph }}" title="Graph view" style="border:1px solid {{ graphBtnBorder }};background:{{ graphBtnBg }};color:var(--mfg);border-radius:6px;padding:2px 8px;font-family:'Geist Mono',monospace;font-size:10px;cursor:pointer" style-hover="color:var(--fg)">◉ graph</button>
+      </div>
+      <div onClick="{{ wikiGoSearch }}" style="display:flex;align-items:center;gap:6px;border:1px solid {{ searchBtnBorder }};border-radius:8px;padding:6px 10px;color:var(--helper);font-size:13px;background:var(--bg);cursor:pointer" style-hover="border-color:var(--bd2)"><span>⌕</span>Search notes… <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px">⌘K</span></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:6px 8px">
+      <sc-for list="{{ vaultTree }}" as="f" hint-placeholder-count="10">
+        <div onClick="{{ f.go }}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;padding-left:{{ f.pad }};border-radius:7px;cursor:pointer;background:{{ f.bg }}" style-hover="background:var(--mut)">
+          <span style="color:var(--helper);font-size:11px;flex:none">{{ f.icon }}</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ f.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+          <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper);flex:none">{{ f.n }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="padding:10px 12px;border-top:1px solid var(--bd);font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);line-height:1.6">1,508 files · git sync ✓ 2m ago<br>agents write via wiki-mcp + hooks</div>
+  </div>
+  <div style="flex:1;min-width:0;overflow-y:auto">
+    <sc-if value="{{ wvNote }}" hint-placeholder-val="{{ true }}">
+    <div style="max-width:860px;margin:0 auto;padding:24px 32px;display:flex;gap:26px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <button onClick="{{ goNvda }}" style="border:none;background:none;color:var(--helper);font:inherit;font-size:12px;cursor:pointer;padding:0" style-hover="color:var(--fg)">← chat</button>
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper)">companies / NVIDIA.md</span>
+        </div>
+        <h1 style="font-size:25px;font-weight:600;margin:0 0 8px">NVIDIA Corporation</h1>
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);background:var(--hl);border-radius:999px;padding:2px 9px">#company</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);background:var(--hl);border-radius:999px;padding:2px 9px">#semiconductors</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);border:1px solid var(--bd);border-radius:999px;padding:2px 9px">from _templates/company.md</span>
+        </div>
+        <p style="font-size:14.5px;line-height:1.7;margin:0 0 14px"><strong>NVIDIA</strong> is a fabless semiconductor company whose data-center platform — the <a href="#" style="color:var(--acc2)">[[Blackwell architecture]]</a>, NVLink fabric, and the <a href="#" style="color:var(--acc2)">[[CUDA]]</a> software stack — accounts for 84% of revenue as of Q3 FY26. Principal manufacturing dependencies: <a href="#" style="color:var(--acc2)">[[TSMC]]</a> (4NP wafers, <a href="#" style="color:var(--acc2)">[[CoWoS packaging]]</a>) and SK hynix / Micron for <a href="#" style="color:var(--acc2)">[[HBM memory]]</a>.</p>
+        <p style="font-size:14.5px;line-height:1.7;margin:0 0 18px">GB300 systems remain demand-constrained; packaging capacity guided to double through 2026. Competitive pressure from AMD's MI355X concentrates in inference, where the CUDA moat is thinnest. <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper)">^rev-fy26</span></p>
+        <div style="border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin:0 0 18px;background:var(--card)">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Linked mentions · 6</div>
+          <sc-for list="{{ backlinks }}" as="b" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px"><span style="color:var(--acc)">◆</span><a href="#" style="font-family:'Geist Mono',monospace;font-size:12px;color:var(--fg)">{{ b.file }}</a><span style="color:var(--mfg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">{{ b.ctx }}</span></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ goNvda }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer">Ask about this note</button>
+          <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer" style-hover="color:var(--fg)">Open in Obsidian ↗</button>
+          <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer" style-hover="color:var(--fg)">git history</button>
+        </div>
+      </div>
+      <div style="width:230px;flex:none">
+        <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:14px;position:sticky;top:20px">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Properties</div>
+          <sc-for list="{{ wikiStats }}" as="s" hint-placeholder-count="5">
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--bd)"><span style="color:var(--mfg)">{{ s.k }}</span><span style="font-family:'Geist Mono',monospace;font-size:11.5px">{{ s.v }}</span></div>
+          </sc-for>
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin:12px 0 4px">Local graph</div>
+          <div style="position:relative;height:110px">
+            <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="{{ wikiEdgePath }}" stroke="var(--bd2)" stroke-width="0.4" fill="none"></path></svg>
+            <sc-for list="{{ wikiGraphNodes }}" as="n" hint-placeholder-count="5">
+              <div style="position:absolute;left:{{ n.left }};top:{{ n.top }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px">
+                <span style="width:{{ n.size }};height:{{ n.size }};border-radius:50%;background:{{ n.fill }};border:1px solid {{ n.ring }};display:block"></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:8px;color:{{ n.labelColor }};white-space:nowrap">{{ n.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper);text-align:right;margin-top:6px">last edit: gemini-3-pro · 2h</div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- concept page -->
+    <sc-if value="{{ wvConcept }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Wiki Concept" style="max-width:860px;margin:0 auto;padding:24px 32px;display:flex;gap:26px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <button onClick="{{ wikiGoNote }}" style="border:none;background:none;color:var(--helper);font:inherit;font-size:12px;cursor:pointer;padding:0" style-hover="color:var(--fg)">←</button>
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper)">concepts / transformer-architecture.md</span>
+        </div>
+        <h1 style="font-size:25px;font-weight:600;margin:0 0 8px">Transformer architecture</h1>
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);background:var(--hl);border-radius:999px;padding:2px 9px">#concept</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--acc2);background:var(--hl);border-radius:999px;padding:2px 9px">#architectures</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);border:1px solid var(--bd);border-radius:999px;padding:2px 9px">from _templates/concept.md</span>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:6px">Definition</div>
+        <p style="font-size:14.5px;line-height:1.7;margin:0 0 14px">Sequence model mapping tokens through stacked <a href="#" style="color:var(--acc2)">[[attention]]</a> and MLP blocks. Modern production variants add <a href="#" style="color:var(--acc2)">[[mixture-of-experts]]</a> routing, <a href="#" style="color:var(--acc2)">[[rotary-embeddings]]</a>, and a <a href="#" style="color:var(--acc2)">[[kv-cache]]</a> for autoregressive decoding.</p>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:6px">Why it matters here</div>
+        <p style="font-size:14.5px;line-height:1.7;margin:0 0 18px">Inference economics of this architecture (memory-bound decode, KV-cache size) drive the HBM demand analyzed in <a onClick="{{ wikiGoNote }}" style="color:var(--acc2);cursor:pointer">[[NVIDIA]]</a> and <a href="#" style="color:var(--acc2)">[[HBM memory]]</a> — it's the causal link between model design and semiconductor revenue.</p>
+        <div style="border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin:0 0 18px;background:var(--card)">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Linked mentions · 9</div>
+          <sc-for list="{{ conceptBacklinks }}" as="b" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px"><span style="color:var(--acc)">◆</span><a href="#" style="font-family:'Geist Mono',monospace;font-size:12px;color:var(--fg)">{{ b.file }}</a><span style="color:var(--mfg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">{{ b.ctx }}</span></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ goNvda }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer">Ask about this note</button>
+          <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:7px 16px;font:inherit;font-size:12.5px;cursor:pointer" style-hover="color:var(--fg)">Open in Obsidian ↗</button>
+        </div>
+      </div>
+      <div style="width:230px;flex:none">
+        <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:14px;position:sticky;top:20px">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin-bottom:8px">Properties</div>
+          <sc-for list="{{ conceptStats }}" as="s" hint-placeholder-count="4">
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--bd)"><span style="color:var(--mfg)">{{ s.k }}</span><span style="font-family:'Geist Mono',monospace;font-size:11.5px">{{ s.v }}</span></div>
+          </sc-for>
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin:12px 0 4px">Local graph</div>
+          <div style="position:relative;height:110px">
+            <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="{{ edgePath }}" stroke="var(--bd2)" stroke-width="0.4" fill="none"></path></svg>
+            <sc-for list="{{ graphNodes }}" as="n" hint-placeholder-count="6">
+              <div style="position:absolute;left:{{ n.left }};top:{{ n.top }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px">
+                <span style="width:{{ n.size }};height:{{ n.size }};border-radius:50%;background:{{ n.fill }};border:1px solid {{ n.ring }};display:block"></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:8px;color:{{ n.labelColor }};white-space:nowrap">{{ n.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- search view -->
+    <sc-if value="{{ wvSearch }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Wiki Search" style="max-width:620px;margin:0 auto;padding:26px 32px">
+      <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--bd2);border-radius:10px;padding:10px 14px;background:var(--card);margin-bottom:8px">
+        <span style="color:var(--helper);font-size:15px">⌕</span>
+        <input value="{{ wq }}" onChange="{{ setWq }}" placeholder="Search 1,508 notes…" autoFocus="{{ true }}" style="flex:1;border:none;outline:none;background:none;color:var(--fg);font:inherit;font-size:14.5px"></input>
+        <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">esc</span>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper);padding:0 2px 12px">{{ wikiResultCount }} results · title + content · ranked by links</div>
+      <sc-for list="{{ wikiResults }}" as="r" hint-placeholder-count="5">
+        <button onClick="{{ r.go }}" style="display:block;width:100%;border:1px solid var(--bd);border-radius:10px;background:var(--card);padding:11px 14px;margin-bottom:8px;font:inherit;text-align:left;cursor:pointer;animation:fadeUp .15s ease" style-hover="border-color:var(--bd2)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'Geist Mono',monospace;font-size:12.5px;color:var(--acc2)">{{ r.file }}</span>
+            <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper)">{{ r.links }} links</span>
+          </div>
+          <div style="font-size:12.5px;color:var(--mfg);line-height:1.5;margin-top:4px">{{ r.snippet }}</div>
+        </button>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- graph view -->
+    <sc-if value="{{ wvGraph }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Wiki Graph" style="max-width:920px;margin:0 auto;padding:22px 32px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bd2);border-radius:10px;padding:8px 12px;background:var(--card);flex:1;max-width:340px">
+          <span style="color:var(--helper)">⌕</span>
+          <input value="{{ wgq }}" onChange="{{ setWgq }}" placeholder="Filter graph…" style="flex:1;border:none;outline:none;background:none;color:var(--fg);font:inherit;font-size:13px"></input>
+        </div>
+        <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--helper)">{{ graphMatchLabel }}</span>
+        <div style="margin-left:auto;display:flex;gap:12px;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--acc);vertical-align:-1px"></span> companies</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);vertical-align:-1px"></span> concepts</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);vertical-align:-1px"></span> sectors</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--helper);vertical-align:-1px"></span> sources</span>
+        </div>
+      </div>
+      <div style="position:relative;height:520px;border:1px solid var(--bd);border-radius:12px;background:var(--card)">
+        <svg viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%"><path d="{{ bigEdgePath }}" stroke="var(--bd2)" stroke-width="0.18" fill="none"></path></svg>
+        <sc-for list="{{ bigGraphNodes }}" as="n" hint-placeholder-count="12">
+          <div onClick="{{ n.go }}" style="position:absolute;left:{{ n.left }};top:{{ n.top }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;opacity:{{ n.op }};transition:opacity .2s">
+            <span style="width:{{ n.size }};height:{{ n.size }};border-radius:50%;background:{{ n.fill }};border:1.5px solid {{ n.ring }};display:block"></span>
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ n.labelColor }};white-space:nowrap;background:var(--card);padding:0 3px;border-radius:3px">{{ n.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);margin-top:8px">click a node to open its note · 1,508 notes, 4,211 links in full vault</div>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ===== SETTINGS SCREEN ===== -->
+<sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Settings" style="display:flex;height:100%;min-height:0">
+  <div style="width:216px;flex:none;border-right:1px solid var(--bd);padding:18px 8px;display:flex;flex-direction:column">
+    <button onClick="{{ goNvda }}" style="border:none;background:none;color:var(--helper);font:inherit;font-size:12px;cursor:pointer;text-align:left;padding:0 10px;margin-bottom:12px" style-hover="color:var(--fg)">← back</button>
+    <div style="font-size:17px;font-weight:600;padding:0 10px 4px">Settings</div>
+    <div style="font-size:11px;color:var(--helper);padding:0 10px 14px">5 sections. It was 12 tabs.</div>
+    <sc-for list="{{ settingsNav }}" as="s" hint-placeholder-count="5">
+      <button onClick="{{ s.go }}" style="display:flex;align-items:center;gap:10px;width:100%;border:none;border-radius:8px;padding:8px 10px;font:inherit;font-size:13.5px;text-align:left;cursor:pointer;background:{{ s.bg }};color:{{ s.color }}" style-hover="background:var(--mut)">
+        <span style="width:16px;text-align:center;color:var(--acc)">{{ s.icon }}</span>{{ s.label }}
+        <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--helper)">{{ s.count }}</span>
+      </button>
+    </sc-for>
+    <div style="margin-top:auto;padding:10px;font-size:11px;color:var(--helper);line-height:1.5">Absorbed: API Keys, System Prompt, Prompt Profiles, Visible Models, Model Profiles, Defaults, Permissions, Base URL, Import, Docs.</div>
+  </div>
+  <div style="flex:1;min-width:0;overflow-y:auto">
+    <div style="max-width:640px;margin:0 auto;padding:24px 28px 60px">
+      <div style="display:flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:8px;padding:7px 12px;color:var(--helper);font-size:13px;margin-bottom:22px"><span>⌕</span>Search all settings…</div>
+
+      <sc-if value="{{ secAccounts }}" hint-placeholder-val="{{ true }}">
+        <h2 style="font-size:16px;font-weight:600;margin:0 0 4px">Accounts &amp; providers</h2>
+        <p style="font-size:12.5px;color:var(--mfg);margin:0 0 16px">Sign in with the account you already pay for. Keys are the fallback, not the default.</p>
+        <sc-for list="{{ providers }}" as="p" hint-placeholder-count="6">
+          <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px">
+            <span style="width:28px;height:28px;border-radius:50%;background:{{ p.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">{{ p.letter }}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:flex;align-items:center;gap:8px"><span style="font-size:13.5px;font-weight:500">{{ p.name }}</span><span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ p.badgeColor }};border:1px solid var(--bd);border-radius:4px;padding:1px 5px">{{ p.badge }}</span></span>
+              <span style="display:block;font-size:11.5px;color:var(--helper);margin-top:2px">{{ p.detail }}</span>
+              <sc-if value="{{ p.hasQuota }}" hint-placeholder-val="{{ false }}">
+                <span style="display:flex;align-items:center;gap:8px;margin-top:7px">
+                  <span style="flex:1;height:5px;border-radius:3px;background:var(--mut);position:relative;overflow:hidden;display:block;max-width:220px"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ p.quota }};background:{{ p.quotaColor }};border-radius:3px;display:block"></span></span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ p.quotaLabel }}</span>
+                </span>
+              </sc-if>
+            </span>
+            <button style="border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:5px 14px;font:inherit;font-size:12px;cursor:pointer;flex:none" style-hover="border-color:var(--acc2)">{{ p.btn }}</button>
+          </div>
+        </sc-for>
+        <div style="font-size:11.5px;color:var(--helper);margin-top:4px">Advanced: custom base URL · LM Studio endpoint — one row each, no more dedicated tabs.</div>
+      </sc-if>
+
+      <sc-if value="{{ secModels }}" hint-placeholder-val="{{ false }}">
+        <h2 style="font-size:16px;font-weight:600;margin:0 0 4px">Models</h2>
+        <p style="font-size:12.5px;color:var(--mfg);margin:0 0 16px">Visibility, defaults and per-model overrides in one table. ★ = default main model.</p>
+        <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden">
+          <sc-for list="{{ modelRows }}" as="m" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd)">
+              <span style="width:18px;height:18px;border-radius:50%;background:{{ m.bg }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex:none">{{ m.letter }}</span>
+              <span style="flex:1;min-width:0"><span style="display:block;font-size:13px">{{ m.name }}</span><span style="display:block;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ m.via }}</span></span>
+              <span style="width:70px;flex:none"><span style="display:block;height:4px;border-radius:2px;background:var(--mut);position:relative;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ m.quota }};background:{{ m.quotaColor }};display:block;border-radius:2px"></span></span><span style="display:block;font-family:'Geist Mono',monospace;font-size:9px;color:var(--helper);margin-top:2px">{{ m.quotaLabel }}</span></span>
+              <span style="color:{{ m.starColor }};font-size:14px;width:18px;text-align:center;cursor:pointer;flex:none">★</span>
+              <span style="width:30px;height:17px;border-radius:9px;background:{{ m.togBg }};position:relative;cursor:pointer;flex:none"><span style="position:absolute;top:2px;width:13px;height:13px;border-radius:50%;background:#fff;left:{{ m.togLeft }};transition:left .15s;display:block"></span></span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border:1px dashed var(--bd2);border-radius:12px;padding:12px 14px;margin-top:12px;font-size:12.5px;color:var(--mfg);line-height:1.55">Model sets (Chat trio / Coding / Fast-cheap) live here too — the same sets ✦ Optimize curates for.</div>
+      </sc-if>
+
+      <sc-if value="{{ secModes }}" hint-placeholder-val="{{ false }}">
+        <h2 style="font-size:16px;font-weight:600;margin:0 0 4px">Modes</h2>
+        <p style="font-size:12.5px;color:var(--mfg);margin:0 0 16px">A mode is a system prompt with a stance. Replaces System Prompt + Prompt Profiles. Set a default per app, per project, or per chat.</p>
+        <sc-for list="{{ modeCards }}" as="m" hint-placeholder-count="3">
+          <div style="border:1px solid {{ m.border }};border-radius:12px;background:var(--card);padding:14px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:var(--acc)">{{ m.icon }}</span><span style="font-size:13.5px;font-weight:500">{{ m.name }}</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper);border:1px solid var(--bd);border-radius:4px;padding:1px 5px">{{ m.tag }}</span>
+              <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">{{ m.usage }}</span>
+            </div>
+            <div style="font-size:12.5px;color:var(--mfg);line-height:1.55;margin-top:6px">{{ m.desc }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--helper);background:var(--mut);border-radius:8px;padding:8px 10px;margin-top:10px;line-height:1.5">{{ m.prompt }}</div>
+          </div>
+        </sc-for>
+        <div style="border:1px dashed var(--bd2);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--mfg);line-height:1.55"><span style="color:var(--acc)">✦</span> <strong style="color:var(--fg)">Prompt Optimizer is not a mode.</strong> It's a function on the composer — rewrites one message, curated for the current model set, then gets out of the way. Modes shape every message.</div>
+      </sc-if>
+
+      <sc-if value="{{ secConnections }}" hint-placeholder-val="{{ false }}">
+        <h2 style="font-size:16px;font-weight:600;margin:0 0 4px">Connections</h2>
+        <p style="font-size:12.5px;color:var(--mfg);margin:0 0 16px">Fleet, MCP tools, and imports.</p>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin:0 0 8px">Fleet · self-hosted</div>
+        <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none"></span>
+            <span style="font-size:13.5px;font-weight:500">fleetd</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--helper)">own protocol · paseo-compatible runners · 3 machines</span>
+            <button onClick="{{ navFleet }}" style="margin-left:auto;border:1px solid var(--bd);background:none;color:var(--mfg);border-radius:999px;padding:4px 12px;font:inherit;font-size:11.5px;cursor:pointer" style-hover="color:var(--fg)">Open board</button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;border:1px solid var(--bd);border-radius:6px;padding:3px 8px;color:var(--mfg)">m4-mini · 2 slots</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;border:1px solid var(--bd);border-radius:6px;padding:3px 8px;color:var(--mfg)">hetzner-01 · 4 slots</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;border:1px solid var(--bd);border-radius:6px;padding:3px 8px;color:var(--mfg)">gpu-box · 1 slot</span>
+          </div>
+          <div style="font-size:11px;color:var(--helper);margin-top:8px">Fan-out orchestration (fusion-style: one task → N agents → graded merge) ships in v0.4.</div>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--helper);margin:16px 0 8px">MCP · domain tools</div>
+        <sc-for list="{{ mcps }}" as="t" hint-placeholder-count="3">
+          <div style="border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+            <span style="color:var(--acc)">{{ t.icon }}</span>
+            <span style="flex:1;min-width:0"><span style="display:block;font-size:13px">{{ t.name }}</span><span style="display:block;font-size:11px;color:var(--helper)">{{ t.desc }}</span></span>
+            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ t.stateColor }}">{{ t.state }}</span>
+          </div>
+        </sc-for>
+        <div style="font-size:11.5px;color:var(--helper);margin-top:6px">Domain configs (Market research, Wiki, Financial) bundle these tools + a mode + an artifact palette. Any provider can use them.</div>
+      </sc-if>
+
+      <sc-if value="{{ secApp }}" hint-placeholder-val="{{ false }}">
+        <h2 style="font-size:16px;font-weight:600;margin:0 0 4px">App</h2>
+        <p style="font-size:12.5px;color:var(--mfg);margin:0 0 16px">Appearance, behavior, permissions, data.</p>
+        <sc-for list="{{ appRows }}" as="r" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--bd)">
+            <span style="flex:1"><span style="display:block;font-size:13.5px">{{ r.k }}</span><span style="display:block;font-size:11.5px;color:var(--helper)">{{ r.d }}</span></span>
+            <span style="font-family:'Geist Mono',monospace;font-size:12px;color:var(--mfg)">{{ r.v }}</span>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ===== DESIGN NOTES ===== -->
+<sc-if value="{{ notesOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;right:16px;bottom:16px;z-index:70;width:360px;background:var(--card);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--shadow);padding:16px;animation:fadeUp .2s ease;max-height:70%;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-size:13.5px;font-weight:600">Design notes · v2</span>
+      <button onClick="{{ toggleNotes }}" style="border:none;background:none;color:var(--mfg);cursor:pointer;font-size:15px" style-hover="color:var(--fg)">×</button>
+    </div>
+    <div style="font-size:12px;line-height:1.6;color:var(--mfg)">
+      <p style="margin:0 0 8px"><strong style="color:var(--fg)">3 chats</strong> in the sidebar show different artifact palettes: NVDA (chart/table/entity), wiki rewrite (note draft + relink queue + local graph), fleet build (live preview + code + handoff).</p>
+      <p style="margin:0 0 8px"><strong style="color:var(--fg)">⿻ opens artifacts in a side panel</strong> (Claude-style split) — chat keeps scrolling on the left.</p>
+      <p style="margin:0 0 8px"><strong style="color:var(--fg)">Focus / Columns / Fused</strong> segmented control in the NVDA chat header previews all three multi-model treatments incl. weights.</p>
+      <p style="margin:0 0 8px"><strong style="color:var(--fg)">Fleet</strong> is our own board (fleetd, paseo-compatible) — kanban via sidebar "board →" or the handoff button.</p>
+      <p style="margin:0"><strong style="color:var(--fg)">Wiki = Obsidian vault</strong> (statement-analysis): file tree, frontmatter properties, [[wikilinks]], backlinks, git sync.</p>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;chat&quot;,&quot;wiki&quot;,&quot;settings&quot;,&quot;fleet&quot;],&quot;default&quot;:&quot;chat&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Navigation&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: this.props.startScreen ?? "chat",
+    chatId: "nvda",
+    theme: this.props.theme ?? "dark",
+    viewMode: "focus", car: 0,
+    panel: null, notesOpen: false,
+    optimizerOpen: false, optView: "structured", optTarget: 1, optSet: 0, optOff: {},
+    modeMenuOpen: false, modelsMenuOpen: false,
+    msgMode: "assist", cite: null,
+    selIds: { sonnet: true, gpt: true, gem: true },
+    checks: [true, false, false], artTab: "preview",
+    settingsSec: "accounts",
+    wikiView: "note", wq: "", wgq: "",
+    fleetView: "board", costPreset: 1,
+  };
+  go(screen, extra) { this.setState({ screen, modeMenuOpen: false, modelsMenuOpen: false, optimizerOpen: false, panel: null, ...extra }); }
+  renderVals() {
+    const s = this.state;
+    const P = { anthropic: "#d97757", openai: "#10a37f", google: "#4285f4", github: "#8957e5", router: "#7a7f8c", local: "#948d84" };
+    const data = [18.4, 22.6, 26.3, 29.1, 30.8, 32.4, 35.6, 39.1];
+    const W = 640, H = 190, pad = 10, max = 42;
+    const pts = data.map((v, i) => [pad + i * (W - 2 * pad) / (data.length - 1), H - pad - (v / max) * (H - 2 * pad)]);
+    const chartPoints = pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ");
+    const spark = [22,20,21,17,18,14,15,11,12,8,9,5].map((y,i)=>`${i*7.2},${y}`).join(" ");
+    const qs = ["Q4·24","Q1·25","Q2·25","Q3·25","Q4·25","Q1·26","Q2·26","Q3·26"];
+    // knowledge graph (viewBox 100x60)
+    const gn = [
+      { label: "transformer", x: 50, y: 28, main: true },
+      { label: "attention", x: 24, y: 14 }, { label: "kv-cache", x: 78, y: 12 },
+      { label: "mixture-of-experts", x: 80, y: 44 }, { label: "rotary-embeddings", x: 22, y: 46 }, { label: "flash-attention", x: 50, y: 8 },
+    ];
+    const edgePath = gn.slice(1).map(n => `M ${gn[0].x} ${gn[0].y} L ${n.x} ${n.y}`).join(" ") + ` M ${gn[1].x} ${gn[1].y} L ${gn[5].x} ${gn[5].y}`;
+    const graphNodes = gn.map(n => ({ label: n.label, left: n.x + "%", top: (n.y / 60 * 100).toFixed(1) + "%", size: n.main ? "13px" : "9px", fill: n.main ? "var(--acc)" : "var(--mut)", ring: n.main ? "var(--acc2)" : "var(--bd2)", labelColor: n.main ? "var(--fg)" : "var(--helper)" }));
+    // wiki local graph
+    const wn = [
+      { label: "NVIDIA", x: 50, y: 30, main: true },
+      { label: "TSMC", x: 20, y: 12 }, { label: "CUDA", x: 80, y: 14 }, { label: "CoWoS", x: 18, y: 48 }, { label: "HBM", x: 82, y: 46 }, { label: "semis", x: 50, y: 52 },
+    ];
+    const wikiEdgePath = wn.slice(1).map(n => `M ${wn[0].x} ${wn[0].y} L ${n.x} ${n.y}`).join(" ");
+    const wikiGraphNodes = wn.map(n => ({ label: n.label, left: n.x + "%", top: (n.y / 60 * 100).toFixed(1) + "%", size: n.main ? "11px" : "7px", fill: n.main ? "var(--acc)" : "var(--mut)", ring: n.main ? "var(--acc2)" : "var(--bd2)", labelColor: n.main ? "var(--fg)" : "var(--helper)" }));
+    const carMeta = [
+      { name: "Claude Sonnet 4.5", letter: "A", bg: P.anthropic, badge: "main · ✓ assist · oauth" },
+      { name: "GPT-5.2", letter: "O", bg: P.openai, badge: "hidden · answered silently" },
+      { name: "Gemini 3 Pro", letter: "G", bg: P.google, badge: "hidden · ✕ critic stance" },
+    ];
+    const modes = [
+      { id: "none", icon: "◯", name: "None", desc: "No stance. Raw model, mode off." },
+      { id: "assist", icon: "✓", name: "Assist", desc: "Do exactly what's asked. No pushback, no scope creep." },
+      { id: "critic", icon: "✕", name: "Critic", desc: "Attack every claim. Chase every avenue to prove you wrong." },
+      { id: "socratic", icon: "?", name: "Socratic", desc: "Custom · answers only with questions until you commit." },
+    ].map(m => ({ ...m, active: s.msgMode === m.id, bg: s.msgMode === m.id ? "var(--mut)" : "transparent", pick: () => this.setState({ msgMode: m.id, modeMenuOpen: false }) }));
+    const curMode = modes.find(m => m.active) ?? modes[1];
+    const catalogDefs = [
+      { id: "sonnet", name: "Claude Sonnet 4.5", auth: "anthropic oauth · max", letter: "A", bg: P.anthropic, quota: "62%", quotaColor: "var(--ok)", quotaLabel: "62% · 3h", profile: "default · t0.7" },
+      { id: "opus", name: "Claude Opus 4.5", auth: "anthropic oauth · max", letter: "A", bg: P.anthropic, quota: "31%", quotaColor: "var(--ok)", quotaLabel: "31% · 3h", profile: "default · t0.7" },
+      { id: "gpt", name: "GPT-5.2", auth: "openai oauth · pro", letter: "O", bg: P.openai, quota: "84%", quotaColor: "var(--warn)", quotaLabel: "84% · 6h", profile: "concise · t0.4" },
+      { id: "gem", name: "Gemini 3 Pro", auth: "google oauth · ai pro", letter: "G", bg: P.google, quota: "37%", quotaColor: "var(--ok)", quotaLabel: "37% · 1d", profile: "critic · t0.9" },
+      { id: "llama", name: "Llama 4 Maverick", auth: "openrouter · $8.20", letter: "R", bg: P.router, quota: "0%", quotaColor: "var(--ok)", quotaLabel: "pay/use", profile: "default" },
+      { id: "qwen", name: "Qwen3-72B", auth: "ollama · local", letter: "L", bg: P.local, quota: "100%", quotaColor: "var(--ok)", quotaLabel: "free", profile: "default" },
+    ];
+    const sel = s.selIds;
+    const selList = catalogDefs.filter(m => sel[m.id]);
+    const chatTitles = { nvda: "NVDA earnings deep dive", wiki: "Transformer wiki rewrite", agent: "Fleet dashboard build" };
+    const goChat = (chatId) => () => this.go("chat", { chatId });
+    const chat = (title, chatId) => ({ title, bg: s.screen === "chat" && s.chatId === chatId ? "var(--mut)" : "transparent", color: s.screen === "chat" && s.chatId === chatId ? "var(--fg)" : "var(--mfg)", go: goChat(chatId) });
+    const setDefs = [
+      { name: "Chat trio", models: [["A","Claude Sonnet 4.5",P.anthropic],["O","GPT-5.2",P.openai],["G","Gemini 3 Pro",P.google]] },
+      { name: "Coding", models: [["A","Opus 4.5",P.anthropic],["O","GPT-5.2-codex",P.openai],["L","Qwen3-72B",P.local]] },
+      { name: "Fast / cheap", models: [["A","Haiku 4.5",P.anthropic],["G","Gemini 3 Flash",P.google],["R","Llama 4 · OR",P.router]] },
+    ];
+    const curSet = setDefs[s.optSet];
+    const optModels = curSet.models.map((m, i) => {
+      const off = s.optOff[s.optSet + "-" + i];
+      return { letter: m[0], name: m[1], dot: m[2], border: off ? "var(--bd)" : "var(--acc2)", bgc: off ? "transparent" : "var(--hl)", color: off ? "var(--helper)" : "var(--hlfg)", op: off ? "0.6" : "1", pick: () => this.setState({ optOff: { ...s.optOff, [s.optSet + "-" + i]: !off } }) };
+    });
+    const onModels = curSet.models.filter((m, i) => !s.optOff[s.optSet + "-" + i]);
+    const relinkDefs = [
+      { text: "[[kv-cache]] ← 3 orphan mentions", kind: "new link" },
+      { text: "[[attention]] → merge into this note?", kind: "suggest" },
+      { text: "[[positional-encoding]] → rename [[rotary-embeddings]]", kind: "rename" },
+    ];
+    return {
+      theme: s.theme, toggleTheme: () => this.setState({ theme: s.theme === "dark" ? "light" : "dark" }),
+      isChat: s.screen === "chat", isWiki: s.screen === "wiki", isSettings: s.screen === "settings", isFleet: s.screen === "fleet",
+      isNvda: s.chatId === "nvda", isWikiChat: s.chatId === "wiki", isAgentChat: s.chatId === "agent",
+      chatTitle: chatTitles[s.chatId],
+      goNvda: goChat("nvda"), navWiki: () => this.go("wiki"), navFleet: () => this.go("fleet"),
+      navSettings: () => this.go("settings", { settingsSec: "accounts" }),
+      navSettingsModes: () => this.go("settings", { settingsSec: "modes" }),
+      navSettingsModels: () => this.go("settings", { settingsSec: "models" }),
+      toggleNotes: () => this.setState({ notesOpen: !s.notesOpen }), notesOpen: s.notesOpen,
+      // sidebar
+      sessions: [
+        { name: "fix: oauth token refresh", meta: "claude-code · m4-mini", dot: "var(--ok)", anim: "pulse 1.6s infinite", time: "12m", timeColor: "var(--ok)", go: () => this.go("fleet") },
+        { name: "wiki-indexer nightly", meta: "codex · hetzner-01", dot: "var(--helper)", anim: "none", time: "idle", timeColor: "var(--helper)", go: () => this.go("fleet") },
+        { name: "fleet dashboard build", meta: "claude-code · m4-mini", dot: "var(--warn)", anim: "none", time: "review", timeColor: "var(--warn)", go: () => this.go("fleet") },
+      ],
+      projectChats: [chat("NVDA earnings deep dive", "nvda"), chat("CoWoS supply constraints", "cowos")],
+      todayChats: [chat("Transformer wiki rewrite", "wiki"), chat("Fleet dashboard build ✦", "agent"), chat("MI355X inference benchmarks", "mi355")],
+      ydayChats: [{ title: "Q3 model quota planning" }, { title: "Fleet protocol design" }],
+      // view modes
+      viewModes: [
+        { id: "focus", name: "Focus" }, { id: "columns", name: "Columns" }, { id: "fused", name: "⚭ Fused" },
+      ].map(v => ({ ...v, bg: s.viewMode === v.id ? "var(--fg)" : "transparent", color: s.viewMode === v.id ? "var(--bg)" : "var(--mfg)", pick: () => this.setState({ viewMode: v.id }) })),
+      vmFocus: s.viewMode === "focus", vmColumns: s.viewMode === "columns", vmFused: s.viewMode === "fused",
+      colPanels: [
+        { name: "Claude Sonnet 4.5", letter: "A", bg: P.anthropic, border: "var(--acc2)", role: "main", roleColor: "var(--acc)", text: "Segment table + entity card built from both 10-Qs. NVDA DC $39.1B vs AMD $3.9B (10.0×); AMD ahead only in embedded. Artifacts pinned to this column.", foot: "2 artifacts · 3 citations · $0.011" },
+        { name: "GPT-5.2", letter: "O", bg: P.openai, border: "var(--bd)", role: "hidden", roleColor: "var(--helper)", text: "Moat > silicon delta. AMD +41% QoQ off small base; hyperscaler capex implies TAM covers both through FY27. ROCm 7 adoption is the tell.", foot: "text only · $0.006" },
+        { name: "Gemini 3 Pro", letter: "G", bg: P.google, border: "var(--bd)", role: "hidden", roleColor: "var(--helper)", text: "Flagged: AMD's segment includes Xilinx-derived accelerators. GPU-only = $3.1B → 12.6×. Normalize definitions before charting.", foot: "1 correction · $0.004" },
+      ],
+      // carousel
+      carPrev: () => this.setState({ car: (s.car + 2) % 3 }), carNext: () => this.setState({ car: (s.car + 1) % 3 }),
+      carTransform: `translateX(-${(s.car * 100 / 3).toFixed(3)}%)`,
+      carLabel: `${s.car + 1}/3`, carModelName: carMeta[s.car].name, carDotLetter: carMeta[s.car].letter, carDotBg: carMeta[s.car].bg, carBadge: carMeta[s.car].badge,
+      grades: [
+        { model: "Claude Sonnet 4.5", letter: "A", bg: P.anthropic, score: "92", w: "46%", note: "structure, tables, citations" },
+        { model: "Gemini 3 Pro", letter: "G", bg: P.google, score: "88", w: "32%", note: "caught segment-definition flaw" },
+        { model: "GPT-5.2", letter: "O", bg: P.openai, score: "81", w: "22%", note: "TAM framing, ROCm signal" },
+      ],
+      // chart + table
+      chartPoints, chartArea: chartPoints + ` ${(W - pad)},${H} ${pad},${H}`,
+      chartLastX: pts[7][0].toFixed(1), chartLastY: pts[7][1].toFixed(1), sparkPoints: spark,
+      chartRows: data.map((v, i) => ({ q: qs[i], v: "$" + v.toFixed(1) + "B", d: i ? (v - data[i-1] >= 0 ? "+" : "") + (((v - data[i-1]) / data[i-1]) * 100).toFixed(1) + "%" : "—", dColor: "var(--ok)" })),
+      segRows: [
+        { name: "Data Center", nvda: "39.1", amd: "3.9", ratio: "10.0×", ratioColor: "var(--ok)" },
+        { name: "Gaming / Client", nvda: "3.3", amd: "1.9", ratio: "1.7×", ratioColor: "var(--fg)" },
+        { name: "Pro Visualization", nvda: "0.51", amd: "—", ratio: "—", ratioColor: "var(--helper)" },
+        { name: "Auto / Embedded", nvda: "0.57", amd: "2.3", ratio: "0.2×", ratioColor: "var(--err)" },
+      ],
+      // citations
+      showPdfCite: s.cite === "pdf", showWebCite: s.cite === "web",
+      citePdfIn: () => this.setState({ cite: "pdf" }), citeWebIn: () => this.setState({ cite: "web" }), citeOut: () => this.setState({ cite: null }),
+      // wiki chat
+      relinks: relinkDefs.map((r, i) => ({ ...r, mark: s.checks[i] ? "✓" : "", boxBorder: s.checks[i] ? "var(--acc)" : "var(--bd2)", boxBg: s.checks[i] ? "var(--acc)" : "transparent", color: s.checks[i] ? "var(--fg)" : "var(--mfg)", pick: () => { const c = [...s.checks]; c[i] = !c[i]; this.setState({ checks: c }); } })),
+      approvedCount: s.checks.filter(Boolean).length,
+      edgePath, graphNodes,
+      graphList: [
+        { file: "concepts/attention.md", n: 4 }, { file: "concepts/kv-cache.md", n: 3 }, { file: "concepts/mixture-of-experts.md", n: 2 }, { file: "concepts/rotary-embeddings.md", n: 2 }, { file: "concepts/flash-attention.md", n: 1 },
+      ],
+      // agent chat
+      artTabPreview: () => this.setState({ artTab: "preview" }), artTabCode: () => this.setState({ artTab: "code" }),
+      showArtPreview: s.artTab === "preview", showArtCode: s.artTab === "code",
+      tabPrevBg: s.artTab === "preview" ? "var(--fg)" : "transparent", tabPrevColor: s.artTab === "preview" ? "var(--bg)" : "var(--mfg)",
+      tabCodeBg: s.artTab === "code" ? "var(--fg)" : "transparent", tabCodeColor: s.artTab === "code" ? "var(--bg)" : "var(--mfg)",
+      miniCards: [
+        { name: "oauth-refresh", dot: "var(--ok)", p: "72%", log: "▸ tests 41/44 pass" },
+        { name: "wiki-indexer", dot: "var(--helper)", p: "100%", log: "▸ idle · last run 2h" },
+        { name: "dash-build", dot: "var(--warn)", p: "38%", log: "▸ awaiting review" },
+      ],
+      // side panel
+      panelOpen: !!s.panel, closePanel: () => this.setState({ panel: null }),
+      openChartPanel: () => this.setState({ panel: "chart" }), openGraphPanel: () => this.setState({ panel: "graph" }), openPreviewPanel: () => this.setState({ panel: "preview" }),
+      panelChart: s.panel === "chart", panelGraph: s.panel === "graph", panelPreview: s.panel === "preview",
+      panelTitle: s.panel === "chart" ? "Data-center revenue, quarterly" : s.panel === "graph" ? "Local graph · transformer-architecture" : "AgentDashboard.tsx — live preview",
+      panelAction: s.panel === "chart" ? "export csv" : s.panel === "graph" ? "open vault" : "open repo",
+      panelFoot: s.panel === "chart" ? "src: 8 × 10-Q (local pdf) · tool: financial-lookup" : s.panel === "graph" ? "vault: statement-analysis · wiki-mcp" : "fleetd · m4-mini · branch feat/agents-dash",
+      // composer
+      msgModeIcon: curMode.icon, msgModeName: curMode.name, modes,
+      modeMenuOpen: s.modeMenuOpen, toggleModeMenu: () => this.setState({ modeMenuOpen: !s.modeMenuOpen, modelsMenuOpen: false }),
+      modelsMenuOpen: s.modelsMenuOpen, toggleModelsMenu: () => this.setState({ modelsMenuOpen: !s.modelsMenuOpen, modeMenuOpen: false }),
+      stopProp: (e) => e.stopPropagation(),
+      modelCatalog: catalogDefs.map(m => ({ ...m, mark: sel[m.id] ? "✓" : "", boxBorder: sel[m.id] ? "var(--acc)" : "var(--bd2)", boxBg: sel[m.id] ? "var(--acc)" : "transparent", pick: () => this.setState({ selIds: { ...sel, [m.id]: !sel[m.id] } }) })),
+      selCount: selList.length,
+      selPreview: selList.map((m, i) => ({ ...m, role: i === 0 ? "main" : "hidden", roleColor: i === 0 ? "var(--acc)" : "var(--helper)", border: i === 0 ? "var(--acc2)" : "var(--bd)" })),
+      clearSel: () => this.setState({ selIds: {} }),
+      optimizerOpen: s.optimizerOpen, toggleOptimizer: () => this.setState({ optimizerOpen: !s.optimizerOpen, modeMenuOpen: false, modelsMenuOpen: false }),
+      optBtnBorder: s.optimizerOpen ? "var(--acc2)" : "var(--bd)", optBtnBg: s.optimizerOpen ? "var(--hl)" : "transparent", optBtnColor: s.optimizerOpen ? "var(--hlfg)" : "var(--mfg)",
+      optViews: [
+        { id: "structured", name: "Structured" }, { id: "stacked", name: "Before / After" },
+      ].map(v => ({ ...v, bg: s.optView === v.id ? "var(--fg)" : "transparent", color: s.optView === v.id ? "var(--bg)" : "var(--mfg)", pick: () => this.setState({ optView: v.id }) })),
+      optStructured: s.optView === "structured", optStacked: s.optView === "stacked",
+      optTargets: [
+        { name: "Just chat", hint: "light touch" },
+        { name: "Hand to agent — build", hint: "adds acceptance criteria" },
+        { name: "Plan first", hint: "asks before specifying" },
+      ].map((t, i) => ({ ...t, border: s.optTarget === i ? "var(--acc2)" : "var(--bd)", bg: s.optTarget === i ? "var(--mut)" : "transparent", dotBorder: s.optTarget === i ? "var(--acc)" : "var(--bd2)", dotBg: s.optTarget === i ? "var(--acc)" : "transparent", pick: () => this.setState({ optTarget: i }) })),
+      optSets: setDefs.map((d, i) => ({ name: d.name, border: s.optSet === i ? "var(--acc2)" : "var(--bd)", bg: s.optSet === i ? "var(--hl)" : "transparent", color: s.optSet === i ? "var(--hlfg)" : "var(--mfg)", pick: () => this.setState({ optSet: i }) })),
+      optModels,
+      optCuratedLabel: onModels.length === 1 ? onModels[0][1].toLowerCase() + "-curated" : `${curSet.name.toLowerCase()} · ${onModels.length} models`,
+      // fleet
+      fleetViews: [
+        { id: "board", name: "Board" }, { id: "tree", name: "Worktrees" },
+      ].map(v => ({ ...v, bg: s.fleetView === v.id ? "var(--fg)" : "transparent", color: s.fleetView === v.id ? "var(--bg)" : "var(--mfg)", pick: () => this.setState({ fleetView: v.id }) })),
+      fleetBoard: s.fleetView === "board", fleetTree: s.fleetView === "tree",
+      fleetFootHint: s.fleetView === "board" ? "drag cards between columns to dispatch" : "ticket worktrees merge up to the feature; supervisor merges feature → main",
+      ...(() => {
+        const presets = [
+          { name: "Economy", planner: ["A", "Sonnet 4.5", P.anthropic], worker: ["A", "Haiku 4.5", P.anthropic], sup: ["A", "Sonnet 4.5", P.anthropic], est: "est $0.40–0.90 per feature · lint/test passes fall back to local qwen3 (free)" },
+          { name: "Balanced", planner: ["A", "Sonnet 4.5", P.anthropic], worker: ["A", "Sonnet 4.5", P.anthropic], sup: ["A", "Opus 4.5", P.anthropic], est: "est $1.50–3.00 per feature · quota-aware: falls to GPT-5.2 when Anthropic meter > 90%" },
+          { name: "Max quality", planner: ["A", "Opus 4.5", P.anthropic], worker: ["A", "Opus 4.5", P.anthropic], sup: ["A", "Opus 4.5", P.anthropic], est: "est $5–9 per feature · cross-review pass by GPT-5.2-codex before merge" },
+        ];
+        const pr = presets[s.costPreset];
+        return {
+          costPresets: presets.map((p, i) => ({ name: p.name, bg: s.costPreset === i ? "var(--fg)" : "transparent", color: s.costPreset === i ? "var(--bg)" : "var(--mfg)", pick: () => this.setState({ costPreset: i }) })),
+          roleChips: [
+            { role: "Planner", letter: pr.planner[0], model: pr.planner[1], dot: pr.planner[2], note: "Splits a feature into tickets; sizes each one." },
+            { role: "Worker · per ticket", letter: pr.worker[0], model: pr.worker[1], dot: pr.worker[2], note: "One per ticket, isolated in its own worktree." },
+            { role: "Supervisor · on demand", letter: pr.sup[0], model: pr.sup[1], dot: pr.sup[2], note: "Spawned when tickets land: reviews diffs, merges up, exits." },
+          ],
+          costEst: pr.est,
+          workerLetter: pr.worker[0], workerModel: pr.worker[1], workerDot: pr.worker[2],
+          supLetter: pr.sup[0], supModel: pr.sup[1], supDot: pr.sup[2],
+          features: [
+            { branch: "feat/agents-dash", title: "Fleet dashboard", wt: "~/fleet/wt/agents-dash", dot: "var(--ok)", badge: "building · 2/3 merged", badgeColor: "var(--ok)",
+              supState: "idle", supStateColor: "var(--helper)", supDotColor: "var(--helper)", supAnim: "none", supNote: "spawns when T-103 lands → reviews all diffs, merges ticket worktrees into feat branch",
+              tickets: [
+                { id: "T-101", title: "Sessions socket client", wt: "wt/agents-dash/t101 → merged ↑", dot: "var(--acc)", meta: "merged ✓", metaColor: "var(--acc)" },
+                { id: "T-102", title: "Log pane virtualization", wt: "wt/agents-dash/t102 → merged ↑", dot: "var(--acc)", meta: "merged ✓", metaColor: "var(--acc)" },
+                { id: "T-103", title: "Status columns UI", wt: "wt/agents-dash/t103", dot: "var(--ok)", meta: "64% · 12m", metaColor: "var(--ok)" },
+              ] },
+            { branch: "fix/oauth-refresh", title: "OAuth token refresh", wt: "~/fleet/wt/oauth-refresh", dot: "var(--warn)", badge: "supervising", badgeColor: "var(--warn)",
+              supState: "● reviewing now", supStateColor: "var(--ok)", supDotColor: "var(--ok)", supAnim: "pulse 1.6s infinite", supNote: "diffing T-201 + T-202 → merge to parent worktree, then PR to main",
+              tickets: [
+                { id: "T-201", title: "Refresh scheduler", wt: "wt/oauth-refresh/t201", dot: "var(--warn)", meta: "awaiting merge", metaColor: "var(--warn)" },
+                { id: "T-202", title: "Retry backoff tests", wt: "wt/oauth-refresh/t202", dot: "var(--warn)", meta: "awaiting merge", metaColor: "var(--warn)" },
+              ] },
+          ],
+        };
+      })(),
+      machines: [
+        { name: "m4-mini", dot: "var(--ok)", load: "2/2" }, { name: "hetzner-01", dot: "var(--ok)", load: "1/4" }, { name: "gpu-box", dot: "var(--helper)", load: "0/1" },
+      ],
+      kanban: [
+        { name: "Queued", dot: "var(--helper)", count: "2", cards: [
+          { title: "Add quota meters to model picker", agent: "codex", agentLetter: "O", agentBg: P.openai, machine: "auto", branch: "feat/quota-ui", meta: "queued 4m", metaColor: "var(--helper)", hasBar: false, hasLog: false, hasReview: false, p: "0%", barColor: "var(--ok)", log: "" },
+          { title: "Vault: backfill sector pages", agent: "claude-code", agentLetter: "A", agentBg: P.anthropic, machine: "hetzner-01", branch: "chore/sectors", meta: "queued 11m", metaColor: "var(--helper)", hasBar: false, hasLog: false, hasReview: false, p: "0%", barColor: "var(--ok)", log: "" },
+        ]},
+        { name: "Running", dot: "var(--ok)", count: "2", cards: [
+          { title: "fix: oauth token refresh", agent: "claude-code", agentLetter: "A", agentBg: P.anthropic, machine: "m4-mini", branch: "fix/oauth-refresh", meta: "12m · $0.84", metaColor: "var(--ok)", hasBar: true, p: "72%", barColor: "var(--ok)", hasLog: true, log: "▸ RefreshScheduler.test.ts 41/44", hasReview: false },
+          { title: "wiki-indexer nightly", agent: "codex", agentLetter: "O", agentBg: P.openai, machine: "hetzner-01", branch: "cron/indexer", meta: "2h · $0.12", metaColor: "var(--ok)", hasBar: true, p: "31%", barColor: "var(--ok)", hasLog: true, log: "▸ ingested 214/680 filings", hasReview: false },
+        ]},
+        { name: "Needs review", dot: "var(--warn)", count: "1", cards: [
+          { title: "Fleet dashboard build ✦", agent: "claude-code", agentLetter: "A", agentBg: P.anthropic, machine: "m4-mini", branch: "feat/agents-dash", meta: "+412 −38", metaColor: "var(--warn)", hasBar: false, hasLog: true, log: "▸ acceptance 4/4 ✓ · awaiting you", hasReview: true, p: "100%", barColor: "var(--warn)" },
+        ]},
+        { name: "Merged", dot: "var(--acc)", count: "2", cards: [
+          { title: "Model profiles in composer", agent: "claude-code", agentLetter: "A", agentBg: P.anthropic, machine: "m4-mini", branch: "main ← feat/profiles", meta: "yesterday", metaColor: "var(--helper)", hasBar: false, hasLog: false, hasReview: false, p: "100%", barColor: "var(--ok)", log: "" },
+          { title: "Auto-minimize empty responses", agent: "codex", agentLetter: "O", agentBg: P.openai, machine: "hetzner-01", branch: "main ← fix/minimize", meta: "2d ago", metaColor: "var(--helper)", hasBar: false, hasLog: false, hasReview: false, p: "100%", barColor: "var(--ok)", log: "" },
+        ]},
+      ],
+      // wiki vault
+      wvNote: s.wikiView === "note", wvConcept: s.wikiView === "concept", wvSearch: s.wikiView === "search", wvGraph: s.wikiView === "graph",
+      wikiGoNote: () => this.setState({ wikiView: "note" }),
+      wikiGoConcept: () => this.setState({ wikiView: "concept" }),
+      wikiGoSearch: () => this.setState({ wikiView: "search" }),
+      wikiGoGraph: () => this.setState({ wikiView: "graph" }),
+      graphBtnBorder: s.wikiView === "graph" ? "var(--acc2)" : "var(--bd)", graphBtnBg: s.wikiView === "graph" ? "var(--hl)" : "transparent",
+      searchBtnBorder: s.wikiView === "search" ? "var(--acc2)" : "var(--bd)",
+      wq: s.wq, setWq: (e) => this.setState({ wq: e.target.value }),
+      wgq: s.wgq, setWgq: (e) => this.setState({ wgq: e.target.value }),
+      ...(() => {
+        const notesDb = [
+          { file: "companies/NVIDIA.md", folder: "companies", snippet: "…principal dependencies: TSMC (4NP wafers, CoWoS-L) and SK hynix / Micron for HBM3e…", links: 22, view: "note" },
+          { file: "concepts/CoWoS packaging.md", folder: "concepts", snippet: "TSMC advanced 2.5D packaging; capacity is the binding constraint for GB300 supply.", links: 7, view: "concept" },
+          { file: "companies/TSMC.md", folder: "companies", snippet: "…CoWoS-L capacity doubling through 2026; largest customer NVIDIA (~24% of rev)…", links: 12, view: "note" },
+          { file: "concepts/transformer-architecture.md", folder: "concepts", snippet: "Stacked self-attention + MLP blocks; modern variants add MoE routing and RoPE.", links: 9, view: "concept" },
+          { file: "sources/nvda-10q-q3fy26.md", folder: "sources", snippet: "…demand for Blackwell architecture products continued to exceed supply…", links: 3, view: "note" },
+          { file: "questions/amd-catch-up.md", folder: "questions", snippet: "Can ROCm 7 close the CUDA gap in inference workloads by FY28?", links: 4, view: "concept" },
+        ];
+        const q = s.wq.trim().toLowerCase();
+        const hits = notesDb.filter(n => !q || n.file.toLowerCase().includes(q) || n.snippet.toLowerCase().includes(q));
+        const results = hits.map(n => ({ ...n, go: () => this.setState({ wikiView: n.view }) }));
+        const bg = [
+          { label: "NVIDIA", x: 46, y: 30, f: "companies", main: true, view: "note" },
+          { label: "TSMC", x: 26, y: 14, f: "companies", view: "note" }, { label: "AMD", x: 66, y: 14, f: "companies", view: "note" },
+          { label: "CUDA", x: 84, y: 26, f: "concepts", view: "concept" }, { label: "CoWoS", x: 14, y: 32, f: "concepts", view: "concept" },
+          { label: "HBM", x: 30, y: 48, f: "concepts", view: "concept" }, { label: "transformer", x: 62, y: 46, f: "concepts", view: "concept" },
+          { label: "attention", x: 80, y: 54, f: "concepts", view: "concept" }, { label: "kv-cache", x: 90, y: 42, f: "concepts", view: "concept" },
+          { label: "semiconductors", x: 46, y: 8, f: "sectors", view: "note" }, { label: "10-Q Q3·26", x: 8, y: 14, f: "sources", view: "note" },
+          { label: "ROCm", x: 88, y: 10, f: "concepts", view: "concept" },
+        ];
+        const edges = [[0,1],[0,2],[0,3],[0,4],[0,5],[0,9],[1,4],[2,11],[6,7],[6,8],[0,6],[3,6],[0,10],[1,9]];
+        const bigEdgePath = edges.map(([a,b2]) => `M ${bg[a].x} ${bg[a].y} L ${bg[b2].x} ${bg[b2].y}`).join(" ");
+        const fColor = { companies: "var(--acc)", concepts: "var(--ok)", sectors: "var(--warn)", sources: "var(--helper)" };
+        const gq = s.wgq.trim().toLowerCase();
+        const matches = bg.filter(n => gq && n.label.toLowerCase().includes(gq)).length;
+        const bigGraphNodes = bg.map(n => {
+          const hit = !gq || n.label.toLowerCase().includes(gq);
+          return { label: n.label, left: n.x + "%", top: (n.y / 60 * 100).toFixed(1) + "%", size: n.main ? "16px" : "11px", fill: fColor[n.f], ring: hit && gq ? "var(--fg)" : "transparent", labelColor: n.main ? "var(--fg)" : "var(--mfg)", op: hit ? "1" : "0.22", go: () => this.setState({ wikiView: n.view }) };
+        });
+        return { wikiResults: results, wikiResultCount: results.length, bigEdgePath, bigGraphNodes, graphMatchLabel: gq ? `${matches} of ${bg.length} nodes` : `${bg.length} nodes · 1-hop from NVIDIA` };
+      })(),
+      conceptBacklinks: [
+        { file: "companies/NVIDIA.md", ctx: "…KV-cache growth drives [[HBM memory]] demand…" },
+        { file: "questions/amd-catch-up.md", ctx: "…inference is memory-bound per [[transformer-architecture]]…" },
+        { file: "sources/attention-is-all-you-need.md", ctx: "…original formulation…" },
+      ],
+      conceptStats: [
+        { k: "type", v: "concept" }, { k: "template", v: "concept.md" }, { k: "updated", v: "2026-07-21" }, { k: "revisions", v: "8" },
+      ],
+      vaultTree: [
+        { icon: "◆", name: "WIKI.md", n: "home", pad: "8px", view: "search" },
+        { icon: "▸", name: "_templates/", n: "6", pad: "8px" },
+        { icon: "▾", name: "companies/", n: "42", pad: "8px", view: "note" },
+        { icon: "·", name: "NVIDIA.md", n: "", pad: "24px", view: "note", activeOn: "note" },
+        { icon: "·", name: "AMD.md", n: "", pad: "24px" },
+        { icon: "·", name: "TSMC.md", n: "", pad: "24px" },
+        { icon: "▾", name: "concepts/", n: "31", pad: "8px", view: "concept" },
+        { icon: "·", name: "transformer-architecture.md", n: "", pad: "24px", view: "concept", activeOn: "concept" },
+        { icon: "▸", name: "sectors/", n: "12", pad: "8px" },
+        { icon: "▸", name: "sources/", n: "680", pad: "8px" },
+        { icon: "▸", name: "questions/", n: "9", pad: "8px" },
+      ].map(f => ({ ...f, bg: f.activeOn === s.wikiView ? "var(--mut)" : "transparent", color: f.activeOn === s.wikiView ? "var(--fg)" : "var(--mfg)", go: f.view ? () => this.setState({ wikiView: f.view }) : undefined })),
+      backlinks: [
+        { file: "sectors/semiconductors.md", ctx: "…[[NVIDIA]] holds 92% of DC GPU share…" },
+        { file: "companies/TSMC.md", ctx: "…largest customer [[NVIDIA]] (~24% of rev)…" },
+        { file: "concepts/CoWoS packaging.md", ctx: "…capacity allocated to [[NVIDIA]] first…" },
+        { file: "questions/amd-catch-up.md", ctx: "…can ROCm close the [[NVIDIA]] gap…" },
+      ],
+      wikiStats: [
+        { k: "type", v: "company" }, { k: "ticker", v: "NVDA" }, { k: "mcap", v: "$4.6T" }, { k: "updated", v: "2026-07-21" }, { k: "revisions", v: "14" },
+      ],
+      wikiEdgePath, wikiGraphNodes,
+      // settings
+      settingsNav: [
+        { id: "accounts", icon: "◉", label: "Accounts", count: "6" },
+        { id: "models", icon: "▦", label: "Models", count: "31" },
+        { id: "modes", icon: "✓", label: "Modes", count: "3" },
+        { id: "connections", icon: "⌁", label: "Connections", count: "5" },
+        { id: "app", icon: "❖", label: "App", count: "" },
+      ].map(n => ({ ...n, bg: s.settingsSec === n.id ? "var(--mut)" : "transparent", color: s.settingsSec === n.id ? "var(--fg)" : "var(--mfg)", go: () => this.setState({ settingsSec: n.id }) })),
+      secAccounts: s.settingsSec === "accounts", secModels: s.settingsSec === "models", secModes: s.settingsSec === "modes", secConnections: s.settingsSec === "connections", secApp: s.settingsSec === "app",
+      providers: [
+        { name: "Anthropic", letter: "A", bg: P.anthropic, badge: "oauth · max 20×", badgeColor: "var(--ok)", detail: "sid@mirchandani.uk · Sonnet, Opus, Haiku", hasQuota: true, quota: "62%", quotaColor: "var(--ok)", quotaLabel: "62% used · resets 3h", btn: "Manage" },
+        { name: "OpenAI", letter: "O", bg: P.openai, badge: "oauth · pro", badgeColor: "var(--ok)", detail: "sid@mirchandani.uk · GPT-5.2, codex, o-series", hasQuota: true, quota: "84%", quotaColor: "var(--warn)", quotaLabel: "84% used · resets 6h", btn: "Manage" },
+        { name: "Google", letter: "G", bg: P.google, badge: "oauth · ai pro", badgeColor: "var(--ok)", detail: "Gemini 3 Pro / Flash", hasQuota: true, quota: "37%", quotaColor: "var(--ok)", quotaLabel: "37% used · resets 1d", btn: "Manage" },
+        { name: "GitHub Copilot", letter: "C", bg: P.github, badge: "oauth", badgeColor: "var(--ok)", detail: "premium requests pool", hasQuota: true, quota: "22%", quotaColor: "var(--ok)", quotaLabel: "22% · monthly", btn: "Manage" },
+        { name: "OpenRouter", letter: "R", bg: P.router, badge: "api key", badgeColor: "var(--helper)", detail: "fallback routing · $8.20 credits", hasQuota: false, quota: "0%", quotaColor: "var(--ok)", quotaLabel: "", btn: "Edit key" },
+        { name: "Local", letter: "L", bg: P.local, badge: "ollama · detected", badgeColor: "var(--ok)", detail: "qwen3-72b, llama4 @ localhost:11434", hasQuota: false, quota: "0%", quotaColor: "var(--ok)", quotaLabel: "", btn: "Configure" },
+      ],
+      modelRows: [
+        { name: "Claude Sonnet 4.5", via: "anthropic oauth", letter: "A", bg: P.anthropic, quota: "62%", quotaColor: "var(--ok)", quotaLabel: "62%", starColor: "var(--acc)", togBg: "var(--acc2)", togLeft: "15px" },
+        { name: "Claude Opus 4.5", via: "anthropic oauth", letter: "A", bg: P.anthropic, quota: "31%", quotaColor: "var(--ok)", quotaLabel: "31%", starColor: "var(--bd2)", togBg: "var(--acc2)", togLeft: "15px" },
+        { name: "GPT-5.2", via: "openai oauth", letter: "O", bg: P.openai, quota: "84%", quotaColor: "var(--warn)", quotaLabel: "84%", starColor: "var(--bd2)", togBg: "var(--acc2)", togLeft: "15px" },
+        { name: "Gemini 3 Pro", via: "google oauth", letter: "G", bg: P.google, quota: "37%", quotaColor: "var(--ok)", quotaLabel: "37%", starColor: "var(--bd2)", togBg: "var(--acc2)", togLeft: "15px" },
+        { name: "Llama 4 Maverick", via: "openrouter · $", letter: "R", bg: P.router, quota: "0%", quotaColor: "var(--ok)", quotaLabel: "pay/use", starColor: "var(--bd2)", togBg: "var(--bd2)", togLeft: "2px" },
+        { name: "Qwen3-72B", via: "ollama · local", letter: "L", bg: P.local, quota: "100%", quotaColor: "var(--ok)", quotaLabel: "free", starColor: "var(--bd2)", togBg: "var(--acc2)", togLeft: "15px" },
+      ],
+      modeCards: [
+        { icon: "✓", name: "Assist", tag: "app default", border: "var(--acc2)", usage: "used 214×", desc: "Forced agreement. Does exactly what's needed, nothing else.", prompt: "Execute the user's request exactly as stated. Do not challenge premises, add caveats, or expand scope. Ask only blocking questions." },
+        { icon: "✕", name: "Critic", tag: "per-chat", border: "var(--bd)", usage: "used 89×", desc: "Forced dissent. Goes down every avenue to prove you wrong.", prompt: "Adopt an adversarial stance. For every claim, find the strongest counter-evidence. Steelman the opposite position before conceding anything." },
+        { icon: "?", name: "Socratic", tag: "custom", border: "var(--bd)", usage: "used 12×", desc: "Answers with questions until the problem is actually defined.", prompt: "Never provide the answer directly. Surface hidden assumptions through questions; stop when the user states the problem precisely." },
+      ],
+      mcps: [
+        { icon: "◈", name: "financial-lookup", desc: "local PDFs + extracted tables · 10-K/10-Q index", state: "● active", stateColor: "var(--ok)" },
+        { icon: "▤", name: "wiki-mcp", desc: "read/write the Obsidian vault · entity cards", state: "● active", stateColor: "var(--ok)" },
+        { icon: "⌕", name: "web-research", desc: "search + scrape with page snapshots for citations", state: "● active", stateColor: "var(--ok)" },
+      ],
+      appRows: [
+        { k: "Theme", d: "light / dark / system", v: s.theme },
+        { k: "Fonts", d: "interface + monospace", v: "Geist / Geist Mono" },
+        { k: "Cautious enter", d: "⌘↵ to send instead of ↵", v: "off" },
+        { k: "Show cost", d: "per message + per project", v: "on" },
+        { k: "Tool permissions", d: "per-toolset allow rules", v: "3 rules →" },
+        { k: "Import", d: "Claude / ChatGPT exports", v: "→" },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

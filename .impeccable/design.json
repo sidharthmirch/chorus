@@ -1,0 +1,144 @@
+{
+    "schemaVersion": 2,
+    "generatedAt": "2026-07-21T00:00:00Z",
+    "title": "Design System: Chorus",
+    "extensions": {
+        "colorMeta": {
+            "ink": {
+                "role": "primary",
+                "displayName": "Ink",
+                "canonical": "hsl(12 7% 15%)",
+                "tonalRamp": ["#1c1917", "#292522", "#3e3a37", "#514d48", "#6c6660", "#938c85", "#bfb9b5", "#dcd9d6"]
+            },
+            "toasted-sand": {
+                "role": "primary",
+                "displayName": "Toasted Sand",
+                "canonical": "hsl(30 47% 63%)",
+                "tonalRamp": ["#6a5139", "#8a6a4a", "#a9855e", "#cda174", "#dbb88f", "#e8cfae", "#f2e2cd", "#f8f2ec"]
+            },
+            "focus-salmon": {
+                "role": "tertiary",
+                "displayName": "Focus Salmon",
+                "canonical": "hsl(19 51% 70%)",
+                "tonalRamp": ["#5e3a2b", "#7d4e3a", "#9d654c", "#bc8266", "#daa48b", "#e5bda9", "#efd6c8", "#f8ede6"]
+            },
+            "signal-red": {
+                "role": "tertiary",
+                "displayName": "Signal Red",
+                "canonical": "hsl(5 81% 56%)",
+                "tonalRamp": ["#4a0e08", "#7a1810", "#a8221a", "#d32f22", "#ea4334", "#f07a6e", "#f6aba3", "#fbd8d4"]
+            },
+            "warm-mist": {
+                "role": "neutral",
+                "displayName": "Warm Mist (muted fills)",
+                "canonical": "hsl(60 5% 96%)",
+                "tonalRamp": ["#292522", "#514d48", "#938c85", "#bfb9b5", "#dcd9d6", "#ecebe9", "#f6f6f4", "#fdfdfc"]
+            }
+        },
+        "typographyMeta": {
+            "body": { "displayName": "Body", "purpose": "Messages, controls, prose. 14/20 SF Pro, tracking 0.14px." },
+            "title": { "displayName": "Title", "purpose": "Dialog titles and section headers; largest UI text (16/24, w500)." },
+            "label": { "displayName": "Mono Micro-Label", "purpose": "The .sidebar-label signature: 10px uppercase Geist Mono, 0.6px tracking." },
+            "code": { "displayName": "Code", "purpose": "Geist Mono at 85% of context size; Atom One syntax themes." }
+        },
+        "shadows": [
+            { "name": "diffuse", "value": "0 8px 30px rgb(0 0 0 / 5%)", "purpose": "Floating surfaces only: popovers, command menu." },
+            { "name": "card-sm", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Maximum elevation for in-flow cards." },
+            { "name": "inset-press", "value": "inset 0 2px 4px rgba(93, 48, 0, 0.1)", "purpose": "Pressed/focus tactile feedback on special controls." }
+        ],
+        "motion": [
+            { "name": "hover-colors", "value": "transition-colors 150ms ease-out", "purpose": "Default state-change transition." },
+            { "name": "accordion", "value": "200ms ease-out height", "purpose": "Collapsible reveals (accordion-down/up)." },
+            { "name": "shimmer", "value": "shimmer 5s linear infinite", "purpose": "Streaming/thinking text indicator; only sanctioned animated text." }
+        ],
+        "breakpoints": [
+            { "name": "container-2xl", "value": "1400px" }
+        ]
+    },
+    "components": [
+        {
+            "name": "Primary Button",
+            "kind": "button",
+            "refersTo": "button-primary",
+            "description": "Inverted-ink action button; the confident, colorless primary.",
+            "html": "<button class=\"ds-btn-primary\">Send</button>",
+            "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 8px 16px; border: none; border-radius: 8px; background: hsl(12 7% 15%); color: #ffffff; font-family: 'SF Pro', system-ui, sans-serif; font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: 0.14px; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease-out; } .ds-btn-primary:hover { background: hsl(12 7% 15% / 0.9); } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+        },
+        {
+            "name": "Ghost Button",
+            "kind": "button",
+            "refersTo": "button-ghost",
+            "description": "Transparent toolbar workhorse; hovers to warm mist.",
+            "html": "<button class=\"ds-btn-ghost\">Regenerate</button>",
+            "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 8px 16px; border: none; border-radius: 8px; background: transparent; color: hsl(12 7% 15% / 0.8); font-family: 'SF Pro', system-ui, sans-serif; font-size: 14px; line-height: 20px; cursor: pointer; transition: background-color 150ms ease-out, color 150ms ease-out; } .ds-btn-ghost:hover { background: hsl(60 5% 96%); color: hsl(12 7% 15%); }"
+        },
+        {
+            "name": "Text Input",
+            "kind": "input",
+            "refersTo": "input-default",
+            "description": "Tight 4px-radius field with hairline ring; focus flips the ring to Focus Salmon.",
+            "html": "<input class=\"ds-input\" placeholder=\"Search chats...\" />",
+            "css": ".ds-input { display: flex; width: 100%; height: 32px; padding: 8px 12px; border: none; border-radius: 4px; background: #ffffff; color: hsl(12 7% 15%); font-family: 'SF Pro', system-ui, sans-serif; font-size: 12px; line-height: 16px; outline: none; box-shadow: 0 0 0 1px #ecebe9; transition: box-shadow 150ms ease-out; } .ds-input::placeholder { color: #938c85; } .ds-input:focus { box-shadow: 0 0 0 1px #daa48b; } .ds-input:disabled { opacity: 0.5; cursor: not-allowed; }"
+        },
+        {
+            "name": "Card",
+            "kind": "card",
+            "refersTo": "card-default",
+            "description": "Rare container; roundest shape in the app, hairline border, whisper shadow.",
+            "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Project</h3><p class=\"ds-card-desc\">12 chats · updated today</p></div>",
+            "css": ".ds-card { border: 1px solid #ecebe9; border-radius: 12px; background: #ffffff; color: #1c1917; padding: 24px; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-card-title { margin: 0 0 6px 0; font-family: 'SF Pro', system-ui, sans-serif; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.01em; } .ds-card-desc { margin: 0; font-size: 12px; line-height: 16px; color: #938c85; }"
+        },
+        {
+            "name": "Mono Micro-Label",
+            "kind": "custom",
+            "refersTo": "label",
+            "description": "The .sidebar-label signature kicker: the one sanctioned eyebrow pattern.",
+            "html": "<div class=\"ds-sidebar-label\">Projects</div>",
+            "css": ".ds-sidebar-label { font-family: 'Geist Mono', monospace; font-size: 10px; line-height: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: hsl(33 6% 30%); }"
+        },
+        {
+            "name": "Keyboard Hint",
+            "kind": "chip",
+            "refersTo": "label",
+            "description": "Inline kbd hint in Geist Mono, muted, sits beside actions.",
+            "html": "<kbd class=\"ds-kbd\"><span>⌘</span>K</kbd>",
+            "css": ".ds-kbd { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 0 4px; font-family: 'Geist Mono', monospace; font-size: 12px; color: #938c85; } .ds-kbd span { font-size: 16px; padding-top: 2px; }"
+        }
+    ],
+    "narrative": {
+        "northStar": "The Warm Terminal",
+        "overview": "Chorus is a native Mac tool that puts many AIs in one quiet room. The interface is a warm-neutral workspace — warm grays, hairline borders, generous whitespace — with a monospace, terminal-literate accent voice (Geist Mono micro-labels, ASCII flourishes, a retro loader). Design serves the product: chat content is the star, the chrome disappears into the task. Density is moderate; states are rich; motion is feedback, never decoration.",
+        "keyCharacteristics": [
+            "Warm gray ramp on every surface; true white canvas in light, #1c1917 in dark",
+            "One accent family (Toasted Sand) for highlights and selection only",
+            "Monospace micro-labels as the signature voice element",
+            "Hairline borders carry structure; shadows nearly absent",
+            "Full light/dark parity via CSS variables"
+        ],
+        "rules": [
+            { "name": "The Token-Only Rule", "body": "New UI never introduces hex/HSL literals. If a color isn't reachable through a semantic token, the design is wrong or the token belongs in src/ui/themes/index.ts first.", "section": "colors" },
+            { "name": "The Quiet Accent Rule", "body": "Toasted Sand marks state (selection, highlight, activity) — never headings, never fills for emphasis, never gradients.", "section": "colors" },
+            { "name": "The One Kicker Rule", "body": "The mono micro-label is Chorus's single deliberate kicker pattern. Reuse .sidebar-label exactly; do not invent second eyebrow styles.", "section": "typography" },
+            { "name": "The Fixed Scale Rule", "body": "Sizes come only from the four registered steps (10/12/14/16). No clamp(), no arbitrary text-[13px]. Weights only from 250/400/450/500.", "section": "typography" },
+            { "name": "The Border-Not-Shadow Rule", "body": "If a container needs separation, reach for border-border or a bg-sidebar/bg-muted tint first. A drop shadow on an in-flow element is a design smell.", "section": "elevation" }
+        ],
+        "dos": [
+            "Do build every new surface from src/ui/components/ui/ primitives and semantic tokens",
+            "Do verify both light and dark themes before calling any screen done",
+            "Do keep transitions 150–250ms, ease-out, state-conveying; respect prefers-reduced-motion",
+            "Do use ResizablePanelGroup for new split layouts and the existing Radix kit for overlays",
+            "Do give every interactive component its full state set: hover, focus, active, disabled, loading, error, empty",
+            "Do keep destructive actions text-red-on-quiet, gated by ConfirmButton where irreversible"
+        ],
+        "donts": [
+            "Don't introduce hex/HSL/OKLCH literals, new fonts, new font sizes, or arbitrary Tailwind values in feature code",
+            "Don't use gradients, gradient text, glassmorphism, colored side-stripe borders, or hero-metric cards",
+            "Don't ship dark-mode-only or light-mode-only styling",
+            "Don't use solid red buttons; destructive stays quiet",
+            "Don't add drop shadows to in-flow content",
+            "Don't invent second kicker/eyebrow styles beyond .sidebar-label",
+            "Don't replace standard affordances with novelties (custom scrollbars, non-Radix modals, display fonts in labels)",
+            "Don't add orchestrated page-load choreography; Chorus loads into the task"
+        ]
+    }
+}
