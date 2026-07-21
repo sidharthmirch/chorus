@@ -212,6 +212,17 @@ Board/Worktrees control already exists (`FleetHeader.tsx`).
 
 ## User-test queue
 
-(nothing yet — P2 will be the first phase with anything to look at in the
-running app; this entry will be replaced once there's a concrete test
-plan item.)
+- Navigate to `/fleet` (no UI entry point yet — P5 adds the sidebar link;
+  until then, type the URL/route directly, e.g. via the command menu or
+  browser devtools navigation) with no `fleet_endpoint` configured. Expect:
+  Board tab active by default, all 4 columns populated from
+  `MockFleetAdapter`'s fixtures (2 queued / 2 running / 1 needs-review / 2
+  merged), progress bars + log lines on the running/needs-review cards,
+  "awaiting you" badge on the needs-review card. Click the Worktrees tab:
+  expect the P3 placeholder text for now (will change once P3 lands).
+  Click a queued card's dispatch icon → pick a machine → card should move
+  to the Running column. Click a running card's pause icon → card should
+  show a "paused" tag and its pause icon should become a play icon; click
+  again to resume. Check both light and dark themes (I can't render the
+  app to verify contrast myself — flagging as visual-uncertainty per
+  01-COORDINATION.md §6 rather than guessing).
