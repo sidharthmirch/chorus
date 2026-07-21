@@ -1,22 +1,27 @@
 # W6 Progress — Chat Rework (View Modes, Stances, Composer, Prompt Optimizer)
 
-## State: P2 done (commits e685fe6 P0, 9e6a761 P1, <fill in P2 hash after commit>).
-Starting P3 (View modes).
+## State: P4 done (commits e685fe6 P0, 9e6a761 P1, 138b0db P2, 3a05d46 P3,
+59b398b P4). Starting P5 (Prompt Optimizer) — the last phase.
 
 ## NEXT ACTION
 
-Implement P3: migration v149 (`chats.view_mode TEXT NOT NULL DEFAULT
-'columns' CHECK (...)`), a `viewMode` union type + `chats.viewMode` field
-(export the union from `ChatState.ts` per architecture §5), a pill segmented
-control in the chat header (`MultiChat.tsx`'s right "chat actions" cluster —
-re-grep `chat actions - show as individual` for the current line, it drifts
-every session), Focus mode (new component, primary model full-width +
-carousel pager over `ToolsBlock.chatMessages` minus the primary), and Columns
-role chips (`main`/`hidden`, index 0 of `useChatCompareModelConfigs` =
-"main" — purely cosmetic, add right next to P1's stance badge in
-`ToolsMessageView`'s header). `columns` (the default) must stay pixel-stable
-— gate all new rendering behind `viewMode !== "columns"` branches, never
-restructure `ToolsBlockView`'s existing JSX for the columns case itself.
+Implement P5: flesh out `src/ui/components/composer/PromptOptimizerDialog.tsx`
+(currently P2's presentable placeholder — mount/dialog-id wiring in
+`ChatInput.tsx` is done, only this file's body + its own props need to grow)
+into the real modal per `docs/rework/design/prompt-optimizer.md`: Structured
+(default) vs Before/After tabs (`ui/tabs.tsx` or plain toggle buttons), Intent
+radios (`ui/radio-group.tsx`: Just chat / Hand to agent — build / Plan first),
+model-set pills (Chat trio / Coding / Fast-cheap) with per-model checkbox
+toggles, rewrite via `simpleLLM()` (no modelConfigId — same "let it auto-pick"
+reasoning as P4's grading call, see recon §10 and the Decisions log entry
+below), "use ↵" calls `onApply`/`setDraft` back in `ChatInput.tsx` with an
+undo affordance (stash the pre-optimize draft in local state, one-shot revert
+— NOT a schema change, see recon §9), "⧉ copy" to clipboard. Model-set preset
+selection on confirm should update the chat's selection via the SAME
+callbacks `ChatInput.tsx` already built for the model popover
+(`toggleCompareModelConfig`/`persistMainChatCompareIds` — thread them down as
+new props, or lift the apply logic up into `ChatInput.tsx` and have the
+dialog just report "apply this model set" via a callback prop).
 
 ## Phase checklist
 
@@ -54,15 +59,45 @@ restructure `ToolsBlockView`'s existing JSX for the columns case itself.
       187/187 (no new tests — no new pure logic, just DB-CRUD-wrapper/UI
       code, consistent with `PromptProfilesAPI.ts` having no test file
       either).
-- [ ] P3 — View modes (migration v149 `chats.view_mode`, segmented control in
-      header at `MultiChat.tsx`'s right "chat actions" cluster — re-grep, line
-      drifts every edit — Focus mode, Columns role chips) <- current
-- [ ] P4 — Fused (generalize `useStreamSynthesis`/`useSelectSynthesis`/
-      `useDeselectSynthesis` + `llmConversationForSynthesis` to accept
-      `blockType`; new `FusedBlockView`; `grades_json` column on `messages`,
-      part of migration v149; grading via separate `simpleLLM()` call)
-- [ ] P5 — Prompt Optimizer modal (new, self-contained; undo via in-memory
-      stash, not a schema change — see recon §9)
+- [x] P3 — View modes. Migration v149: `chats.view_mode` (default 'columns',
+      CHECK-constrained) + `messages.grades_json` (P4 uses it, bundled here
+      since the ledger declared 2 migrations total). `ChatState.ts` exports
+      `ViewMode`/`VIEW_MODES`/`isViewMode`. `ChatAPI.ts`: `Chat.viewMode`,
+      `readChat` narrows via `isViewMode`, `useUpdateChatViewMode` mutation.
+      New `src/ui/components/ViewModeControl.tsx` (pill segmented, active =
+      inverted-ink) mounted in `MultiChat.tsx`'s header right cluster.
+      `MessageSetView`'s `tools`-block branch now switches on
+      `chatQuery.data?.viewMode`: `"focus"` → new `FocusBlockView` (defined
+      INSIDE `MultiChat.tsx`, not a separate file — it needs to call
+      `ToolsMessageView` directly and a separate file would have created a
+      circular import; see Decisions log); anything else → the untouched
+      `ToolsBlockView`. Role chips (main/hidden) added to `ToolsMessageView`'s
+      header via a new `isMain?: boolean` prop, computed in `ToolsBlockView`
+      from `chatCompareModelConfigs[0]` — purely cosmetic, no data-model
+      change. Selecting "Fused" at this point silently fell back to columns
+      (no branch yet) — resolved in P4.
+- [x] P4 — Fused. Generalized (not duplicated) `useStreamSynthesis`/
+      `useSelectSynthesis`/`useDeselectSynthesis` (`MessageAPI.ts`) with an
+      optional `blockType: "tools" | "compare"` param, defaulting to
+      `"compare"` so the legacy manual-button call site's behavior is
+      unchanged. Generalized `llmConversationForSynthesis` (`ChatState.ts`)
+      to read `toolsBlock.chatMessages` when `selectedBlockType === "tools"`.
+      `SYNTHESIS_INTERJECTION` itself untouched. New
+      `src/core/chorus/fusedGrading.ts` (pure — prompt-building +
+      untrusted-LLM-JSON parsing/validation, 13 unit tests) +
+      `MessageAPI.ts`'s `useComputeFusedGrades` (a SEPARATE `simpleLLM()`
+      call after synthesis finishes, not folded into the synthesis prompt).
+      `ChatState.ts` exports `IGrade`, `Message.grades`; `readMessage` parses
+      `grades_json`. New local `FusedBlockView` (same "inside `MultiChat.tsx`,
+      not a separate file" reasoning as `FocusBlockView`) auto-triggers
+      synthesis once all models are idle, then grading once the fused answer
+      finishes streaming (both effects guarded by the mutation's own
+      `isPending`, not a ref); renders the grade table + reuses
+      `MessageCostDisplay`. Wired into P3's `viewMode` switch — "Fused" now
+      does something.
+- [ ] P5 — Prompt Optimizer modal (P2 already built the button + a
+      placeholder dialog + the mount wiring; undo via in-memory stash, not a
+      schema change — see recon §9) <- current
 
 ## Decisions log
 
@@ -111,13 +146,61 @@ implementation* that post-date the recon doc.
   precedent (an already-accepted pattern in this exact file family: trust the
   CHECK-constrained column's literal union at the type level rather than
   guarding every read), not a new risk introduced here.
+- 2026-07-21 P3: `FocusBlockView` was originally sketched as a standalone
+  `src/ui/components/FocusBlockView.tsx` (per the recon doc's original P3
+  plan). Reconsidered once actually writing it: it needs to call
+  `ToolsMessageView` (exported from `MultiChat.tsx`) to render the
+  primary/paged responses with identical stance badges and role chips, but
+  `MultiChat.tsx` also needs to import `FocusBlockView` to mount it — a
+  circular import. Rather than risk it (even though function-body-deferred
+  circular imports between React component files often work fine with
+  Vite/ESM), moved `FocusBlockView` to be a plain local function defined
+  inside `MultiChat.tsx` itself, right after `ToolsBlockView` — zero
+  cross-file dependency, and consistent with how `ToolsBlockView`/
+  `ChatBlockView`-equivalents already live in this file rather than being
+  extracted. Same reasoning applied again in P4 for `FusedBlockView`. The
+  ONLY genuinely standalone new file is `ViewModeControl.tsx` (the segmented
+  control), which has no such dependency.
+- 2026-07-21 P3: one `as` used — `isViewMode`'s `VIEW_MODES.includes(value as
+  ViewMode)` — same established idiom as this file's pre-existing
+  `isBlockType`, commented inline for CLAUDE.md compliance even though the
+  precedent function it mirrors doesn't have a comment either.
+- 2026-07-21 P4: confirmed (by reading `SimpleCompletionProviderFactory.ts`)
+  that `simpleLLM(prompt, params, "chorus::synthesize")` would NOT actually
+  route through chorus's special virtual-model resolution the way the
+  streaming pipeline does — `createProviderByPrefix("chorus", apiKeys)`
+  returns `null` (only anthropic/openai/google/openrouter are registered in
+  that simpler factory), so passing it would silently no-op back to
+  `getSimpleCompletionProvider`'s auto-pick anyway. Decided NOT to pass any
+  `modelConfigId` to the grading call — let it auto-pick — and NOT to render
+  a "graded by X" model name in the UI (chat.md's mock copy shows "graded by
+  Haiku", but asserting a specific model name I can't reliably know ahead of
+  time, given auto-pick depends on which API keys are configured, would be
+  actively misleading). The grade table itself (score/weight/note) doesn't
+  need this and is unaffected.
+- 2026-07-21 P4: no `useRef`/`useImperativeHandle`/`setTimeout` used.
+  `FusedBlockView`'s two auto-trigger effects are guarded by each mutation's
+  own `isPending` (TanStack Query state) rather than a ref-based "already
+  fired" flag — deliberately, to sidestep the question of whether that kind
+  of ref falls under the orchestrator's "DOM refs" pre-authorization (it
+  doesn't clearly), same reasoning W2's PROGRESS.md already used for its
+  "previous artifact count" tracking.
 
 ## Landmines / do-not
 
 - Do not implement Focus/Columns/Fused by modifying `CompareBlockView`
   (`MultiChatDeprecationPath.tsx`) — that path is legacy/unreachable for new
   chats. All new view-mode work targets `ToolsBlockView`
-  (`MultiChat.tsx:1737-2143`) and a new sibling `FusedBlockView`.
+  (`MultiChat.tsx:1737-2143`) and the local `FocusBlockView`/`FusedBlockView`
+  functions (both now landed, also inside `MultiChat.tsx` — see Decisions
+  log for why they're not separate files).
+- Do not add a `blockType: "tools" | "compare"` default of anything other
+  than `"compare"` to `useStreamSynthesis`/`useSelectSynthesis`/
+  `useDeselectSynthesis` — the legacy manual Synthesize button
+  (`MultiChatDeprecationPath.tsx`) and `MultiChat.tsx`'s ⌘S shortcut call
+  these WITHOUT passing `blockType` at all, relying on the default to stay
+  `"compare"`. Changing the default would silently break old compare-block
+  chats' still-working synthesis feature.
 - Do not touch `src/ui/components/artifacts/**` or the W2 artifact-panel mount
   in `MultiChat.tsx` (imports ~164-165, state/effect ~2326-2359, JSX mount
   ~3414-3433, inside the `ResizablePanelGroup` that starts ~3361). Preserve
@@ -168,3 +251,24 @@ implementation* that post-date the recon doc.
   tools box, prompt-profile pill should all look/behave exactly as before —
   nothing about their layout should have shifted beyond the two new items
   appearing after them in the toolbar.
+- Open a multi-model chat (2-3 models selected). Click the "Focus"/"Columns"/
+  "Fused" segmented control in the header (top right). Expect: Columns
+  (default) looks pixel-identical to before, except each column header now
+  shows a small "main"/"hidden" label next to the model name (only when 2+
+  models are selected). Focus: the first-selected model's response shows
+  full-width; the others collapse into a single dashed-border box below it
+  with "‹ 1/N ›" pager controls — clicking the arrows should cycle through
+  the other responses. Fused: while models are still answering, looks like
+  Columns; once ALL of them finish, it should automatically replace the
+  columns with a single bordered "⚭ Fused response" card containing a
+  synthesized answer, and — a beat later — a "Grading · influence weights"
+  section with one row per model (name, weight bar, weight%, score, short
+  note). Switching back to Columns/Focus mid-fusion should not error.
+- Regression: the OLD compare-block synthesis feature (if you have a chat
+  from before this rework with an actual "compare" block in it) — the
+  manual synthesize button (merge icon in the small left gutter column) and
+  ⌘S shortcut should still work exactly as before; this is the hardest
+  regression to accidentally break since P4 generalized shared code, so it's
+  worth specifically checking if such a chat is available to test with.
+- Both light and dark theme for the new Fused card, grade bars, and role
+  chips — not visually verified here (cannot run the app).
