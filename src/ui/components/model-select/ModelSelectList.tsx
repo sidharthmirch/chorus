@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ModelConfig } from "@core/chorus/Models";
 import { CommandInput } from "@ui/components/ui/command";
 import { useToggleModelConfigPinned } from "@core/chorus/api/ModelFavoritesAPI";
 import { ModelRow } from "./ModelRow";
 import { CatalogGroupsList } from "./CatalogGroupsList";
 import { ProfileFilterBar } from "./ProfileFilterBar";
+import { AddCustomModelButton } from "./AddCustomModelButton";
 import { useModelCatalog } from "./useModelCatalog";
 import { ModelRowAffordances, ModelRowDisabledReason } from "./types";
 
@@ -22,6 +24,8 @@ export interface ModelSelectListProps {
     /** Fires once per pick; the caller decides whether to close its dialog/popover. */
     onSelect: (modelConfigId: string) => void;
     onAddApiKey: () => void;
+    /** Defaults to navigating to `/new-prompt` (ManageModelsBox's pre-rework destination). */
+    onAddCustomModel?: () => void;
     /** Quick chat's ambient use case ignores the active model profile (ported behavior). */
     ignoreActiveProfile?: boolean;
     showCost?: boolean;
@@ -40,6 +44,7 @@ export function ModelSelectList({
     checkedIds,
     onSelect,
     onAddApiKey,
+    onAddCustomModel,
     ignoreActiveProfile = false,
     showCost = false,
     placeholder = "Search models...",
@@ -47,6 +52,15 @@ export function ModelSelectList({
     const [searchQuery, setSearchQuery] = useState("");
     const catalog = useModelCatalog({ searchQuery, ignoreActiveProfile });
     const togglePinned = useToggleModelConfigPinned();
+    const navigate = useNavigate();
+
+    const handleAddCustomModel = useCallback(() => {
+        if (onAddCustomModel) {
+            onAddCustomModel();
+            return;
+        }
+        navigate("/new-prompt");
+    }, [onAddCustomModel, navigate]);
 
     const affordances: ModelRowAffordances = {
         trailingCheck: true,
@@ -93,6 +107,7 @@ export function ModelSelectList({
             />
             <ProfileFilterBar />
             <CatalogGroupsList catalog={catalog} searchQuery={searchQuery} renderRow={renderRow} />
+            <AddCustomModelButton onClick={handleAddCustomModel} className="mx-3 mb-3 mt-1" />
         </>
     );
 }

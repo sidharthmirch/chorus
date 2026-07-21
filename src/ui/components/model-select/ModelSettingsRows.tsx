@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { emit } from "@tauri-apps/api/event";
-import { PlusIcon } from "lucide-react";
 import { ModelConfig, getProviderName } from "@core/chorus/Models";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import {
@@ -12,6 +11,7 @@ import { useToggleModelConfigPinned } from "@core/chorus/api/ModelFavoritesAPI";
 import { Command, CommandInput } from "@ui/components/ui/command";
 import { ModelRow } from "./ModelRow";
 import { CatalogGroupsList } from "./CatalogGroupsList";
+import { AddCustomModelButton } from "./AddCustomModelButton";
 import { useModelCatalog } from "./useModelCatalog";
 import { ModelRowAffordances } from "./types";
 
@@ -128,14 +128,7 @@ export function ModelSettingsRows({
                     className="max-h-[480px] overflow-y-auto"
                 />
             </Command>
-            <button
-                type="button"
-                onClick={handleAddCustomModel}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-sm text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-            >
-                <PlusIcon className="h-3.5 w-3.5" />
-                Add custom model
-            </button>
+            <AddCustomModelButton onClick={handleAddCustomModel} className="mt-2" />
         </div>
     );
 }

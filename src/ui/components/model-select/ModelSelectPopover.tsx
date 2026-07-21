@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowBigUpIcon } from "lucide-react";
 import { ModelConfig } from "@core/chorus/Models";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
@@ -11,6 +12,7 @@ import { useShortcut } from "@ui/hooks/useShortcut";
 import { ModelRow } from "./ModelRow";
 import { CatalogGroupsList } from "./CatalogGroupsList";
 import { ProfileFilterBar } from "./ProfileFilterBar";
+import { AddCustomModelButton } from "./AddCustomModelButton";
 import { SelectedPreviewPanel } from "./SelectedPreviewPanel";
 import { useModelCatalog } from "./useModelCatalog";
 import { ModelRowAffordances } from "./types";
@@ -43,6 +45,8 @@ export interface ModelSelectPopoverProps {
     onOpenProfile?: (modelConfigId: string) => void;
     /** Routes to Settings › API keys for a locked (no-key) row. */
     onAddApiKey: () => void;
+    /** Defaults to navigating to `/new-prompt` (ManageModelsBox's pre-rework destination). */
+    onAddCustomModel?: () => void;
     showCost?: boolean;
 }
 
@@ -56,6 +60,7 @@ export function ModelSelectPopover({
     onUnionSelectAllVisibleModelConfigs,
     onOpenProfile,
     onAddApiKey,
+    onAddCustomModel,
     showCost = false,
 }: ModelSelectPopoverProps) {
     const [searchQuery, setSearchQuery] = useState("");
@@ -63,6 +68,15 @@ export function ModelSelectPopover({
     const modelConfigsQuery = ModelsAPI.useModelConfigs();
     const togglePinned = useToggleModelConfigPinned();
     const isDialogClosed = useDialogStore((s) => s.activeDialogId === null);
+    const navigate = useNavigate();
+
+    const handleAddCustomModel = useCallback(() => {
+        if (onAddCustomModel) {
+            onAddCustomModel();
+            return;
+        }
+        navigate("/new-prompt");
+    }, [onAddCustomModel, navigate]);
 
     // Clear the search when the popover closes, same as the pre-rework
     // ManageModelsBox (docs/rework/w4-model-select-inventory.md §2).
@@ -165,6 +179,10 @@ export function ModelSelectPopover({
                                 searchQuery={searchQuery}
                                 renderRow={renderRow}
                                 className="flex-1 overflow-y-auto"
+                            />
+                            <AddCustomModelButton
+                                onClick={handleAddCustomModel}
+                                className="mx-3 mb-3 mt-1 shrink-0"
                             />
                         </div>
                         <SelectedPreviewPanel

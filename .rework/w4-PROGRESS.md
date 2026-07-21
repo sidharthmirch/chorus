@@ -1,22 +1,22 @@
 # W4 Progress — Model Select Rework
 
-## State: P1+P2 done (commit badcba2) — model-select/** is a complete,
-tested component vocabulary, still dead code (nothing in the live app
-imports it yet).
+## State: P1+P2 done (badcba2, ed567ad) + ModelSelect container done (075f979).
+model-select/** is a complete, tested component vocabulary INCLUDING the
+`ModelSelect` adapter over `ModelPickerMode`. Still dead code — nothing in
+the live app imports `model-select/**` yet.
 ## NEXT ACTION
-Write `src/ui/components/model-select/ModelSettingsRows.tsx` (ready-to-mount
-for W3 — search + grouped rows with favorite/visibility/edit/delete, reusing
-`useModelCatalog`/`ModelRow`/`CatalogGroupsList` exactly like the other
-surfaces). Then do the P3 swap: rewrite `ManageModelsBox.tsx`'s three mode
-branches to delegate to `ModelSelectPopover` (default) / `ModelSelectList`
-(add, single) while keeping its own exported props/dialog-id constants
-byte-for-byte (see inventory §1 — 4 external call sites depend on them);
-rewrite `QuickChatModelSelector.tsx` internals onto `ModelSelectList`
-(variant "quick-chat") inside its existing Popover chrome, keeping the
-posthog `quick_chat_model_selected` capture; refresh `ModelPills.tsx`'s
-`ManageModelsButtonCompare` visuals to composer.md's pill spec (28px, two
-16px overlapped avatars) without touching its props. Run tsc + vitest +
-eslint after each file, commit at each green checkpoint.
+Do the actual P3 swap: rewrite `ManageModelsBox.tsx` to a thin wrapper that
+resolves `showCost`/`onAddApiKey`/`onOpenProfile` and delegates to
+`<ModelSelect id={id} mode={mode} .../>`, while keeping
+`MANAGE_MODELS_CHAT_DIALOG_ID`/`MANAGE_MODELS_COMPARE_DIALOG_ID`/
+`MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID` exports and the `{mode, id}` props
+byte-for-byte (inventory §1 — 4 external call sites). Then rewrite
+`QuickChatModelSelector.tsx` internals onto `ModelSelectList` (variant
+"quick-chat", `ignoreActiveProfile`) inside its existing Popover chrome,
+keeping props + the posthog `quick_chat_model_selected` capture identical.
+Then refresh `ModelPills.tsx`'s `ManageModelsButtonCompare` visuals toward
+composer.md's pill spec without touching its props. Run tsc + vitest +
+eslint after each file; commit at each green checkpoint.
 
 ## Phase checklist
 - [x] P0 — inventory doc (`docs/rework/w4-model-select-inventory.md`)
@@ -24,10 +24,11 @@ eslint after each file, commit at each green checkpoint.
       DeprecatedSection) — commit badcba2
 - [x] P2 — feature parity (useModelCatalog, CatalogGroupsList,
       ModelSelectList, SelectedPreviewPanel + drag-reorder,
-      ModelSelectPopover w/ frozen props) — commit badcba2. Still dead code.
-- [ ] P3 — ModelSettingsRows.tsx (new, for W3) + swap ManageModelsBox/
-      QuickChatModelSelector/ModelPills internals behind unchanged external
-      props    <- current
+      ModelSelectPopover w/ frozen props, ProfileFilterBar,
+      ModelSettingsRows for W3, ModelSelect container adapting
+      ModelPickerMode) — commits badcba2, ed567ad, 075f979. Still dead code.
+- [ ] P3 — swap ManageModelsBox/QuickChatModelSelector/ModelPills internals
+      behind unchanged external props    <- current
 - [ ] P4 — confirm QuickChatModelSelector fully on shared components
       (folding into P3 since it's a small file touched in the same phase)
 
