@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -13,6 +13,8 @@ import { MermaidPreview } from "./Mermaid";
 import { SVGPreview } from "./SVG";
 import { ImagePreview } from "./ImagePreview";
 import { encode } from "html-entities";
+import { extractArtifacts } from "@core/chorus/artifacts/extract";
+import type { IArtifact } from "@core/chorus/artifacts/types";
 
 interface ParsedData {
     number: number;
@@ -217,9 +219,47 @@ function safeEncodeMarkdown(text: string): string {
     return encodedText;
 }
 
-export const MessageMarkdown = ({ text }: { text: string }) => {
+interface MessageMarkdownProps {
+    text: string;
+    /**
+     * W2 — Inline Artifacts. All three are OPTIONAL and additive — existing
+     * call sites (MultiChatDeprecationPath.tsx, SummaryDialog.tsx, the
+     * fullscreen raw-text dialog in MultiChat.tsx) keep compiling untouched.
+     * When all three are provided, artifacts are (re-)extracted whenever
+     * `text` changes and reported via `onArtifactDetected`. NOTE: MultiChat's
+     * own P4 wiring does NOT use this path — it aggregates artifacts across
+     * the whole chat independently via
+     * `@core/chorus/artifacts/collectChatArtifacts`, since that needs
+     * access to messages that aren't necessarily on screen right now. This
+     * prop exists for callers that only have a single message's text in
+     * hand and want detection without that broader aggregation.
+     */
+    messageId?: string;
+    chatId?: string;
+    modelName?: string;
+    onArtifactDetected?: (artifacts: IArtifact[]) => void;
+}
+
+export const MessageMarkdown = ({
+    text,
+    messageId,
+    chatId,
+    modelName,
+    onArtifactDetected,
+}: MessageMarkdownProps) => {
     // encode any html that would otherwise be rendered
     const encodedText = safeEncodeMarkdown(text);
+
+    const detectedArtifacts = useMemo(() => {
+        if (!messageId || !chatId || !modelName) return undefined;
+        return extractArtifacts(text, { messageId, chatId, modelName });
+    }, [text, messageId, chatId, modelName]);
+
+    useEffect(() => {
+        if (detectedArtifacts) {
+            onArtifactDetected?.(detectedArtifacts);
+        }
+    }, [detectedArtifacts, onArtifactDetected]);
 
     const [mainText, sourcesSection] = encodedText.split(/\n\nSources:\n/i);
 

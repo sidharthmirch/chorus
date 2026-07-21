@@ -30,6 +30,7 @@ import NewPrompt from "./components/NewPrompt";
 import ListPrompts from "./components/ListPrompts";
 import Onboarding from "./components/Onboarding";
 import ProjectView from "./components/ProjectView";
+import ArtifactWindowView from "./components/artifacts/ArtifactWindowView";
 import {
     onOpenUrl,
     getCurrent as getCurrentDeepLink,
@@ -133,6 +134,10 @@ const queryClient = new QueryClient({
 function AppContent() {
     const navigate = useNavigate();
     const location = useLocation();
+    // The detached "open in window" artifact view (openArtifactWindow.ts)
+    // is a minimal, chrome-free window — suppress the sidebar/command menu/
+    // settings dialog the same way isQuickChatWindow does below.
+    const isArtifactWindow = location.pathname === "/artifact-window";
     const { mode } = useTheme();
     const hasDismissedOnboarding = AppMetadataAPI.useHasDismissedOnboarding();
     const dismissedAlertVersion = AppMetadataAPI.useDismissedAlertVersion();
@@ -886,9 +891,13 @@ function AppContent() {
                 className={`select-none ${isQuickChatWindow ? "bg-transparent" : "bg-background"}`}
             >
                 <SidebarProvider>
-                    {!isQuickChatWindow && <AppSidebar />}
+                    {!isQuickChatWindow && !isArtifactWindow && (
+                        <AppSidebar />
+                    )}
 
-                    {!isQuickChatWindow && <CommandMenu />}
+                    {!isQuickChatWindow && !isArtifactWindow && (
+                        <CommandMenu />
+                    )}
                     <Routes>
                         <Route path="/" element={<Home />} />
                         <Route path="/new-prompt" element={<NewPrompt />} />
@@ -898,8 +907,12 @@ function AppContent() {
                             path="/projects/:projectId"
                             element={<ProjectView />}
                         />
+                        <Route
+                            path="/artifact-window"
+                            element={<ArtifactWindowView />}
+                        />
                     </Routes>
-                    {!isQuickChatWindow && (
+                    {!isQuickChatWindow && !isArtifactWindow && (
                         <Settings tab={defaultSettingsTab || "general"} />
                     )}
                     <ToolPermissionDialog />
