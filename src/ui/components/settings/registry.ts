@@ -147,10 +147,11 @@ export function isSettingsSectionId(
  * know about the new IA. See docs/rework/w3-settings-inventory.md for the
  * full old-tab -> new-section mapping rationale.
  *
- * `"docs"` intentionally maps to the default section here — callers that
- * care about the docs link's real behavior (open a URL, don't switch
- * section) special-case the string `"docs"` themselves before calling this;
- * see `Settings.tsx`.
+ * Deliberately has no `"docs"` entry: the old "Documentation" nav item never
+ * went through `open_settings` at all (it called `openUrl` directly from
+ * the sidebar's own click handler, never switching tab content) — no
+ * existing caller passes `"docs"` here. The new shell's nav footer preserves
+ * that exact behavior (`SettingsShell.tsx`'s "Documentation" row).
  */
 const LEGACY_TAB_TO_SECTION: Record<string, SettingsSectionId> = {
     general: "app",

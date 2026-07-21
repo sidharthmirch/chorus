@@ -225,8 +225,20 @@ export function AppSection({ navigateToSection }: ISettingsSectionProps) {
                         </SelectTrigger>
                         <SelectContent>
                             {FONT_OPTIONS.sans.map((font) => (
-                                <SelectItem key={font.value} value={font.value}>
-                                    {font.label}
+                                <SelectItem
+                                    key={font.value}
+                                    value={font.value}
+                                    onFocus={() =>
+                                        void handleSansFontChange(font.value)
+                                    }
+                                >
+                                    <span
+                                        className={`font-${font.value
+                                            .toLowerCase()
+                                            .replace(/\s+/g, "-")}`}
+                                    >
+                                        {font.label}
+                                    </span>
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -440,6 +452,25 @@ export function AppSection({ navigateToSection }: ISettingsSectionProps) {
                     </div>
                 </CollapsibleContent>
             </Collapsible>
+
+            {/* Font preloader — hidden, forces the browser to load every
+                selectable font-face now rather than on first dropdown open
+                (ported verbatim from the pre-rework Settings.tsx; scoped to
+                this section since the font selects above are the only thing
+                that ever needed it). */}
+            <div aria-hidden="true" className="hidden">
+                <span className="font-monaspace-xenon">Font preload</span>
+                <span className="font-geist">Font preload</span>
+                <span className="font-monaspace-neon">Font preload</span>
+                <span className="font-sf-pro">Font preload</span>
+                <span className="font-inter">Font preload</span>
+                <span className="font-jetbrains-mono">Font preload</span>
+                <span className="font-fira-code">Font preload</span>
+                <span className="font-monaspace-argon">Font preload</span>
+                <span className="font-monaspace-krypton">Font preload</span>
+                <span className="font-monaspace-radon">Font preload</span>
+                <span className="font-geist-mono">Font preload</span>
+            </div>
         </div>
     );
 }
