@@ -70,6 +70,9 @@ export const defaultTheme: Theme = {
             "card-foreground": colorPalette.gray[950],
             destructive: "5 81% 56%",
             "destructive-foreground": "5 85% 95%",
+            // REWORK-W1: status colors for quota meters etc., both themes (docs/rework/design/OVERVIEW.md)
+            success: "124 28% 42%", // #4e8a52
+            warning: "36 53% 45%", // #b07f36
             foreground: colorPalette.gray[900],
             input: colorPalette.gray[200],
             muted: colorPalette.gray[100],
@@ -105,6 +108,9 @@ export const defaultTheme: Theme = {
             "card-foreground": colorPalette.gray[50],
             destructive: "5 81% 56%",
             "destructive-foreground": "5 85% 95%",
+            // REWORK-W1: status colors for quota meters etc., both themes (docs/rework/design/OVERVIEW.md)
+            success: "120 22% 59%", // #7fae7f
+            warning: "36 56% 59%", // #d1a35d
             foreground: colorPalette.gray[50],
             input: colorPalette.gray[800],
             muted: colorPalette.gray[900],

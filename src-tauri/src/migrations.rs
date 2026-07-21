@@ -2719,6 +2719,25 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 LEGACY_MIGRATION_145_SQL
             },
         },
+        // REWORK-MIGRATION: renumber at rebase (W1 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 147,
+            description: "add provider_accounts table (oauth/quota state, non-secret)",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS provider_accounts (
+                    provider_id TEXT PRIMARY KEY,
+                    auth_kind TEXT NOT NULL,
+                    label TEXT,
+                    account_email TEXT,
+                    status TEXT NOT NULL DEFAULT 'not-configured',
+                    state_json TEXT,
+                    quota_json TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            "#,
+        },
     ];
 }
 
