@@ -14,7 +14,7 @@ cross-cutting decisions and the environment.
 | W4 | Model select | claude/rework-model-select | YES | progress/W4.md |
 | W6 | Chat rework | claude/rework-chat | pending | - |
 | W3 | Settings rework | claude/rework-settings | pending | - |
-| W7 | Fleet | claude/rework-fleet | pending | - |
+| W7 | Fleet | claude/rework-fleet | YES | progress/W7.md |
 | W8 | Wiki | claude/rework-wiki | pending | - |
 
 ## Orchestrator follow-ups (tracked, not blocking parallel work)
