@@ -248,6 +248,74 @@ export function injectCspMeta(html: string, cspContent: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime bridge (error + external-link postMessage) — "html" kind only
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected into "html" artifacts only. "svg" artifacts drop `allow-scripts`
+ * entirely at the iframe sandbox level (architecture §3.2), so a script here
+ * would never run for them anyway, and CSP `default-src 'none'` (no
+ * `script-src`) blocks it as defense in depth — so we don't bother injecting
+ * it into svg documents at all.
+ *
+ * A sandboxed `srcdoc` iframe without `allow-same-origin` has an opaque
+ * origin: the parent cannot reach into `contentDocument` to attach listeners
+ * or read errors. This script runs INSIDE the artifact's own document and
+ * bridges both runtime errors and external-link clicks out via
+ * `postMessage`, so the parent-side `ArtifactFrame` (P2) can surface errors
+ * and hand external links to Tauri's `openUrl` instead of letting the
+ * sandboxed iframe navigate itself to the external page.
+ */
+const RUNTIME_BRIDGE_SCRIPT = `<script>
+(function () {
+    function post(type, payload) {
+        try {
+            window.parent.postMessage({ type: type, payload: payload }, "*");
+        } catch (e) {
+            /* no-op: parent unreachable */
+        }
+    }
+    window.onerror = function (message, source, line, column, error) {
+        post("artifact-error", {
+            message: String(message),
+            line: line,
+            column: column,
+            stack: error && error.stack,
+        });
+        return false;
+    };
+    window.addEventListener("unhandledrejection", function (event) {
+        post("artifact-error", {
+            message: "Unhandled promise rejection",
+            stack:
+                event.reason && event.reason.stack
+                    ? event.reason.stack
+                    : String(event.reason),
+        });
+    });
+    document.addEventListener(
+        "click",
+        function (event) {
+            var el = event.target;
+            while (el && el.tagName !== "A") el = el.parentElement;
+            if (!el) return;
+            var href = el.getAttribute("href");
+            if (!href || href.charAt(0) === "#" || href.indexOf("javascript:") === 0) return;
+            event.preventDefault();
+            post("artifact-external-link", { href: href });
+        },
+        true,
+    );
+})();
+</script>`;
+
+function injectRuntimeBridge(html: string): string {
+    return /<\/body>/i.test(html)
+        ? html.replace(/<\/body>/i, `${RUNTIME_BRIDGE_SCRIPT}\n</body>`)
+        : `${html}\n${RUNTIME_BRIDGE_SCRIPT}`;
+}
+
+// ---------------------------------------------------------------------------
 // Title derivation
 // ---------------------------------------------------------------------------
 
@@ -306,7 +374,9 @@ function buildArtifact(
 
     if (group.kind === "html") {
         const code = assembleHtmlDocument(group.html, group.css, group.js);
-        const document = injectCspMeta(code, HTML_ARTIFACT_CSP);
+        const document = injectRuntimeBridge(
+            injectCspMeta(code, HTML_ARTIFACT_CSP),
+        );
         return {
             ...base,
             kind: "html" as ArtifactKind,

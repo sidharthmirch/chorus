@@ -266,6 +266,40 @@ describe("extractArtifacts — CSP meta position (architecture §3.2)", () => {
     });
 });
 
+describe("extractArtifacts — runtime bridge (error + external-link postMessage)", () => {
+    it("injects the runtime bridge script into an html artifact's document but not its code", () => {
+        const text = fence("html", "<p><a href='https://example.com'>go</a></p>");
+        const artifacts = extractArtifacts(text, meta);
+        expect(artifacts[0].document).toContain("artifact-external-link");
+        expect(artifacts[0].document).toContain("artifact-error");
+        expect(artifacts[0].document).toContain("postMessage");
+        expect(artifacts[0].code).not.toContain("artifact-external-link");
+        expect(artifacts[0].code).not.toContain("postMessage");
+    });
+
+    it("places the runtime bridge script before </body>, after any user js", () => {
+        const text = [
+            fence("html", "<div id='x'></div>"),
+            fence("js", "document.getElementById('x').textContent = 'hi';"),
+        ].join("\n\n");
+        const artifacts = extractArtifacts(text, meta);
+        const doc = artifacts[0].document;
+        expect(doc.indexOf("textContent")).toBeLessThan(
+            doc.indexOf("artifact-external-link"),
+        );
+        expect(doc.indexOf("artifact-external-link")).toBeLessThan(
+            doc.lastIndexOf("</body>"),
+        );
+    });
+
+    it("does NOT inject any script into svg artifacts (allow-scripts is dropped for pure SVG)", () => {
+        const text = fence("svg", "<svg><a href='https://example.com'><rect/></a></svg>");
+        const artifacts = extractArtifacts(text, meta);
+        expect(artifacts[0].document).not.toContain("<script>");
+        expect(artifacts[0].document).not.toContain("postMessage");
+    });
+});
+
 describe("injectCspMeta (unit)", () => {
     it("inserts right after an existing <head> open tag", () => {
         const result = injectCspMeta("<html><head><title>t</title></head></html>", "csp");

@@ -1,40 +1,63 @@
 # W2 Progress — Inline Artifacts
 
-## State: P1 — core extraction complete, fully unit-tested (green)
+## State: P2 — ArtifactFrame + renderer registry complete (tsc/lint/vitest green)
 
 ## NEXT ACTION
-Implement `src/ui/components/artifacts/ArtifactFrame.tsx` (P2): a
-`<iframe srcdoc>` component per the frozen security contract (architecture
-§3.2) — props `{ artifact: IArtifact }` (from `@core/chorus/artifacts/types`)
-+ `onError`. Sandbox attr must be computed as `artifact.kind === "svg" ?
-"allow-forms" : "allow-scripts allow-forms"` (never `allow-same-origin`
-alongside `allow-scripts`). Use `artifact.document` as `srcdoc`. Bump a
-`key`/reload counter on a `refresh()` to force iframe re-mount. Wire a
-`window.addEventListener("message", ...)` bridge for a runtime-error postMessage
-contract (read `src/ui/components/renderers/HTML.tsx` for the pattern — do
-NOT extend/import it, just mirror the shape: `{ type: "error", payload: {...} }`).
-Intercept `<a>` clicks inside the iframe is NOT possible from the parent
-(cross-origin-like isolation from `srcdoc` + sandbox) — instead inject a tiny
-click-listener script into the assembled document at extraction time, OR
-(simpler, decided here) add a `target=_blank`-rewrite + click handler script
-into `assembleHtmlDocument`/`assembleSvgDocument` in extract.ts that posts
-`{ type: "external-link", href }` to the parent on anchor click with an
-external href, and have ArtifactFrame's message handler call Tauri's
-`openUrl` (from `@tauri-apps/plugin-opener`, see WebPreview.tsx for the
-import pattern) and `event.preventDefault()` inside the injected script so
-the sandboxed frame never navigates. This requires a SMALL edit back into
-extract.ts (add the click-interception script during assembly) — update the
-P1 vitest suite if the injected script changes the exact `code`/`document`
-string assertions.
+Implement `src/ui/components/artifacts/ArtifactPanel.tsx` (P3): props
+roughly `{ artifacts: IArtifact[], selectedIndex: number, onSelectIndex:
+(i: number) => void, onClose: () => void, className?: string }` (finalize
+exact shape when wiring P4's chat-level state — see architecture §3.3 /
+design/artifacts.md for the full component inventory). Structure: header
+(40px, `border-b border-border`) — title (derived from
+`artifacts[selectedIndex].title`) + model pill (reuse whatever ModelPills.tsx
+exports for a single-model chip, or a minimal inline avatar+name if that
+component expects a full column context) + version stepper "vN of M" (mono
+11px, `text-muted-foreground`, ‹/› buttons `h-6 w-6`) + action buttons (copy
+via `CopyButton`/`SimpleCopyButton` at src/ui/components/CopyButton.tsx,
+download via `@tauri-apps/plugin-dialog` `save()` + `@tauri-apps/plugin-fs`
+`writeTextFile()`, fullscreen via CSS (a `fixed inset-0 z-50` toggle is
+simplest — no Tauri API needed for in-window fullscreen), open-in-window via
+`@tauri-apps/api/webviewWindow`'s `WebviewWindow` constructor (2.5.0 exposes
+this at that import path — confirmed in package.json, not yet used anywhere
+in the codebase so there's no existing call site to mirror; pass the
+artifact's `document`/`code` via a query param or a temp file since
+WebviewWindow loads a URL, not srcdoc — simplest is a new Tauri window
+pointed at a small in-app route like `/artifact-window/:id` that re-reads
+the artifact from a shared store, OR write `artifact.document` to a temp
+file via plugin-fs and load it as a `file://` URL; DECIDE AND RECORD HERE
+which approach before implementing — the file:// approach loses the sandbox
+entirely (a real window has no `sandbox` attribute equivalent), so the
+in-app-route approach is very likely the right one; flag this as an open
+question to the orchestrator if it's not resolvable from existing patterns),
+close (X button). Segmented Preview/Code tabs via `tabs.tsx`
+(`TabsList`/`TabsTrigger`/`TabsContent`) styled per artifacts.md's deviation
+table (11.5px, active = `bg-foreground text-background`). Preview tab
+dispatches through `getArtifactRenderer(artifact.kind)` from `./registry`
+(call `registerDefaultArtifactRenderers()` once, e.g. at panel module load)
+— render an "unsupported kind" fallback if `undefined` (covers future
+chart/table). Code tab reuses `CodeBlock` from `renderers/CodeBlock.tsx`
+passing `content={artifacts[selectedIndex].code}`
+`language={artifacts[selectedIndex].language}`. Empty state (`artifacts.length
+=== 0`, or panel rendered with no selection): teaching copy per brief
+("Artifacts appear when a model writes HTML/SVG"). Footer (40px, optional):
+provenance line, mono 11px muted — v1 has no real source/tool metadata to
+show yet (that's W6 fused/tool-output territory per architecture §3.1) so
+this can just be a placeholder or omitted entirely for v1; note the decision
+here once made. Both themes — no new literals, semantic tokens only per
+DESIGN.md. Keep this component UNMOUNTED/unused by anything else (dead code)
+until the single P4 wiring commit, per the brief's resumability rule.
 
 ## Phase checklist
 - [x] P1 — Core extraction (pure TS, no UI): `types.ts` + `extract.ts` +
-      `extract.test.ts` (40 tests, all green). `tsc --noEmit` green for new
+      `extract.test.ts` (43 tests, all green). `tsc --noEmit` green for new
       files (one PRE-EXISTING unrelated repo error, see Landmines).
-- [ ] P2 — ArtifactFrame.tsx (iframe sandbox, CSP, error bridge, external-link
-      interception, refresh-via-key)              <- current
+- [x] P2 — `ArtifactFrame.tsx` (iframe sandbox, CSP already-injected via P1's
+      `document`, error bridge, external-link interception, refresh-via-key)
+      + `registry.ts` (`registerArtifactRenderer`/`getArtifactRenderer`) +
+      `MermaidArtifactRenderer.tsx` + `defaultRenderers.ts`. All dead code
+      (nothing imports this subtree yet) — safe, inert until P3/P4.
 - [ ] P3 — ArtifactPanel.tsx (Preview/Code tabs, header, version stepper,
-      actions, empty state, footer provenance)
+      actions, empty state, footer provenance)              <- current
 - [ ] P4 — MultiChat wiring (single minimal commit: mount + state + callback)
 - [ ] P5 — Versions + polish (chronological ordering, attribution pill,
       regeneration append, esc-to-close, reduced-motion)
