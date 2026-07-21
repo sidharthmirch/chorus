@@ -4,6 +4,7 @@ import { CommandInput } from "@ui/components/ui/command";
 import { useToggleModelConfigPinned } from "@core/chorus/api/ModelFavoritesAPI";
 import { ModelRow } from "./ModelRow";
 import { CatalogGroupsList } from "./CatalogGroupsList";
+import { ProfileFilterBar } from "./ProfileFilterBar";
 import { useModelCatalog } from "./useModelCatalog";
 import { ModelRowAffordances, ModelRowDisabledReason } from "./types";
 
@@ -90,6 +91,7 @@ export function ModelSelectList({
                 onValueChange={setSearchQuery}
                 autoFocus
             />
+            <ProfileFilterBar />
             <CatalogGroupsList catalog={catalog} searchQuery={searchQuery} renderRow={renderRow} />
         </>
     );

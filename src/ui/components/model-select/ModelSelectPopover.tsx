@@ -10,6 +10,7 @@ import { useDialogStore, dialogActions } from "@core/infra/DialogStore";
 import { useShortcut } from "@ui/hooks/useShortcut";
 import { ModelRow } from "./ModelRow";
 import { CatalogGroupsList } from "./CatalogGroupsList";
+import { ProfileFilterBar } from "./ProfileFilterBar";
 import { SelectedPreviewPanel } from "./SelectedPreviewPanel";
 import { useModelCatalog } from "./useModelCatalog";
 import { ModelRowAffordances } from "./types";
@@ -139,6 +140,21 @@ export function ModelSelectPopover({
                                     <span>A</span>
                                 </span>
                             </>
+                        }
+                    />
+
+                    <ProfileFilterBar
+                        showApply
+                        onApply={() => onSelectAllModelConfigs?.(catalog.profileSelectableConfigs)}
+                        applyDisabled={
+                            !catalog.activeProfile || catalog.profileSelectableConfigs.length === 0
+                        }
+                        applyTitle={
+                            !catalog.activeProfile
+                                ? "Choose a profile to replace the selection with its models"
+                                : catalog.profileSelectableConfigs.length === 0
+                                  ? "No models from this profile are available with your current keys and filters"
+                                  : "Replace selection with this profile's models (deselects others)"
                         }
                     />
 
