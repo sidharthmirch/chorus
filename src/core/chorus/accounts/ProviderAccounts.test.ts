@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
     QUOTA_WARN_THRESHOLD,
     deriveQuotaLevel,
+    formatQuotaLabel,
+    formatQuotaResetWindow,
     makeQuotaSnapshot,
 } from "./ProviderAccounts";
 
@@ -37,5 +39,55 @@ describe("makeQuotaSnapshot", () => {
         const snapshot = makeQuotaSnapshot(0.9, resetsAt);
         expect(snapshot.resetsAt).toBe(resetsAt);
         expect(snapshot.level).toBe("warn");
+    });
+});
+
+describe("formatQuotaResetWindow", () => {
+    const now = new Date("2026-07-21T14:30:00Z");
+
+    it("returns undefined with no resetsAt", () => {
+        expect(formatQuotaResetWindow(undefined, now)).toBeUndefined();
+    });
+
+    it("returns undefined once the window has already elapsed", () => {
+        const past = new Date("2026-07-21T14:00:00Z");
+        expect(formatQuotaResetWindow(past, now)).toBeUndefined();
+    });
+
+    it("formats sub-hour windows in minutes", () => {
+        const soon = new Date(now.getTime() + 45 * 60 * 1000);
+        expect(formatQuotaResetWindow(soon, now)).toBe("45m");
+    });
+
+    it("formats sub-day windows in hours", () => {
+        const in3h = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        expect(formatQuotaResetWindow(in3h, now)).toBe("3h");
+    });
+
+    it("formats multi-day windows in days", () => {
+        const in2d = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+        expect(formatQuotaResetWindow(in2d, now)).toBe("2d");
+    });
+});
+
+describe("formatQuotaLabel", () => {
+    const now = new Date("2026-07-21T14:30:00Z");
+
+    it("combines percent and reset window", () => {
+        const quota = makeQuotaSnapshot(
+            0.62,
+            new Date(now.getTime() + 3 * 60 * 60 * 1000),
+        );
+        expect(formatQuotaLabel(quota, now)).toBe("62% · resets 3h");
+    });
+
+    it("falls back to a bare percentage with no reset window", () => {
+        const quota = makeQuotaSnapshot(0.2);
+        expect(formatQuotaLabel(quota, now)).toBe("20%");
+    });
+
+    it("rounds the percentage", () => {
+        const quota = makeQuotaSnapshot(0.628);
+        expect(formatQuotaLabel(quota, now)).toBe("63%");
     });
 });

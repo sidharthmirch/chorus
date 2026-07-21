@@ -87,3 +87,43 @@ export const PROVIDER_ACCOUNT_DISPLAY_NAMES: Record<ProviderAccountId, string> =
         openrouter: "OpenRouter",
         local: "Local",
     };
+
+/**
+ * Formats the time remaining until `resetsAt` as a short countdown label
+ * ("45m", "3h", "1d") for the "62% · resets 3h" style copy specified in
+ * `IQuotaSnapshot`'s own doc comment / docs/rework/design/accounts-oauth.md.
+ * `now` is injectable for deterministic tests. Returns undefined when there
+ * is no reset window (e.g. pay-per-use) or the window has already elapsed
+ * (callers should treat that as "now"/refresh-pending, not display a label).
+ */
+export function formatQuotaResetWindow(
+    resetsAt: Date | undefined,
+    now: Date = new Date(),
+): string | undefined {
+    if (!resetsAt) return undefined;
+    const diffMs = resetsAt.getTime() - now.getTime();
+    if (diffMs <= 0) return undefined;
+
+    const diffMinutes = Math.round(diffMs / (60 * 1000));
+    if (diffMinutes < 60) return `${Math.max(1, diffMinutes)}m`;
+
+    const diffHours = Math.round(diffMs / (60 * 60 * 1000));
+    if (diffHours < 24) return `${diffHours}h`;
+
+    const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+    return `${diffDays}d`;
+}
+
+/**
+ * Formats a quota snapshot into the "62% · resets 3h" label used on quota
+ * bars throughout the app (design/accounts-oauth.md, IQuotaSnapshot's doc
+ * comment). Falls back to a bare percentage when there's no reset window.
+ */
+export function formatQuotaLabel(
+    quota: IQuotaSnapshot,
+    now: Date = new Date(),
+): string {
+    const percent = Math.round(quota.usedFraction * 100);
+    const window = formatQuotaResetWindow(quota.resetsAt, now);
+    return window ? `${percent}% · resets ${window}` : `${percent}%`;
+}

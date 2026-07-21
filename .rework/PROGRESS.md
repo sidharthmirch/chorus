@@ -1,20 +1,35 @@
 # W1 Progress — Accounts: Provider OAuth Forward + Quota Meters (9router pivot)
 
-## State: P2 done — frozen API surface backed by stub data. Starting P3 (nineRouterClient + lifecycle).
+## State: P4 done — client, lifecycle detection, and reference onboarding UI all in place on stub data. Starting P5 (forwarding).
 
 ## NEXT ACTION
-Create `src/core/chorus/accounts/nineRouterClient.ts`: typed client over the
-9router HTTP API documented in `docs/rework/w1-provider-notes.md` §2 (health,
-providers list/get/delete, oauth authorize/exchange, usage, keys), using
-`@tauri-apps/plugin-http`'s `fetch` (already a dependency, already covered by
-the existing broad `http:default` capability in
-`src-tauri/capabilities/default.json` — no capability edit needed). Include
-the `NINEROUTER_OAUTH_PROVIDER_MAP` (Chorus providerId+authKind →
-9router provider id/alias) from notes §3. Then add a `detectNineRouter()`
-health-check helper (lifecycle P3) and start wiring `ProviderAccountsAPI.ts`'s
-stub functions to call it behind a feature-detection branch (fall back to
-stub when 9router isn't running), without changing the exported hook
-signatures.
+Add the credential-resolution step to `ModelProviders/*` (P5). Read
+`src/core/chorus/ModelProviders/ProviderAnthropic.ts`,
+`ProviderOpenAI.ts`, `ProviderGoogle.ts` and `src/core/utilities/ProxyUtils.ts`
+(`canProceedWithProvider`/`hasApiKey`) to find exactly where `apiKeys` gets
+turned into a request (Anthropic/OpenAI already read via `Read` this session
+— OpenAI: `client = new OpenAI({ apiKey: apiKeys.openai, baseURL: customBaseUrl, ... })`
+around ProviderOpenAI.ts:173). Add a small shared helper (probably
+`src/core/chorus/accounts/resolveCredential.ts`) that, given a provider name,
+returns either `{ kind: "9router", baseUrl: "http://localhost:20128/v1",
+apiKey: <chorus 9router key>, modelId: "<alias>/<upstream-id>" }` or
+`{ kind: "api-key" }`/`{ kind: "backend-proxy" }` to fall through to existing
+behavior — call it from each provider class right where `apiKeys.<provider>`
+is currently read, per-provider request shaping stays inside each class as
+the architecture requires. This needs: (a) a real 9router API key acquired
+via `nineRouterClient.createApiKey`/`listApiKeys` and persisted somewhere
+non-secret-tier (app_metadata is the natural fit, following the
+`getCustomBaseUrl`/`useCustomBaseUrl` pattern in `AppMetadataAPI.ts`); (b) the
+per-provider Chorus-model-id → 9router-upstream-model-id static map flagged
+as a TODO/assumption in `nineRouterClient.ts`'s file header (documented in
+`docs/rework/w1-provider-notes.md` §4 already — this map itself doesn't exist
+in code yet, only the alias map does); (c) 401 handling that flips the
+account to `expired` via `useProviderAccountsAPI`'s (still-stub) store and
+falls through to the existing API-key/backend-proxy path for that turn.
+Since `ProviderAccountsAPI.ts` is still stub-backed (P6 not started), P5's
+"mark expired" step should call `stubDisconnectProviderAccount`-shaped logic
+or a new `stubMarkProviderAccountExpired` — add that mutation now rather than
+inventing ad hoc state, so P6 has one seam to replace.
 
 ## Phase checklist
 - [x] Research: 9router API surface, launch/data-dir, provider-id mapping,
@@ -31,16 +46,31 @@ signatures.
       `useDisconnectProviderAccount()`, `useRefreshProviderAccountQuota()`.
       Backed by an in-memory stub store (module-level array, seeded
       not-configured for all 6 known provider ids). Unit-tested
-      (`ProviderAccountsAPI.test.ts`, 7 tests). Not yet committed as of this
-      NEXT ACTION write — see "commit cadence" note below; will be committed
-      together with this PROGRESS.md.
-- [ ] P3 — `nineRouterClient.ts` (typed HTTP client) + lifecycle detection
-      (`detectNineRouter()` health-check poll). <- current
-- [ ] P4 — on-brand onboarding UI: `ProviderAccountCard` +
-      connect-flow-that-polls-status, in `src/ui/components/accounts/`.
+      (`ProviderAccountsAPI.test.ts`, 7 tests). Commit `d6a22fe`.
+- [x] P3 — `src/core/chorus/accounts/nineRouterClient.ts`: typed HTTP client
+      (health/providers/oauth authorize+exchange/usage/keys) using
+      `@tauri-apps/plugin-http`'s fetch, `NINEROUTER_OAUTH_PROVIDER_MAP`,
+      type-guard JSON parsing (no `as`), 20 unit tests via injectable
+      `fetchImpl`. Added `useNineRouterStatus()` (10s poll via
+      `refetchInterval`, additive to the frozen API) to
+      `ProviderAccountsAPI.ts`. Commit `99e931b`.
+- [x] P4 — on-brand onboarding UI in `src/ui/components/accounts/`:
+      `ProviderAccountCard.tsx` (reference card: status dot, name, auth
+      badge, email/status detail line, `QuotaBar`, Connect/Reauthorize/
+      Manage/Disconnect buttons gated by `account.status`),
+      `QuotaBar.tsx` (4px meter + mono "62% · resets 3h" label, reusable by
+      W4's model rows), `providerAccountDisplay.ts` (pure, unit-tested
+      display-mapping helpers — badge copy, status-dot color, status text).
+      Extended `ProviderAccounts.ts` with `formatQuotaResetWindow`/
+      `formatQuotaLabel` (pure, unit-tested, deterministic via injectable
+      `now`). Not yet committed as of this write — will commit together with
+      this PROGRESS.md update. Total accounts-area tests: 48, all green.
+      **Not wired into any route/Settings surface** — per the brief, this is
+      a standalone reference component for W3 to mount; W1 does not touch
+      `Settings.tsx`.
 - [ ] P5 — forwarding: credential-resolution step in `ModelProviders/*`
       (oauth via 9router → API key → backend proxy), 401 → `expired` →
-      reauthorize.
+      reauthorize. <- current, see NEXT ACTION.
 - [ ] P6 — `QuotaService.ts`: derive real usage from 9router, cache in
       `provider_accounts` (migration 147's `quota_json` column), wire into
       P2's API replacing the stub, refresh on-use + interval.
@@ -83,16 +113,47 @@ signatures.
   in Cargo.toml, already covered by the existing broad `http:default`
   capability scope in `src-tauri/capabilities/default.json` — verified no
   capability edit is needed).
-- 2026-07-21 No `setTimeout`/`useRef`/`useImperativeHandle`/`as` used yet in
-  P1/P2. One `as`-shaped consideration was written into
-  `ProviderAccountsAPI.test.ts` (forcing an invalid provider id past the
-  type system to test a fallthrough-error path) — removed rather than used,
-  since it didn't fit the ORCHESTRATION.md-sanctioned exceptions ((a) `as
-  const`, (b) unknown-from-JSON narrowing, (c) DB-row mapping). Flagging here
-  so it doesn't get silently reintroduced. P3 (DB row → typed mapping, if we
-  end up reading `provider_accounts` rows) and P6 (9router JSON → typed
-  quota shape) are both expected to need a *legitimate* `as` under exception
-  (b)/(c) — will comment each one inline and log it here when added.
+- 2026-07-21 `nineRouterClient.ts` parses all HTTP JSON via hand-written type
+  guards (`isRecord`/`readString`/`toConnection`/`toQuotaWindow`/...) instead
+  of `as` casts on `unknown` — chose this over the
+  ORCHESTRATION.md-sanctioned exception (b) ("narrowing unknown from JSON/IPC
+  right after a runtime validation") because a guard *is* the runtime
+  validation, so there's nothing left to cast; a version bump on 9router's
+  side that renames/drops a field degrades a row to "dropped" rather than
+  producing a bad cast that type-checks but lies at runtime. No `as` used in
+  `nineRouterClient.ts` itself.
+- 2026-07-21 One legitimate `as` used: `providerAccountDisplay.ts`'s
+  exhaustiveness-check `default` branches do
+  `` `Unhandled status: ${exhaustiveCheck as string}` `` — this is not a new
+  pattern, it's copied verbatim from the existing convention in
+  `ModelProviders/ProviderOpenAI.ts`'s attachment-type switch (`` `... ${exhaustiveCheck as string}` ``),
+  needed because template-literal interpolation of a `never`-typed value
+  trips `@typescript-eslint/restrict-template-expressions`. It appears in
+  exactly three places, all in `providerAccountDisplay.ts`'s
+  exhaustiveness-check `default` branches (`authKindBadgeLabel`,
+  `statusText`, `statusDotClassName`); `ProviderAccountCard.tsx` has no
+  exhaustive switch and uses none.
+- 2026-07-21 `ProviderAccountCard`'s Disconnect button uses the plain
+  `destructive` Button variant (quiet text+10%-tint per DESIGN.md, not a
+  solid red slab) rather than gating through `ConfirmButton`. DESIGN.md says
+  "gated by ConfirmButton where irreversible" — judged disconnect as *not*
+  irreversible (reconnecting is always available, no data is lost), and
+  `ConfirmButton` is an icon-only click-to-arm control that doesn't fit the
+  card's plain-text button row anyway. Flagging this judgment call for
+  W3/orchestrator review since it's a UX call, not just an implementation
+  detail.
+- 2026-07-21 `QuotaBar` is a plain-div meter, not built on the shared
+  `ui/progress.tsx` Radix primitive — that component hardcodes its fill to
+  `bg-foreground` with no per-level color hook, and forking/extending a
+  shared `ui/` primitive felt riskier (other workstreams read that dir) than
+  a small self-contained meter local to `components/accounts/`. Flagged in
+  the component's own doc comment too.
+- 2026-07-21 Quota label copy follows `IQuotaSnapshot`'s own doc comment in
+  `00-ARCHITECTURE.md §4.1` ("resetsAt?: Date // → 'resets 3h' / 'resets 1d' /
+  'monthly'") — i.e. `"62% · resets 3h"` — rather than
+  `design/accounts-oauth.md`'s bar-label example `"62% · 3h"` (no "resets"
+  word). Treated the frozen-contract doc comment as more authoritative than
+  the mock-derived example when the two disagree on wording (not substance).
 
 ## Landmines / do-not
 - `src/ui/components/Draggable.tsx` fails `tsc --noEmit` with
@@ -112,18 +173,30 @@ signatures.
   the obvious name — 9router's actual ids for our four OAuth targets are
   `claude` (alias `cc`), `codex` (alias `cx`), `gemini-cli` (alias `gc`),
   `github` (alias `gh`). Full mapping in
-  `docs/rework/w1-provider-notes.md` §3. Getting this wrong means silently
-  hitting 9router's *direct-API-key* `anthropic`/`openai` entries instead of
-  the OAuth ones.
+  `docs/rework/w1-provider-notes.md` §3, also encoded as
+  `NINEROUTER_OAUTH_PROVIDER_MAP` in `nineRouterClient.ts`. Getting this
+  wrong means silently hitting 9router's *direct-API-key*
+  `anthropic`/`openai` entries instead of the OAuth ones.
 - `gemini-cli` was marked `deprecated: true` with a risk notice in the
   9router source read during research (clone-time snapshot) — don't treat
   its disappearance in a future 9router release as a Chorus bug; degrade
   `google`'s row to "not available via 9router" per notes §5.
 - Do not spawn 9router as a child process from Rust in this pass — see notes
   §6 for why that's explicitly deferred, not an oversight.
+- `ProviderAccountCard`/`QuotaBar`/`providerAccountDisplay` are deliberately
+  NOT imported anywhere outside `src/ui/components/accounts/` yet (no route,
+  no Settings mount). That's correct per the brief, not an oversight — don't
+  "helpfully" wire it into `Settings.tsx` from this workstream; that's W3's
+  file.
+- `getNineRouterProviderRef`/`NINEROUTER_OAUTH_PROVIDER_MAP` only has entries
+  for `anthropic`/`openai`/`google`/`copilot` — `openrouter`/`local` are
+  intentionally absent (those auth kinds never go through 9router). Don't
+  add fallback entries for them "for completeness."
 
 ## User-test queue
-(Nothing user-testable yet — P1/P2 are non-visual/internal. Will start
-accumulating once P4's `ProviderAccountCard` and P3's lifecycle detection
-land, since "is 9router detected correctly" needs a live 9router instance
-the agent cannot start or verify here.)
+(Nothing user-testable yet — P1-P4 are stub-backed/non-networked. The first
+genuinely user-testable item will land with P5/P6: whether Chorus correctly
+detects a real running 9router instance, and whether a real OAuth
+connect→chat→disconnect round trip works. The agent cannot start a live
+9router instance or open a system browser from this environment, so that
+verification is entirely the user's per CLAUDE.md's "Your role" section.)
