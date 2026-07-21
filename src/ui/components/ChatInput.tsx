@@ -46,6 +46,9 @@ import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { PromptProfilePill } from "./PromptProfilePill";
+import { ModePickerPill } from "./composer/ModePickerPill";
+import { OptimizeButton } from "./composer/OptimizeButton";
+import { PromptOptimizerDialog } from "./composer/PromptOptimizerDialog";
 import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
 import { modelConfigQueries } from "@core/chorus/api/ModelsAPI";
 
@@ -787,6 +790,8 @@ export function ChatInput({
                         )}
                         {!isReply && <ToolsBox />}
                         {!isReply && <PromptProfilePill chatId={chatId} />}
+                        {!isReply && <ModePickerPill chatId={chatId} />}
+                        {!isReply && <OptimizeButton />}
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 h-7">
@@ -873,6 +878,8 @@ export function ChatInput({
                         }}
                     />
                 )}
+
+                {!isReply && <PromptOptimizerDialog draft={draft} />}
             </div>
         </div>
     );

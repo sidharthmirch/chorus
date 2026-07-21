@@ -1,18 +1,22 @@
 # W6 Progress — Chat Rework (View Modes, Stances, Composer, Prompt Optimizer)
 
-## State: P0 done (recon doc committed). Starting P1 (Modes entity).
+## State: P2 done (commits e685fe6 P0, 9e6a761 P1, <fill in P2 hash after commit>).
+Starting P3 (View modes).
 
 ## NEXT ACTION
 
-Implement P1: migration v148 (`modes` + `chat_modes` tables, `message_sets.mode_id`
-column, seed Assist/Critic/Socratic), then `api/ModesAPI.ts` (frozen — mirror
-`PromptProfilesAPI.ts`'s exact shape/naming per recon §8), then wire injection
-at the two `injectSystemPrompts` call sites (`MessageAPI.ts:~1498`, `~1580`)
-and usage_count increment inside `useCreateMessageSetPair`
-(`MessageAPI.ts:~1855-1899`, write `mode_id` onto the **ai** message_sets row
-only). Export `IMode` from `ChatState.ts`. See
-`docs/rework/w6-chat-recon.md` §1/§4/§8/§14/§15 for the full plan — it's
-already fully designed, this is implementation, not research.
+Implement P3: migration v149 (`chats.view_mode TEXT NOT NULL DEFAULT
+'columns' CHECK (...)`), a `viewMode` union type + `chats.viewMode` field
+(export the union from `ChatState.ts` per architecture §5), a pill segmented
+control in the chat header (`MultiChat.tsx`'s right "chat actions" cluster —
+re-grep `chat actions - show as individual` for the current line, it drifts
+every session), Focus mode (new component, primary model full-width +
+carousel pager over `ToolsBlock.chatMessages` minus the primary), and Columns
+role chips (`main`/`hidden`, index 0 of `useChatCompareModelConfigs` =
+"main" — purely cosmetic, add right next to P1's stance badge in
+`ToolsMessageView`'s header). `columns` (the default) must stay pixel-stable
+— gate all new rendering behind `viewMode !== "columns"` branches, never
+restructure `ToolsBlockView`'s existing JSX for the columns case itself.
 
 ## Phase checklist
 
@@ -20,12 +24,39 @@ already fully designed, this is implementation, not research.
       `CORRECTION` section at the top — read it, it overrides naive
       assumptions about `CompareBlockView` being live (it isn't; `ToolsBlockView`
       in `MultiChat.tsx:1737-2143` is today's actual "Columns").
-- [ ] P1 — Modes entity (migration v148, `ModesAPI.ts`, injection, seed data,
-      `IMode` export) <- current
-- [ ] P2 — Composer (mode picker pill, optimize button; model popover already
-      free via existing `ManageModelsBox`, see recon §2)
+- [x] P1 — Modes entity. Migration v148 (`modes`+`chat_modes` tables,
+      `message_sets.mode_id`, seed data) in `src-tauri/src/migrations.rs`.
+      `src/core/chorus/api/ModesAPI.ts` (new, frozen — CRUD +
+      `fetchMessageSetModeSystemPrompt` + `incrementModeUsageCount`).
+      `ChatState.ts` exports `IMode`, `MessageSet.modeId`. Injection wired at
+      both `injectSystemPrompts` call sites in `MessageAPI.ts` (now ~1500,
+      ~1584 after the edits — re-grep before trusting). `useCreateMessageSetPair`
+      (~1864) takes `modeId?`, writes it on the **ai** row, increments
+      usage_count once per send. `ChatInput.tsx` resolves+passes the chat's
+      default mode (inert — no picker yet, see P2). `MultiChat.tsx`: sender-row
+      badge in `ToolsMessageView` (~1463-1468, after the model-name span) +
+      read-only header badge (~3266, inside the right "chat actions" cluster,
+      reads `ModesAPI.useChatMode(chatId!)` called at ~2334). Tests:
+      `src/core/chorus/prompts/prompts.test.ts` (5 tests, covers the
+      `injectSystemPrompts` mode-splicing behavior). tsc 0 errors, eslint 0
+      issues, vitest 187/187.
+- [x] P2 — Composer. New `src/ui/components/composer/`: `ModePickerPill.tsx`
+      (mirrors `PromptProfilePill.tsx`; selecting a mode calls
+      `useSetChatMode` directly — simpler than the "ephemeral per-message
+      local state" design sketched in this file's previous revision; see
+      Decisions log for why that was dropped), `OptimizeButton.tsx` (visual
+      states only, toggles a dialog id), `PromptOptimizerDialog.tsx`
+      (presentable placeholder — shows the live draft read-only; P5 replaces
+      the body, not the mount/dialog-id wiring). All three mounted in
+      `ChatInput.tsx`'s toolbar right after `PromptProfilePill` (~792-794)
+      and dialog mount after the reply `ManageModelsBox` (~846). Model popover
+      needed zero new work (confirmed still true). tsc 0, eslint 0, vitest
+      187/187 (no new tests — no new pure logic, just DB-CRUD-wrapper/UI
+      code, consistent with `PromptProfilesAPI.ts` having no test file
+      either).
 - [ ] P3 — View modes (migration v149 `chats.view_mode`, segmented control in
-      header at `MultiChat.tsx:3245-3351`, Focus mode, Columns role chips)
+      header at `MultiChat.tsx`'s right "chat actions" cluster — re-grep, line
+      drifts every edit — Focus mode, Columns role chips) <- current
 - [ ] P4 — Fused (generalize `useStreamSynthesis`/`useSelectSynthesis`/
       `useDeselectSynthesis` + `llmConversationForSynthesis` to accept
       `blockType`; new `FusedBlockView`; `grades_json` column on `messages`,
@@ -52,6 +83,34 @@ implementation* that post-date the recon doc.
   (pure research phase). Will log specific call sites here as P1+ introduces
   any (expect `useRef` for none so far planned; will flag before use if that
   changes).
+- 2026-07-21 P2: dropped the "ephemeral per-message local state" design this
+  file's previous revision sketched for the mode picker (a `pendingModeId`
+  React state separate from the persisted chat default). Reconsidered against
+  `design/composer.md`'s actual copy ("Mode · next message... Click: Sets
+  message mode, closes popover" — no separate "make default" affordance
+  anywhere in the spec) and against `PromptProfilePill`'s proven precedent
+  (selecting a profile calls `useSetChatPromptProfile` directly, no local
+  staging state). Landed on: `ModePickerPill` calls `useSetChatMode` directly
+  on click — "sticky until changed" per-chat default, exactly mirroring
+  `PromptProfilePill`. The "per-message" half of "per-chat + per-message
+  override" semantics is satisfied by `message_sets.mode_id` being an
+  immutable snapshot taken AT SEND TIME (P1's `useCreateMessageSetPair`
+  change) — i.e. changing the chat's mode only affects sends from that point
+  forward; every past turn's sender-row badge still reflects whichever mode
+  was active when IT was sent, which is the actual thing "per-message" needs
+  to mean for a historical chat transcript. No `pendingModeId` state needed
+  anywhere. This also means P1's `ChatInput.tsx` wiring (`chatModeId.data`
+  passed straight into `createMessageSetPair`) was ALREADY the complete,
+  correct final form — P2 didn't need to touch that call site at all, only
+  add the UI that makes `chatModeId` ever be non-null.
+- 2026-07-21 P2: no `useRef`/`useImperativeHandle`/`setTimeout` used. One
+  `as`-shaped question considered and avoided: `ModeDBRow.tag` (in
+  `ModesAPI.ts`) is typed as `IMode["tag"]` directly on the DB row type rather
+  than `string` + a cast/guard at the read boundary — this mirrors
+  `PromptProfilesAPI.ts`'s own `PromptProfileDBRow.author: "user" | "system"`
+  precedent (an already-accepted pattern in this exact file family: trust the
+  CHECK-constrained column's literal union at the type level rather than
+  guarding every read), not a new risk introduced here.
 
 ## Landmines / do-not
 
@@ -88,4 +147,24 @@ implementation* that post-date the recon doc.
 
 ## User-test queue
 
-(Empty — nothing shippable yet. Will populate per-phase as UI lands.)
+- Open any chat, click the mode picker pill in the composer (circle icon,
+  right of the prompt-profile pill). Expect a popover: "Mode · next message"
+  label, None / Assist / Critic / Socratic rows each with icon + description,
+  "Manage modes..." footer (opens Settings — no dedicated Modes tab yet,
+  that's W3). Pick Assist. Expect: the pill becomes a chip reading "✓ Assist";
+  the chat header (top right, near find/share) shows a "✓ Assist · default"
+  pill; sending a message should show a small "✓ assist" badge next to each
+  responding model's name once responses come in.
+- Switch to Critic, send another message in the SAME chat. Expect the new
+  turn's badge to read "✕ critic" while the PREVIOUS turn's badge still reads
+  "✓ assist" (per-message-set history should not retroactively change).
+- Pick "None". Expect both pill and header badge to clear; new sends show no
+  stance badge.
+- Click "Optimize" in the composer. Expect a modal titled "✦ Optimize prompt"
+  showing your current draft text read-only, with a "coming soon" note (full
+  Structured/Before-After UI is P5). Closing it (×/Escape) should return
+  focus to the composer, draft untouched.
+- Regression: existing model picker ("Manage models" pill), attach button,
+  tools box, prompt-profile pill should all look/behave exactly as before —
+  nothing about their layout should have shifted beyond the two new items
+  appearing after them in the toolbar.
