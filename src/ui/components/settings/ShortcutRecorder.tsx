@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Input } from "./ui/input";
+import { Input } from "../ui/input";
 
 interface ShortcutRecorderProps {
     value: string;

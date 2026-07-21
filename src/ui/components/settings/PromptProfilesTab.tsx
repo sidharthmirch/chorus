@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import {
     usePromptProfiles,
     useCreatePromptProfile,
@@ -119,6 +119,8 @@ export function PromptProfilesTab() {
                 <p className="text-sm text-muted-foreground">
                     Prompt profiles inject a persona or role into your chats.
                     Select a profile from the chat input toolbar to activate it.
+                    Separate from Modes above — profiles are personas you pick
+                    per chat, Modes are stances applied per message.
                 </p>
             </div>
 

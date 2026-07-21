@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "./ui/button";
+import { Button } from "../ui/button";
 import {
     useModelProfiles,
     useCreateModelProfile,
@@ -16,7 +16,7 @@ import {
 } from "@core/chorus/Models";
 import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
-import { Input } from "./ui/input";
+import { Input } from "../ui/input";
 import { Checkbox } from "@ui/components/ui/checkbox";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -249,7 +249,7 @@ export function ModelProfilesTab() {
                 <p className="text-sm text-muted-foreground">
                     Create named sets of models to quickly switch between them
                     in chat. Profiles draw from your visible models — configure
-                    which models are visible in the "Visible Models" tab.
+                    which models are visible in the "Models" section.
                 </p>
             </div>
 

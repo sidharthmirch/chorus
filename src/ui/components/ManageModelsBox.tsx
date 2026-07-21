@@ -26,21 +26,24 @@ export const MANAGE_MODELS_COMPARE_DIALOG_ID = "manage-models-compare";
 export const MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID =
     "manage-models-compare-inline"; // dialog for the inline add model button
 
-/** Ported verbatim from the pre-rework `ManageModelsBox` — opens the API
- *  keys settings tab and closes whichever model-picker dialog is open. */
+/** Opens the Accounts settings section (API keys now live there — see
+ *  settings/sections/AccountsSection.tsx) and closes whichever model-picker
+ *  dialog is open. REWORK-W3: repointed from the pre-rework "api-keys" tab
+ *  id, per docs/rework/agents/W3-settings-rework.md's explicit instruction. */
 function handleAddApiKey() {
-    void emit("open_settings", { tab: "api-keys" });
+    void emit("open_settings", { tab: "accounts" });
     dialogActions.closeDialog();
 }
 
 /**
  * Profile chip (per-model variant switcher, `SelectedPreviewPanel`) routes
- * to the closest existing Settings surface for now — the "Visible Models"
- * tab (`visible-models`, `Settings.tsx`'s `SettingsTabId`). W3's Models
- * section rework may want to repoint this once it ships its own tab id.
+ * to the Models settings section. REWORK-W3: repointed from the pre-rework
+ * "visible-models" tab id now that W3 has shipped its own Models section
+ * (settings/sections/ModelsSection.tsx, mounting model-select's own
+ * ModelSettingsRows).
  */
 function handleOpenProfile() {
-    void emit("open_settings", { tab: "visible-models" });
+    void emit("open_settings", { tab: "models" });
     dialogActions.closeDialog();
 }
 

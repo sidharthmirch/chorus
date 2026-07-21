@@ -1,8 +1,8 @@
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { ProviderName } from "@core/chorus/Models";
-import { ProviderLogo } from "./ui/provider-logo";
-import { Card } from "./ui/card";
+import { ProviderLogo } from "../ui/provider-logo";
+import { Card } from "../ui/card";
 import { CheckIcon, FlameIcon } from "lucide-react";
 import { useState } from "react";
 

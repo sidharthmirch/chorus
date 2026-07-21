@@ -1031,8 +1031,12 @@ function QuickChats({ chats }: { chats: Chat[] }) {
                                         <button
                                             onClick={(e) => {
                                                 e.preventDefault();
+                                                // REWORK-W3: "general" (the
+                                                // old first tab) repointed to
+                                                // "accounts" (the new first
+                                                // section).
                                                 void emit("open_settings", {
-                                                    tab: "general",
+                                                    tab: "accounts",
                                                 });
                                             }}
                                             className="h-full text-muted-foreground/75 hover:text-foreground p-2 rounded-full flex items-center gap-2 group-data-[state=open]/collapsible:hidden"
