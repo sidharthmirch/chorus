@@ -5,28 +5,18 @@ integration branch, which already has W1 + W2 merged — `success`/`warning`
 tokens confirmed present in `src/ui/themes/index.ts` + `tailwind.config.cjs`
 before P1 started).
 
-## State: P4 complete — cost presets + machines strip
+## State: P5 complete — ALL PHASES DONE
 
 ## NEXT ACTION
 
-Start P5 (sidebar Sessions cluster) — the LAST phase. In
-`AppSidebar.tsx`, add a single, tightly-bounded, clearly-commented block
-(mirroring how `AppSidebarInner`'s "Minimized models panel" section is
-delimited: an early-return-friendly `useFleetSessions()` call + a small
-render block) that renders live session rows — pulse dot, name,
-"agent · machine" mono meta (reuse the exact sidebar-fixture convention
-already established, e.g. `"claude-code · m4-mini"`), time/status label —
-each navigating to `/fleet` on click. Renders NOTHING (not even a
-container div) when `sessions.length === 0` — see fleet-protocol.md §5 for
-why that's the right gate (mock always has 3, so this actually is visible
-out of the box; a real empty fleet correctly shows nothing). W8 will later
-add a Wiki nav entry to the same file — keep this insertion as one clearly
-delimited block (comment start/end markers) at a natural point (near the
-top of `AppSidebarInner`'s returned JSX, similar to where "Minimized"
-already sits) so that a later rebase carrying W8's own insertion stays
-trivial. This is the LAST phase — after committing, the workstream is
-"done" per docs/rework/agents/W7-fleet.md's Done-means checklist; write the
-final handoff report.
+None — this workstream is done per docs/rework/agents/W7-fleet.md's "Done
+means" checklist (see the handoff report in this session's final message
+to the orchestrator for the full summary: phases/commits, files, gate
+results, exported signatures, open questions, test plan). If resumed
+later: re-verify the gate (`tsc --noEmit`, the two `eslint` targets,
+`vitest run src/core/chorus/fleet`) still passes before doing anything
+else, since this is the natural point where a resumer's first move should
+be confirming nothing drifted, not writing new code.
 
 ## Phase checklist
 
@@ -52,7 +42,12 @@ final handoff report.
       `CostPresetsPanel` Board-only and `MachinesStrip` on both views,
       matching design/fleet.md's two distinct ASCII footer layouts, gated
       behind `isReachable && !isInitialLoad`)
-- [ ] P5 — Sidebar Sessions cluster                                  <- current, LAST phase
+- [x] P4.5 — reconciled two convergent `FleetdAdapter`/UI drafts that
+      briefly diverged mid-session (see Decisions log) back into one
+      consistent, gate-clean state before P5.
+- [x] P5 — Sidebar Sessions cluster (`FleetSessionsCluster.tsx`; one
+      12-line, purely-additive insertion in `AppSidebar.tsx` — import +
+      one clearly-commented render call, no reordering of existing code)
 
 ## Decisions log
 
@@ -236,6 +231,41 @@ final handoff report.
   stays correct even if a future fleetd reorders `GET /cost-presets`'
   response. Matches the design mock's own default (`costPreset: 1` = index
   1 of `[Economy, Balanced, Max quality]` = "Balanced").
+- **P5 — sidebar label is "Fleet", not "Sessions".** The brief's own prose
+  calls this the "Sessions cluster," but the design mock's actual sidebar
+  sketch renders the section header as "Fleet" (matching "Minimized"/
+  "Projects" — short category nouns). Went with the mock's literal text
+  over the brief's descriptive name for the on-screen label; `FleetSessions
+  Cluster` is still the component/file name (matches the brief's own
+  vocabulary for what the thing IS, just not what it's labeled on screen).
+- **P5 — sidebar-scoped tokens, not the general ones.** `text-sidebar-
+  foreground` / `text-sidebar-muted-foreground` / `hover:bg-sidebar-accent`
+  throughout `FleetSessionsCluster.tsx`, not the plain `text-foreground`/
+  `text-muted-foreground`/`hover:bg-muted` used on `/fleet` itself.
+  DESIGN.md is explicit that "Sidebar sits on Sidebar Smoke with its own
+  token family" — the sidebar's background is a different shade than the
+  main canvas, so its muted/accent tokens are calibrated separately for
+  contrast against it. Easy to miss since every OTHER Fleet component
+  lives on the main canvas and correctly uses the general tokens.
+- **P5 — trailing status label is tone-colored.** The design mock's own
+  sidebar fixture colors each row's time label to match its dot
+  (`timeColor` alongside `dot` in the mock's `sessions` state array) —
+  carried that through via `FLEET_TONE_TEXT_CLASS[tone]` rather than a
+  flat muted color, so e.g. a running session's elapsed-time label reads
+  in the same success green as its dot.
+- **P5 — one duplicate-insertion cleanup mid-session.** Two consistent
+  drafts of the same sidebar component (`FleetSessionsCluster.tsx` /
+  `SidebarSessionsCluster.tsx`, functionally near-identical — same filter/
+  sort/cap logic, same navigate-to-`/fleet` behavior) briefly existed side
+  by side, and `AppSidebar.tsx` transiently ended up with both wired in at
+  once (caught immediately by `tsc`: an undefined-name error, since the
+  two edits landed referencing each other's now-stale import). Resolved by
+  reviewing both, keeping the better-reasoned one (`FleetSessionsCluster.tsx`
+  — correct sidebar-scoped tokens once merged with the other's tone-colored
+  label + cleaner two-line row layout), deleting the other, and reducing
+  `AppSidebar.tsx` back down to exactly one import + one render call (see
+  the P4.5 checklist line). Net diff to `AppSidebar.tsx` is 12 lines,
+  purely additive, verified via `git diff HEAD --stat`.
 
 ## Landmines / do-not
 
@@ -288,6 +318,20 @@ final handoff report.
   that OS setting on and off). The explanatory paragraph below the cards
   should read "Every ticket runs in its own git worktree branched off the
   feature worktree..." with "spawned on demand" bolded.
+- In the sidebar (any regular chat window, not the sidebar-less quick-chat
+  window): expect a "Fleet" cluster near the top, above "Minimized"/
+  "Projects" — 3 rows (the design mock's own default `MockFleetAdapter`
+  has 5 non-merged sessions; the cluster caps at 3, newest-updated-first),
+  each with a dot, a title, a small mono "agent · machine" line, and a
+  tone-colored trailing label ("4m"/"11m" for queued, elapsed time for
+  running, "review" for the needs-review one). The running sessions'
+  dots should pulse. Clicking any row, or "board →", navigates to
+  `/fleet`. **Regression check:** with the sidebar's existing behavior —
+  new chat button, Minimized panel, Projects, chat list, Ambient Chats —
+  unaffected; the diff to `AppSidebar.tsx` is exactly 12 additive lines
+  (verified via `git diff HEAD --stat`), so there should be nothing to
+  regress, but worth confirming the sidebar still looks/behaves normally
+  end to end.
 - Check both light and dark themes throughout (I can't render the app to
   verify contrast myself — flagging as visual-uncertainty per
   01-COORDINATION.md §6 rather than guessing).
