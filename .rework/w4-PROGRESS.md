@@ -1,22 +1,55 @@
 # W4 Progress — Model Select Rework
 
-## State: P0 — inventory doc committed
+## State: P1+P2 done (commit badcba2) — model-select/** is a complete,
+tested component vocabulary, still dead code (nothing in the live app
+imports it yet).
 ## NEXT ACTION
-Start P1: scaffold `src/ui/components/model-select/` (types.ts, search.ts +
-search.test.ts, ModelRow.tsx, ProviderGroup.tsx) as dead code — nothing
-mounts it yet, zero risk to the app. Port the search/scoring logic from
-`ManageModelsBox.tsx` (`normalizeSearchValue`/`parseSearchQuery`/
-`scoreMatch`/`filterBySearch`/`KNOWN_PROVIDERS`) into `search.ts` first since
-everything else depends on it.
+Write `src/ui/components/model-select/ModelSettingsRows.tsx` (ready-to-mount
+for W3 — search + grouped rows with favorite/visibility/edit/delete, reusing
+`useModelCatalog`/`ModelRow`/`CatalogGroupsList` exactly like the other
+surfaces). Then do the P3 swap: rewrite `ManageModelsBox.tsx`'s three mode
+branches to delegate to `ModelSelectPopover` (default) / `ModelSelectList`
+(add, single) while keeping its own exported props/dialog-id constants
+byte-for-byte (see inventory §1 — 4 external call sites depend on them);
+rewrite `QuickChatModelSelector.tsx` internals onto `ModelSelectList`
+(variant "quick-chat") inside its existing Popover chrome, keeping the
+posthog `quick_chat_model_selected` capture; refresh `ModelPills.tsx`'s
+`ManageModelsButtonCompare` visuals to composer.md's pill spec (28px, two
+16px overlapped avatars) without touching its props. Run tsc + vitest +
+eslint after each file, commit at each green checkpoint.
 
 ## Phase checklist
 - [x] P0 — inventory doc (`docs/rework/w4-model-select-inventory.md`)
-- [ ] P1 — component skeleton (dead code)      <- current
-- [ ] P2 — feature parity + design pass (still dead code until P3 swap)
-- [ ] P3 — swap ManageModelsBox/QuickChatModelSelector/ModelPills internals
-      behind unchanged external props; favorites persistence
+- [x] P1 — component skeleton (search.ts, types.ts, ModelRow, ProviderGroup,
+      DeprecatedSection) — commit badcba2
+- [x] P2 — feature parity (useModelCatalog, CatalogGroupsList,
+      ModelSelectList, SelectedPreviewPanel + drag-reorder,
+      ModelSelectPopover w/ frozen props) — commit badcba2. Still dead code.
+- [ ] P3 — ModelSettingsRows.tsx (new, for W3) + swap ManageModelsBox/
+      QuickChatModelSelector/ModelPills internals behind unchanged external
+      props    <- current
 - [ ] P4 — confirm QuickChatModelSelector fully on shared components
-      (likely folded into P3 since it's a small file)
+      (folding into P3 since it's a small file touched in the same phase)
+
+## Frozen composer-popover contract (W6 — verbatim, from `ModelSelectPopover.tsx`)
+```ts
+export interface ModelSelectPopoverProps {
+    id: string; // dialog-store id (dialogActions.openDialog(id) / useDialogStore convention)
+    selectedModelConfigs: ModelConfig[]; // ordered; index 0 = "main" (cosmetic)
+    onToggleModelConfig: (modelConfigId: string) => void;
+    onClearModelConfigs: () => void;
+    onReorderSelectedModelConfigs?: (modelConfigs: ModelConfig[]) => void;
+    onSelectAllModelConfigs?: (modelConfigs: ModelConfig[]) => void;
+    onUnionSelectAllVisibleModelConfigs?: (modelConfigs: ModelConfig[]) => void;
+    onOpenProfile?: (modelConfigId: string) => void;
+    onAddApiKey: () => void;
+    showCost?: boolean;
+}
+export function ModelSelectPopover(props: ModelSelectPopoverProps): JSX.Element;
+```
+Mountable directly by W6 (bypasses `ManageModelsBox`/`ModelPickerMode`
+entirely), or indirectly via `ManageModelsBox`'s `mode.type === "default"`
+branch once P3 lands (same field names, so the adapter is 1:1).
 
 ## Architecture plan (written before coding, so a resumer doesn't have to
 re-derive it from scratch)
