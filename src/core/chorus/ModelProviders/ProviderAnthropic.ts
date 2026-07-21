@@ -10,6 +10,7 @@ import {
 import { IProvider } from "./IProvider";
 import { canProceedWithProvider } from "@core/utilities/ProxyUtils";
 import { getUserToolNamespacedName, UserToolCall } from "@core/chorus/Toolsets";
+import { resolveNineRouterCredential } from "@core/chorus/accounts/resolveCredential";
 
 type AcceptedImageType =
     | "image/jpeg"
@@ -107,15 +108,27 @@ export class ProviderAnthropic implements IProvider {
             throw new Error(`Unsupported model: ${modelConfig.modelId}`);
         }
 
-        const { canProceed, reason } = canProceedWithProvider(
+        // Credential-resolution step (W1 — docs/rework/w1-provider-notes.md
+        // §4): route through 9router when the user has a connected
+        // Anthropic/Claude-Code account there AND this model has a verified
+        // 9router upstream mapping; otherwise fall through to the existing
+        // API-key path unchanged.
+        const nineRouterCredential = await resolveNineRouterCredential(
             "anthropic",
-            apiKeys,
+            anthropicModelName,
         );
 
-        if (!canProceed) {
-            throw new Error(
-                reason || "Please add your Anthropic API key in Settings.",
+        if (!nineRouterCredential) {
+            const { canProceed, reason } = canProceedWithProvider(
+                "anthropic",
+                apiKeys,
             );
+
+            if (!canProceed) {
+                throw new Error(
+                    reason || "Please add your Anthropic API key in Settings.",
+                );
+            }
         }
 
         const messages = await convertConversationToAnthropic(llmConversation);
@@ -153,7 +166,7 @@ export class ProviderAnthropic implements IProvider {
             .filter((t) => t !== undefined);
 
         const createParams: Anthropic.Messages.MessageCreateParamsStreaming = {
-            model: anthropicModelName,
+            model: nineRouterCredential?.model ?? anthropicModelName,
             messages,
             system: modelConfig.systemPrompt,
             stream: true,
@@ -176,8 +189,8 @@ export class ProviderAnthropic implements IProvider {
         };
 
         const client = new Anthropic({
-            apiKey: apiKeys.anthropic,
-            baseURL: customBaseUrl,
+            apiKey: nineRouterCredential?.apiKey ?? apiKeys.anthropic,
+            baseURL: nineRouterCredential?.baseUrl ?? customBaseUrl,
             dangerouslyAllowBrowser: true,
             defaultHeaders: headers,
         });
