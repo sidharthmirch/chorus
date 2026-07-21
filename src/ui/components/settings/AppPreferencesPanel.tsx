@@ -15,6 +15,10 @@ import {
 import { useTheme } from "@ui/hooks/useTheme";
 import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
+import {
+    useDetectArtifacts,
+    useSetDetectArtifacts,
+} from "@core/chorus/api/AppMetadataAPI";
 import { useQueryClient } from "@tanstack/react-query";
 import Database from "@tauri-apps/plugin-sql";
 import { config } from "@core/config";
@@ -41,6 +45,8 @@ export function AppPreferencesPanel() {
     const [autoScrapeUrls, setAutoScrapeUrls] = useState(true);
     const [cautiousEnter, setCautiousEnter] = useState(false);
     const [showCost, setShowCost] = useState(false);
+    const detectArtifacts = useDetectArtifacts();
+    const setDetectArtifacts = useSetDetectArtifacts();
     const [titleGenerationModelConfigId, setTitleGenerationModelConfigId] =
         useState<string | undefined>(undefined);
 
@@ -312,6 +318,22 @@ export function AppPreferencesPanel() {
                         checked={showCost}
                         onCheckedChange={(enabled) =>
                             void handleShowCostChange(enabled)
+                        }
+                    />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                    <div className="space-y-0.5">
+                        <div className="font-semibold ">Detect artifacts</div>
+                        <div className=" ">
+                            Auto-open the side panel to preview HTML/SVG a model
+                            writes. Turn off to keep responses inline.
+                        </div>
+                    </div>
+                    <Switch
+                        checked={detectArtifacts}
+                        onCheckedChange={(enabled) =>
+                            setDetectArtifacts.mutate(enabled)
                         }
                     />
                 </div>

@@ -44,7 +44,12 @@ function fullMessageText(message: Message): string {
  */
 export function collectChatArtifacts(
     messageSets: MessageSetDetail[],
-    resolveModelName: (modelId: string) => string,
+    resolveModelName: (modelConfigId: string) => string,
+    // Optional: map a message's modelConfig id → its raw catalog model id
+    // (`provider::model`) so the panel can show the correct provider logo.
+    // `message.model` is a modelConfig id, not the catalog id ProviderLogo
+    // needs — without this the logo can't be resolved.
+    resolveModelId?: (modelConfigId: string) => string | undefined,
 ): IArtifact[] {
     const artifacts: IArtifact[] = [];
     for (const set of messageSets) {
@@ -56,6 +61,7 @@ export function collectChatArtifacts(
                     messageId: message.id,
                     chatId: message.chatId,
                     modelName: resolveModelName(message.model),
+                    modelId: resolveModelId?.(message.model),
                 }),
             );
         }

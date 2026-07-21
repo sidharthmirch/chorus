@@ -2736,9 +2736,15 @@ export default function MultiChat() {
         () =>
             collectChatArtifacts(
                 messageSetsQuery.data ?? [],
-                (modelId) =>
-                    modelConfigsQuery.data?.find((m) => m.id === modelId)
-                        ?.displayName ?? modelId,
+                (modelConfigId) =>
+                    modelConfigsQuery.data?.find((m) => m.id === modelConfigId)
+                        ?.displayName ?? modelConfigId,
+                // Raw catalog id (`provider::model`) for the panel's provider
+                // logo — `message.model` is a modelConfig id, which ProviderLogo
+                // can't resolve on its own.
+                (modelConfigId) =>
+                    modelConfigsQuery.data?.find((m) => m.id === modelConfigId)
+                        ?.modelId,
             ),
         [messageSetsQuery.data, modelConfigsQuery.data],
     );

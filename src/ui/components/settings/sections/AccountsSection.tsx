@@ -6,12 +6,14 @@ import {
     CollapsibleTrigger,
 } from "@ui/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "../../ui/input";
 import { Separator } from "../../ui/separator";
 import {
     useProviderAccounts,
     useConnectProviderAccount,
     useDisconnectProviderAccount,
+    useRefreshProviderAccountQuota,
 } from "@core/chorus/api/ProviderAccountsAPI";
 import type { IProviderAccount } from "@core/chorus/accounts/ProviderAccounts";
 import { ProviderAccountCard } from "../../accounts/ProviderAccountCard";
@@ -47,6 +49,14 @@ export function AccountsSection() {
     const { data: accounts, isLoading } = useProviderAccounts();
     const connectMutation = useConnectProviderAccount();
     const disconnectMutation = useDisconnectProviderAccount();
+    const refreshMutation = useRefreshProviderAccountQuota();
+
+    // Surface mutation failures (e.g. 9router not running on :20128) instead of
+    // letting them fail silently — the connect flow otherwise looks broken.
+    const onMutationError = (label: string) => (error: unknown) =>
+        toast.error(label, {
+            description: error instanceof Error ? error.message : undefined,
+        });
 
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
     const [lmStudioBaseUrl, setLmStudioBaseUrl] = useState(
@@ -135,7 +145,9 @@ export function AccountsSection() {
                                 <ProviderAccountCard
                                     key={account.providerId}
                                     account={account}
-                                    isBusy={isBusyConnect || isBusyDisconnect}
+                                    isBusy={
+                                        isBusyConnect || isBusyDisconnect
+                                    }
                                     // Api-key providers (openrouter) connect
                                     // by entering a key below, not via the
                                     // oauth-shaped stub mutation — omitting
@@ -146,19 +158,52 @@ export function AccountsSection() {
                                     onConnect={
                                         isOAuthLike
                                             ? () =>
-                                                  connectMutation.mutate({
-                                                      providerId:
-                                                          account.providerId,
-                                                  })
+                                                  connectMutation.mutate(
+                                                      {
+                                                          providerId:
+                                                              account.providerId,
+                                                      },
+                                                      {
+                                                          onError:
+                                                              onMutationError(
+                                                                  `Couldn't start ${account.providerId} sign-in`,
+                                                              ),
+                                                      },
+                                                  )
+                                            : undefined
+                                    }
+                                    onManage={
+                                        isOAuthLike
+                                            ? () =>
+                                                  refreshMutation.mutate(
+                                                      {
+                                                          providerId:
+                                                              account.providerId,
+                                                      },
+                                                      {
+                                                          onError:
+                                                              onMutationError(
+                                                                  `Couldn't refresh ${account.providerId}`,
+                                                              ),
+                                                      },
+                                                  )
                                             : undefined
                                     }
                                     onDisconnect={
                                         isOAuthLike
                                             ? () =>
-                                                  disconnectMutation.mutate({
-                                                      providerId:
-                                                          account.providerId,
-                                                  })
+                                                  disconnectMutation.mutate(
+                                                      {
+                                                          providerId:
+                                                              account.providerId,
+                                                      },
+                                                      {
+                                                          onError:
+                                                              onMutationError(
+                                                                  `Couldn't disconnect ${account.providerId}`,
+                                                              ),
+                                                      },
+                                                  )
                                             : undefined
                                     }
                                 />

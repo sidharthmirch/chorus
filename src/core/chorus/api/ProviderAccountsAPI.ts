@@ -432,10 +432,22 @@ export async function stubRefreshProviderAccountQuota(
     return account.quota;
 }
 
+/**
+ * The connect flow completes OUT OF PROCESS (OAuth happens in the system
+ * browser via 9router), so the one-shot invalidate in `useConnectProviderAccount`
+ * fires before the user has finished. The global QueryClient uses
+ * `staleTime: Infinity` + no refetch-on-focus, so without this the Accounts
+ * view would show "not-configured" indefinitely after a successful connect.
+ * Poll on a bounded interval; the underlying 9router derivation is itself
+ * cache-gated (~60s) in `fetchProviderAccounts`, so this stays cheap.
+ */
+const PROVIDER_ACCOUNTS_POLL_INTERVAL_MS = 20_000;
+
 export function useProviderAccounts() {
     return useQuery({
         queryKey: providerAccountKeys.all(),
         queryFn: fetchProviderAccounts,
+        refetchInterval: PROVIDER_ACCOUNTS_POLL_INTERVAL_MS,
     });
 }
 

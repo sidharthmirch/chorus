@@ -19,7 +19,15 @@ export interface IArtifact {
     id: string;
     messageId: string;
     chatId: string;
+    /** Human-readable model name for the panel's attribution pill text. */
     modelName: string;
+    /**
+     * Raw catalog model id (`provider::model`) for provider-logo resolution.
+     * Optional because not every producer has the catalog handy (e.g. the
+     * detached artifact window); the panel falls back to `modelName` (and thus
+     * no logo) when absent, rather than mis-resolving a display name.
+     */
+    modelId?: string;
     kind: ArtifactKind;
     /** Derived title for the panel header (e.g. `<title>` content, or a kind-specific fallback). */
     title: string;
@@ -51,4 +59,6 @@ export interface IExtractArtifactsMeta {
     messageId: string;
     chatId: string;
     modelName: string;
+    /** Raw catalog model id (`provider::model`) for provider-logo resolution. */
+    modelId?: string;
 }

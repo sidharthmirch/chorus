@@ -209,7 +209,10 @@ export function ArtifactPanel({
                         {current.title}
                     </span>
                     <span className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                        <ProviderLogo modelId={current.modelName} size="xs" />
+                        <ProviderLogo
+                            modelId={current.modelId ?? current.modelName}
+                            size="xs"
+                        />
                         <span className="max-w-[7rem] truncate">
                             {current.modelName}
                         </span>
