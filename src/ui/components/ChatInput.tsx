@@ -406,6 +406,25 @@ export function ChatInput({
         }
     };
 
+    // Prompt Optimizer (P5) — replacing the draft is undoable: stash the
+    // pre-optimize text in this closure (not persisted anywhere; the drafts
+    // store, DraftAPI, only ever tracks ONE current value, see
+    // docs/rework/w6-chat-recon.md §9) and offer a one-shot "Undo" toast
+    // action that restores it.
+    const handleApplyOptimizedDraft = useCallback(
+        (optimizedText: string) => {
+            const previousDraft = draft;
+            setDraft(optimizedText);
+            toast("Draft replaced with optimized prompt", {
+                action: {
+                    label: "Undo",
+                    onClick: () => setDraft(previousDraft),
+                },
+            });
+        },
+        [draft, setDraft],
+    );
+
     const handleInputFocus = useCallback(() => {
         setIsFocused(true);
         setIsCollapsed(false);
@@ -879,7 +898,15 @@ export function ChatInput({
                     />
                 )}
 
-                {!isReply && <PromptOptimizerDialog draft={draft} />}
+                {!isReply && (
+                    <PromptOptimizerDialog
+                        draft={draft}
+                        visibleModelConfigs={visibleModelConfigs}
+                        currentSelection={chatCompareModelConfigs}
+                        onApply={handleApplyOptimizedDraft}
+                        onApplyModelSet={selectAllCompareModelConfigs}
+                    />
+                )}
             </div>
         </div>
     );
