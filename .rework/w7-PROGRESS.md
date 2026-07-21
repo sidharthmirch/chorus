@@ -5,24 +5,28 @@ integration branch, which already has W1 + W2 merged — `success`/`warning`
 tokens confirmed present in `src/ui/themes/index.ts` + `tailwind.config.cjs`
 before P1 started).
 
-## State: P3 complete — Worktrees view
+## State: P4 complete — cost presets + machines strip
 
 ## NEXT ACTION
 
-Start P4 (cost presets + machines strip): wire the already-written
-`MachinesStrip.tsx` (built during P2, deliberately left uncommitted/
-unwired until now) into `FleetView.tsx` — render it for BOTH Board and
-Worktrees views (per design/fleet.md's two ASCII layouts: Board shows cost
-presets + machines + footer; Worktrees shows machines + footer, no cost
-presets — so `MachinesStrip` is shared, `CostPresetsPanel` is Board-only).
-Build `CostPresetsPanel.tsx`: a `Tabs`-based segmented control
-(Economy/Balanced/Max quality, same active-pill styling as
-`FleetHeader.tsx`'s Board/Worktrees tabs) driven by
-`useFleetCostPresetId()`/`useSetFleetCostPresetId()` (P1, already built) +
-`useFleetCostPresets()`/`useActiveFleetCostPreset()` (P1, already built);
-role chips from `FLEET_ROLES` (`copy.ts`, already built) joined against the
-active preset's `roles` map; estimate line below. Persist on pick (mutation
-already exists, just call `.mutate(preset.id)` on click).
+Start P5 (sidebar Sessions cluster) — the LAST phase. In
+`AppSidebar.tsx`, add a single, tightly-bounded, clearly-commented block
+(mirroring how `AppSidebarInner`'s "Minimized models panel" section is
+delimited: an early-return-friendly `useFleetSessions()` call + a small
+render block) that renders live session rows — pulse dot, name,
+"agent · machine" mono meta (reuse the exact sidebar-fixture convention
+already established, e.g. `"claude-code · m4-mini"`), time/status label —
+each navigating to `/fleet` on click. Renders NOTHING (not even a
+container div) when `sessions.length === 0` — see fleet-protocol.md §5 for
+why that's the right gate (mock always has 3, so this actually is visible
+out of the box; a real empty fleet correctly shows nothing). W8 will later
+add a Wiki nav entry to the same file — keep this insertion as one clearly
+delimited block (comment start/end markers) at a natural point (near the
+top of `AppSidebarInner`'s returned JSX, similar to where "Minimized"
+already sits) so that a later rebase carrying W8's own insertion stays
+trivial. This is the LAST phase — after committing, the workstream is
+"done" per docs/rework/agents/W7-fleet.md's Done-means checklist; write the
+final handoff report.
 
 ## Phase checklist
 
@@ -43,8 +47,12 @@ already exists, just call `.mutate(preset.id)` on click).
       `copy.ts` gained `FLEET_SUPERVISOR_LABEL`/`FLEET_SUPERVISOR_TONE`/
       `FLEET_TICKET_WORKER_CHIP_STATUSES`; wired `useFleetFeatures()` into
       `FleetView.tsx`, including its own `isInitialLoad` branch)
-- [ ] P4 — Cost presets + machines strip                            <- current
-- [ ] P5 — Sidebar Sessions cluster
+- [x] P4 — Cost presets + machines strip (`CostPresetsPanel.tsx`; staged +
+      wired the P2-written `MachinesStrip.tsx`; `FleetView.tsx` now renders
+      `CostPresetsPanel` Board-only and `MachinesStrip` on both views,
+      matching design/fleet.md's two distinct ASCII footer layouts, gated
+      behind `isReachable && !isInitialLoad`)
+- [ ] P5 — Sidebar Sessions cluster                                  <- current, LAST phase
 
 ## Decisions log
 
@@ -213,6 +221,21 @@ already exists, just call `.mutate(preset.id)` on click).
   `[features]` tripped `react-hooks/exhaustive-deps` since `features`
   isn't actually read inside the factory) and threads it down through
   `FeatureCard`/`TicketRow` as an explicit `now` prop.
+- **P4 — role chips show icon + `modelLabel`, not `AgentBadge` verbatim.**
+  `AgentBadge` (built in P2 for kanban cards) renders icon + the *agent id*
+  text ("claude-code"). The role chips need icon + the *model* text
+  ("Sonnet 4.5") instead — reusing `AgentBadge` as-is would print the wrong
+  string. `CostPresetsPanel.tsx` inlines `ProviderLogo` +
+  `assignment.modelLabel` directly rather than stretching `AgentBadge` to
+  cover a second, different use case.
+- **P4 — cost-preset default resolution.** `useFleetCostPresetId()`
+  (`fleetSettings.ts`, P1) falls back to the string id `"balanced"`
+  (`FLEET_DEFAULT_COST_PRESET_ID`) when `app_metadata` has no
+  `fleet_cost_preset` row yet; `useActiveFleetCostPreset()` then looks that
+  id up by value in the loaded preset list (not by array index), so it
+  stays correct even if a future fleetd reorders `GET /cost-presets`'
+  response. Matches the design mock's own default (`costPreset: 1` = index
+  1 of `[Economy, Balanced, Max quality]` = "Balanced").
 
 ## Landmines / do-not
 
@@ -251,11 +274,20 @@ already exists, just call `.mutate(preset.id)` on click).
   Board tab active by default, all 4 columns populated from
   `MockFleetAdapter`'s fixtures (2 queued / 2 running / 1 needs-review / 2
   merged), progress bars + log lines on the running/needs-review cards,
-  "awaiting you" badge on the needs-review card. Click the Worktrees tab:
-  expect the P3 placeholder text for now (will change once P3 lands).
-  Click a queued card's dispatch icon → pick a machine → card should move
-  to the Running column. Click a running card's pause icon → card should
-  show a "paused" tag and its pause icon should become a play icon; click
-  again to resume. Check both light and dark themes (I can't render the
-  app to verify contrast myself — flagging as visual-uncertainty per
+  "awaiting you" badge on the needs-review card. Click a queued card's
+  dispatch icon → pick a machine → card should move to the Running column.
+  Click a running card's pause icon → card should show a "paused" tag and
+  its pause icon should become a play icon; click again to resume.
+- Click the Worktrees tab: expect 2 feature cards
+  (`feat/agents-dash` "building · 2/3 merged", `fix/oauth-refresh`
+  "supervising"), each with ticket rows (T-101/T-102 "merged ✓", T-103
+  "64% · 12m" with a small Worker chip, T-201/T-202 "awaiting merge" each
+  with a Worker chip), and a per-feature supervisor strip — the
+  `fix/oauth-refresh` one should show a pulsing dot next to "Supervisor:
+  reviewing now" (respects `prefers-reduced-motion` — worth checking with
+  that OS setting on and off). The explanatory paragraph below the cards
+  should read "Every ticket runs in its own git worktree branched off the
+  feature worktree..." with "spawned on demand" bolded.
+- Check both light and dark themes throughout (I can't render the app to
+  verify contrast myself — flagging as visual-uncertainty per
   01-COORDINATION.md §6 rather than guessing).

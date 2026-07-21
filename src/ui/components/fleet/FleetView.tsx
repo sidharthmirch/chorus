@@ -11,11 +11,13 @@ import {
     useFleetSessions,
 } from "@core/chorus/fleet/useFleet";
 import RetroSpinner from "@ui/components/ui/retro-spinner";
+import { CostPresetsPanel } from "./CostPresetsPanel";
 import { FleetEmptyState } from "./FleetEmptyState";
 import { FleetFooterHint } from "./FleetFooterHint";
 import { FleetHeader } from "./FleetHeader";
 import { FleetViewId } from "./FleetView.types";
 import { KanbanBoard } from "./KanbanBoard";
+import { MachinesStrip } from "./MachinesStrip";
 import { WorktreesView } from "./WorktreesView";
 
 /**
@@ -65,6 +67,20 @@ export default function FleetView() {
                     <WorktreesView features={featuresQuery.data ?? []} />
                 )}
             </div>
+
+            {/*
+             * design/fleet.md's two ASCII layouts: Board = cost presets +
+             * machines + footer; Worktrees = machines + footer (no cost
+             * presets). MachinesStrip is shared, CostPresetsPanel is
+             * Board-only. Neither renders while unreachable/loading — no
+             * point showing a preset picker or an empty machine strip.
+             */}
+            {isReachable && !isInitialLoad && (
+                <>
+                    {view === "board" && <CostPresetsPanel />}
+                    <MachinesStrip machines={machinesQuery.data ?? []} />
+                </>
+            )}
 
             <FleetFooterHint
                 hint={
