@@ -5,6 +5,20 @@ Maps the pre-rework `Settings.tsx` (2021 lines, deleted in this branch — see
 new home. Companion to `docs/rework/w3-settings-inventory.md` (capability ->
 storage -> section) — this file is line-range -> file, for anyone diffing.
 
+**Post-extraction file-size split (commit `22642fe`):** two files initially
+landed over the ~400-line guideline and were split again *after* the table
+below was written — if a row here says `AppSection.tsx` or
+`ModelDefaultsPanel.tsx`, check these two first:
+
+- `AppSection.tsx`'s theme/font/chat-title-model selects + the four behavior
+  toggles + the font-preloader div -> now `settings/AppPreferencesPanel.tsx`
+  (mounted by `AppSection.tsx`, which kept everything else: PermissionsTab,
+  import buttons, the Advanced disclosure).
+- `ModelDefaultsPanel.tsx`'s "Default Chat Models" provider-grouped
+  checklist -> now `settings/ChatModelsChecklist.tsx` (+ the shared
+  `settings/formatCostSuffix.ts`, since two other selects in
+  `ModelDefaultsPanel.tsx` still need that formatter).
+
 ## Toolsets / Connections block (old lines 1-1072)
 
 | Old lines | Old symbol | New file |
