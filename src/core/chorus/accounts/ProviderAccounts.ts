@@ -35,6 +35,41 @@ export type ProviderAccountStatus =
 export type QuotaLevel = "ok" | "warn";
 
 /**
+ * Type guards for narrowing DB-column strings (`provider_accounts.provider_id`
+ * / `auth_kind` / `status`, all plain TEXT columns per CLAUDE.md's
+ * no-constraints rule) into their literal-union types without an `as` cast —
+ * used by `api/ProviderAccountsAPI.ts`'s row mapping (P6).
+ */
+export function isProviderAccountId(value: string): value is ProviderAccountId {
+    return (
+        value === "anthropic" ||
+        value === "openai" ||
+        value === "google" ||
+        value === "copilot" ||
+        value === "openrouter" ||
+        value === "local"
+    );
+}
+
+export function isProviderAuthKind(value: string): value is ProviderAuthKind {
+    return (
+        value === "oauth" || value === "api-key" || value === "none-local"
+    );
+}
+
+export function isProviderAccountStatus(
+    value: string,
+): value is ProviderAccountStatus {
+    return (
+        value === "connected" ||
+        value === "needs-auth" ||
+        value === "expired" ||
+        value === "error" ||
+        value === "not-configured"
+    );
+}
+
+/**
  * Fraction (0..1) at or above which a quota snapshot is considered "warn".
  * Named constant per docs/rework/00-ARCHITECTURE.md §4.3 / design/accounts-oauth.md.
  */

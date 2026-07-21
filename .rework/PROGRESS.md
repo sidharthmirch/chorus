@@ -1,40 +1,78 @@
 # W1 Progress — Accounts: Provider OAuth Forward + Quota Meters (9router pivot)
 
-## State: P5 done (forwarding, with one known gap — see below). Starting P6 (QuotaService).
+## State: P1-P6 all done and committed. Not starting P7 (explicitly gated — "do NOT start before P1-P6 are PR-ready", separate PR). Ready for orchestrator review; see "Open questions for the orchestrator" below before merging.
 
 ## NEXT ACTION
-Build `src/core/chorus/accounts/QuotaService.ts` (P6): for each connected
-9router account (`nineRouterClient.listConnections()` filtered to active +
-mapped via `NINEROUTER_OAUTH_PROVIDER_MAP`), call
-`nineRouterClient.getUsage(connectionId)` and reduce its `quotas` map to a
-single `IQuotaSnapshot` using the derivation strategy already recorded in
-`docs/rework/w1-provider-notes.md` §2.4 (prefer the most-urgent window;
-`usedFraction = unlimited ? 0 : (total===100 ? used/100 : used/total)`,
-guarding divide-by-zero; `resetsAt` from the window's `resetAt`). Cache the
-result in the `provider_accounts` table (migration 147's `quota_json` +
-`status` columns — this is the point where that table finally gets used;
-P2/P4 deliberately left it unused, see decisions log below). Then replace
-`ProviderAccountsAPI.ts`'s `fetchProviderAccounts`/`fetchProviderAccount`
-stub bodies with real reads from that table (falling back to the existing
-stub seed for providers 9router doesn't know about, e.g. `openrouter`/
-`local`), keeping `useProviderAccounts()`/`useQuota()`'s signatures
-unchanged. Refresh triggers: on-use (call from `resolveCredential.ts` after
-a successful 9router-routed request — the resolution step already knows the
-connection id) + an interval (reuse the `useNineRouterStatus` 10s-poll
-pattern in `ProviderAccountsAPI.ts`, but slower — usage endpoints are
-rate-limited upstream per `docs/rework/w1-provider-notes.md`'s Claude usage
-notes, so don't poll faster than ~60s).
+No in-progress work — everything committed and green. If resuming: read
+"Open questions for the orchestrator" (below) first, since the single
+biggest remaining gap (the actual OAuth "Connect" browser flow) is a design
+question, not a coding task, and guessing at it risks shipping broken
+onboarding. If the orchestrator has answered that question, the next coding
+task is: implement the real `useConnectProviderAccount`/
+`useDisconnectProviderAccount` bodies in `api/ProviderAccountsAPI.ts`
+(currently still `stubConnectProviderAccount`/`stubDisconnectProviderAccount`
+— P6 wired *reads* to real 9router data but deliberately left *writes*
+(connect/disconnect) on the stub, see decisions log) using
+`nineRouterClient.getAuthorizeUrl`/`exchangeCode`/`deleteConnection`, whatever
+browser-open + redirect-capture mechanism the orchestrator specifies, plus a
+poll loop (`listConnections` until the new connection appears or timeout) —
+`resolveCredential.ts`'s `findActiveConnectionForProvider` and
+`NineRouterClient` already have everything needed except the redirect
+capture itself.
 
-**Known gap to fix opportunistically, not blocking P6:** P5 does not detect
-401s from 9router and flip the account to `expired`/surface reauthorize —
-see the P5 checklist entry below and `w1-provider-notes.md` §4 point 5 for
-why it was deliberately deferred (risk of touching untestable streaming
-internals). If picking this up, the safest shape is a thin wrapper around
-each provider class's public `streamResponse` (try/catch around the whole
-existing body, not touching internals) that checks
-`error?.status === 401 || error?.status === 403` and, only when
-`nineRouterCredential` was in play, marks that provider's account `expired`
-(P6's real store, once it exists) before rethrowing unchanged.
+If instead asked to pick at the two deliberately-deferred gaps:
+- **P5's 401→expired detection** (see P5 checklist entry): wrap each
+  provider class's whole `streamResponse` body in try/catch (don't touch
+  the delicate internals), check `error?.status === 401 || error?.status
+  === 403`, and only when a `nineRouterCredential` was in play, call a new
+  `markProviderAccountExpired(providerId)` (add it to
+  `api/ProviderAccountsAPI.ts` next to `stubDisconnectProviderAccount`,
+  persisting `status: "expired"` the same way `persistProviderAccount`
+  already does) before rethrowing unchanged.
+- **P6's "refresh on-use"**: today's refresh is "next read after
+  `NINEROUTER_QUOTA_REFRESH_INTERVAL_MS` has elapsed" (a passive interval,
+  triggered by whatever next calls `fetchProviderAccounts`) plus the
+  explicit `useRefreshProviderAccountQuota()` mutation — there is NOT yet a
+  hook that fires immediately after a successful 9router-routed chat
+  response the way the brief's "refresh on-use" literally implies. Wiring
+  that means threading a callback from `resolveCredential.ts`'s
+  success path back through each provider class's `onComplete`, which has
+  the same "touches delicate, untestable streaming code" risk profile as
+  the 401 item above — deferred for the same reason, not an oversight.
+
+## Open questions for the orchestrator
+1. **How should "Connect" actually open+capture the OAuth redirect?**
+   `GET /api/oauth/:provider/authorize?redirect_uri=<uri>` requires *us* to
+   supply `redirect_uri`, and 9router's exchange step needs the `code` that
+   comes back to whatever URI we specified. Chorus has no deep-link broker
+   or loopback HTTP listener (both explicitly out of scope per the 9router
+   pivot — 9router "owns" OAuth), and building one now would need new Rust
+   (a local socket listener; `tauri-plugin-http`'s `fetch` doesn't let a
+   webview *receive* incoming HTTP). Two plausible resolutions I couldn't
+   verify without deeper research into 9router's own dashboard frontend
+   (out of scope for the research already spent — see notes file): (a)
+   point `redirect_uri` at some page 9router's own already-running server
+   hosts (if its dashboard has a generic "complete this OAuth flow, then
+   you can close this tab" page, its URL is unknown to me) — Chorus never
+   touches the code, just opens `authorizeUrl.url` in the system browser
+   (`@tauri-apps/plugin-opener`, already a dependency) and polls
+   `nineRouterClient.listConnections()` for the new connection; or (b)
+   accept a small, scoped bit of new Rust (a temporary loopback listener,
+   torn down after one redirect) — closer to the original architecture
+   §4.2 design the 9router pivot otherwise removed. Recommend (a) if
+   verifiable, since it needs zero new Rust and fits "never send users to
+   9router's raw dashboard" (the redirect page, unlike the dashboard, would
+   be invisible — open, redirect, close).
+2. **Is the near-empty `NINEROUTER_MODEL_MAP` (3 entries) acceptable to
+   ship, or should this PR wait for broader coverage?** See P5's checklist
+   entry and `docs/rework/w1-provider-notes.md` §2.6 — this is a real,
+   verified finding (Chorus's catalog and 9router's registries mostly don't
+   overlap today), not a shortcut. Widening it safely needs either manual
+   re-curation against a fresh 9router clone periodically, or a
+   live-`/v1/models`-lookup-plus-fuzzy-match strategy (more code, deferred).
+   Shipping as-is means forwarding *works* end-to-end but will rarely
+   actually trigger until either catalog changes; that may or may not be
+   acceptable for this PR's bar.
 
 ## Phase checklist
 - [x] Research: 9router API surface, launch/data-dir, provider-id mapping,
@@ -68,8 +106,7 @@ existing body, not touching internals) that checks
       display-mapping helpers — badge copy, status-dot color, status text).
       Extended `ProviderAccounts.ts` with `formatQuotaResetWindow`/
       `formatQuotaLabel` (pure, unit-tested, deterministic via injectable
-      `now`). Not yet committed as of this write — will commit together with
-      this PROGRESS.md update. Total accounts-area tests: 48, all green.
+      `now`). Commit `c124988`. Total accounts-area tests: 48, all green.
       **Not wired into any route/Settings surface** — per the brief, this is
       a standalone reference component for W3 to mount; W1 does not touch
       `Settings.tsx`.
@@ -107,13 +144,36 @@ existing body, not touching internals) that checks
       the most important remaining P5 gap, deferred because fixing it safely
       means touching each provider's untestable streaming error internals.
       67 tests total repo-wide, all green; tsc/lint clean (only the
-      pre-existing unrelated Draggable.tsx error).
-- [ ] P6 — `QuotaService.ts`: derive real usage from 9router, cache in
-      `provider_accounts` (migration 147's `quota_json` column), wire into
-      P2's API replacing the stub, refresh on-use + interval. <- current, see
-      NEXT ACTION.
-- [ ] P7 (later, gated, separate PR) — remote/OAuth MCP servers. Do not
-      start before P1–P6 are PR-ready.
+      pre-existing unrelated Draggable.tsx error — since resolved on its
+      own, see landmines).
+- [x] P6 — `src/core/chorus/accounts/QuotaService.ts`:
+      `deriveQuotaSnapshot(usage)` reduces a 9router `UsageResult`'s
+      `quotas` map to one `IQuotaSnapshot` per the §2.4 derivation strategy
+      (prefer a "session"-named window, else soonest `resetAt`, else first;
+      percentage-vs-raw-count `used` convention handled per provider).
+      `deriveProviderAccountFromNineRouter(providerId)` derives a full
+      status+quota for one OAuth-forwarded provider (undefined = 9router
+      unreachable this round, distinct from `{status: "not-configured"}` =
+      reachable but genuinely no connection). 16 unit tests via an injected
+      client double. Wired into `api/ProviderAccountsAPI.ts`:
+      `fetchProviderAccounts`/`fetchProviderAccount` now merge live
+      9router-derived data (cached in `provider_accounts`, migration 147's
+      `quota_json`/`status`/`account_email` columns, `INSERT OR REPLACE`,
+      guarded by `isProviderAccountId`/`isProviderAuthKind`/
+      `isProviderAccountStatus` type guards on read — no `as`) for the four
+      oauth providers, gated by `NINEROUTER_QUOTA_REFRESH_INTERVAL_MS`
+      (60s) so usage endpoints aren't hammered; falls back to the cached row
+      or the stub when 9router is unreachable. `openrouter`/`local` stay on
+      the pure in-memory stub (unchanged, documented gap). New
+      `forceRefreshProviderAccountQuota` bypasses the interval gate — wired
+      as `useRefreshProviderAccountQuota`'s real mutation body.
+      **Deliberately NOT done: connect/disconnect mutations remain
+      stub-only** — see "Open questions for the orchestrator" #1 above; real
+      writes need a decision on the OAuth redirect-capture mechanism first.
+      96 tests total repo-wide, all green; tsc 0 errors, lint clean.
+- [ ] P7 (later, gated, separate PR) — remote/OAuth MCP servers. NOT
+      started; instructions say explicitly not to start before P1–P6 are
+      PR-ready, so this is intentional, not incomplete.
 
 ## Decisions log
 - 2026-07-21 Followed ORCHESTRATION.md's "W1 direction change — use 9router"
@@ -218,17 +278,48 @@ existing body, not touching internals) that checks
   call about where exactly to place the wrapper in three different
   large, delicate streaming-response methods — better done by whoever can
   actually test the result.
+- 2026-07-21 P6: `provider_accounts.provider_id` is the PRIMARY KEY (from
+  P1), so persistence is a per-provider `INSERT OR REPLACE` keyed on
+  `provider_id` — matches the codebase's established upsert idiom
+  (`ProviderVisibilityAPI.ts` et al.) rather than introducing
+  `ON CONFLICT ... DO UPDATE` syntax that, while valid SQLite, has no
+  precedent elsewhere in this codebase and wasn't worth the risk of being
+  the first thing to test whether this exact `tauri-plugin-sql` version
+  supports it.
+- 2026-07-21 P6 deliberately keeps `useConnectProviderAccount`/
+  `useDisconnectProviderAccount` on the stub (`stubConnectProviderAccount`/
+  `stubDisconnectProviderAccount`, unchanged from P2) while making *reads*
+  (`fetchProviderAccounts`) real. This means: when 9router is reachable,
+  live derived data always wins over whatever the stub mutations last set;
+  when 9router is unreachable, the stub's last mutation is what shows
+  through the fallback chain (`refreshed ?? cached?.account ?? fallback`).
+  This isn't an accident of not-getting-to-it — seeded here deliberately
+  because building *real* connect/disconnect needs the OAuth redirect-
+  capture design decision that's flagged as Open Question #1, and shipping
+  a half-real mutation (e.g. one that opens a browser to *something* without
+  knowing if it'll actually complete the flow) seemed worse than an honest,
+  clearly-documented stub.
+- 2026-07-21 `deriveProviderAccountFromNineRouter` returning `undefined`
+  (9router unreachable) is deliberately distinct from returning
+  `{status: "not-configured"}` (9router reachable, genuinely no connection)
+  — conflating the two would make `fetchProviderAccounts` show
+  "not connected" every time the user's 9router process happens to be
+  stopped, even if they have real connected accounts recorded in the cache.
+  The merge logic in `ProviderAccountsAPI.ts` relies on this distinction
+  (`refreshed ?? cached?.account ?? fallback` — `refreshed` is `undefined`,
+  not a not-configured account, when 9router is down).
 
 ## Landmines / do-not
-- `src/ui/components/Draggable.tsx` fails `tsc --noEmit` with
-  `Cannot find module '@dnd-kit/utilities'` — **pre-existing**, present since
-  the repo's "Initial commit" (confirmed via `git log -- Draggable.tsx`),
-  unrelated to W1, caused by a gap in the shared `node_modules` junction (the
-  package is present under `@dnd-kit/core` and `@dnd-kit/modifiers` but not
-  `@dnd-kit/utilities`). Do not try to "fix" this from this worktree — it's
-  not ours to fix and editing the shared `node_modules` is explicitly
-  forbidden by the toolchain rules. `tsc --noEmit` is "green" for W1 purposes
-  whenever this is the *only* reported error.
+- **RESOLVED, was a landmine, isn't anymore:** `src/ui/components/Draggable.tsx`
+  used to fail `tsc --noEmit` with `Cannot find module '@dnd-kit/utilities'`
+  (pre-existing since "Initial commit", unrelated to W1 — a gap in the
+  shared `node_modules` junction). Sometime during this session the shared
+  install gained `@dnd-kit/utilities` (presumably another concurrent
+  workstream in a sibling worktree touched the shared `node_modules`, per
+  ORCHESTRATION.md's "junction to the shared install" model) and `tsc
+  --noEmit` is now 0 errors, not "0 errors except this one." Leaving this
+  note so a future reader who sees a *clean* tsc doesn't wonder why earlier
+  commits' messages mention a now-nonexistent error.
 - `provider_accounts` migration is numbered **147** with a
   `// REWORK-MIGRATION: renumber at rebase` tag — do not renumber it
   yourself; that happens at the final integration rebase per

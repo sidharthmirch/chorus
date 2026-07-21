@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { db } from "../DB";
 import {
     IProviderAccount,
     IQuotaSnapshot,
     PROVIDER_ACCOUNT_DISPLAY_NAMES,
     ProviderAccountId,
+    isProviderAccountId,
+    isProviderAccountStatus,
+    isProviderAuthKind,
     makeQuotaSnapshot,
 } from "../accounts/ProviderAccounts";
-import { detectNineRouter } from "../accounts/nineRouterClient";
+import { detectNineRouter, getNineRouterProviderRef } from "../accounts/nineRouterClient";
+import { deriveProviderAccountFromNineRouter } from "../accounts/QuotaService";
 
 /**
  * Frozen consumer surface for provider accounts (OAuth-forward + quota
@@ -15,12 +20,18 @@ import { detectNineRouter } from "../accounts/nineRouterClient";
  * render from `useProviderAccounts()` / `useQuota()` — no one else should
  * touch token/quota logic directly.
  *
- * P2 status: backed by an in-memory stub store so downstream streams can
- * build against the real shape immediately. P3/P4 replace `stubConnect`
- * with a real 9router OAuth connect flow (`accounts/nineRouterClient.ts`);
- * P6 replaces the stub quota values with `accounts/QuotaService.ts`, cached
- * in the `provider_accounts` SQLite table (migration 147). The exported
- * hook signatures below do not change across those phases.
+ * Status (P6): the four OAuth-forwarded providers (anthropic/openai/google/
+ * copilot) now derive real status+quota from a running 9router instance
+ * (`accounts/QuotaService.ts`), cached in the `provider_accounts` SQLite
+ * table (migration 147) and refreshed at most every
+ * `NINEROUTER_QUOTA_REFRESH_INTERVAL_MS`. `openrouter`/`local` remain on the
+ * in-memory stub below (that join to existing ApiKeysForm/OllamaClient state
+ * is still a documented TODO, not attempted here — see .rework/PROGRESS.md).
+ * Connect/disconnect mutations also remain stub-only for now (the real
+ * OAuth browser-flow question is an open item for the orchestrator, same
+ * file) — when 9router is unreachable, the stub's last mutation is what
+ * `fetchProviderAccounts` falls back to; when 9router is reachable, live
+ * derived data wins. The exported hook signatures are unchanged throughout.
  */
 
 const providerAccountKeys = {
@@ -90,11 +101,163 @@ export function __resetProviderAccountsStubForTests(): void {
     stubStore = seedStubProviderAccounts();
 }
 
-export function fetchProviderAccounts(): Promise<IProviderAccount[]> {
-    // Not `async` — there is nothing to await yet (in-memory stub). Kept as
-    // a Promise-returning function so the signature doesn't change once
-    // P6 swaps this for a real SQLite read.
-    return Promise.resolve(stubStore);
+/**
+ * How long a cached 9router-derived row is trusted before re-deriving.
+ * Usage endpoints are rate-limited upstream (docs/rework/w1-provider-notes.md
+ * §2.4's Claude 429-cooldown note) — this is deliberately not fast.
+ */
+const NINEROUTER_QUOTA_REFRESH_INTERVAL_MS = 60_000;
+
+type ProviderAccountRow = {
+    provider_id: string;
+    auth_kind: string;
+    label: string | null;
+    account_email: string | null;
+    status: string;
+    quota_json: string | null;
+    updated_at: string;
+};
+
+type StoredQuota = {
+    usedFraction: number;
+    resetsAt?: string;
+};
+
+function readProviderAccountRow(
+    row: ProviderAccountRow,
+): { account: IProviderAccount; updatedAt: Date } | undefined {
+    if (
+        !isProviderAccountId(row.provider_id) ||
+        !isProviderAuthKind(row.auth_kind) ||
+        !isProviderAccountStatus(row.status)
+    ) {
+        // A row this module didn't write (or a 9router-side rename we don't
+        // know about yet) — drop it rather than guess.
+        return undefined;
+    }
+
+    let quota: IQuotaSnapshot | undefined;
+    if (row.quota_json) {
+        try {
+            const parsed = JSON.parse(row.quota_json) as unknown;
+            if (
+                typeof parsed === "object" &&
+                parsed !== null &&
+                "usedFraction" in parsed &&
+                typeof (parsed as StoredQuota).usedFraction === "number"
+            ) {
+                const stored = parsed as StoredQuota;
+                quota = makeQuotaSnapshot(
+                    stored.usedFraction,
+                    stored.resetsAt ? new Date(stored.resetsAt) : undefined,
+                );
+            }
+        } catch {
+            // Malformed cache entry — treat as no quota rather than throwing.
+        }
+    }
+
+    return {
+        account: {
+            providerId: row.provider_id,
+            authKind: row.auth_kind,
+            label: row.label ?? PROVIDER_ACCOUNT_DISPLAY_NAMES[row.provider_id],
+            accountEmail: row.account_email ?? undefined,
+            status: row.status,
+            quota,
+        },
+        // SQLite's CURRENT_TIMESTAMP is a naive UTC string; append "Z" to
+        // parse it as UTC (same trick as src/ui/lib/utils.ts's convertDate,
+        // reimplemented here rather than importing a ui/ util into core/).
+        updatedAt: new Date(row.updated_at + "Z"),
+    };
+}
+
+async function fetchCachedProviderAccountRows(): Promise<
+    Map<ProviderAccountId, { account: IProviderAccount; updatedAt: Date }>
+> {
+    const rows = await db.select<ProviderAccountRow[]>(
+        "SELECT provider_id, auth_kind, label, account_email, status, quota_json, updated_at FROM provider_accounts",
+    );
+    const map = new Map<
+        ProviderAccountId,
+        { account: IProviderAccount; updatedAt: Date }
+    >();
+    for (const row of rows) {
+        const parsed = readProviderAccountRow(row);
+        if (parsed) map.set(parsed.account.providerId, parsed);
+    }
+    return map;
+}
+
+async function persistProviderAccount(account: IProviderAccount): Promise<void> {
+    const quotaJson: StoredQuota | null = account.quota
+        ? {
+              usedFraction: account.quota.usedFraction,
+              resetsAt: account.quota.resetsAt?.toISOString(),
+          }
+        : null;
+
+    await db.execute(
+        `INSERT OR REPLACE INTO provider_accounts
+            (provider_id, auth_kind, label, account_email, status, quota_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [
+            account.providerId,
+            account.authKind,
+            account.label,
+            account.accountEmail ?? null,
+            account.status,
+            quotaJson ? JSON.stringify(quotaJson) : null,
+        ],
+    );
+}
+
+/**
+ * Re-derives a single provider's account from 9router and persists the
+ * result. Returns undefined when 9router isn't reachable this round —
+ * callers should fall back to the last-cached/stub value, not treat this as
+ * "disconnected".
+ */
+async function refreshProviderAccountFromNineRouter(
+    fallback: IProviderAccount,
+): Promise<IProviderAccount | undefined> {
+    const derived = await deriveProviderAccountFromNineRouter(
+        fallback.providerId,
+    );
+    if (!derived) return undefined;
+
+    const merged: IProviderAccount = {
+        ...fallback,
+        status: derived.status,
+        accountEmail: derived.accountEmail,
+        quota: derived.quota,
+    };
+    await persistProviderAccount(merged);
+    return merged;
+}
+
+export async function fetchProviderAccounts(): Promise<IProviderAccount[]> {
+    const cachedRows = await fetchCachedProviderAccountRows();
+
+    return Promise.all(
+        stubStore.map(async (fallback) => {
+            // openrouter/local never go through 9router — stub, unchanged.
+            if (!getNineRouterProviderRef(fallback.providerId)) {
+                return fallback;
+            }
+
+            const cached = cachedRows.get(fallback.providerId);
+            const isFresh =
+                cached !== undefined &&
+                Date.now() - cached.updatedAt.getTime() <
+                    NINEROUTER_QUOTA_REFRESH_INTERVAL_MS;
+            if (isFresh) return cached.account;
+
+            const refreshed = await refreshProviderAccountFromNineRouter(fallback);
+            return refreshed ?? cached?.account ?? fallback;
+        }),
+    );
 }
 
 export async function fetchProviderAccount(
@@ -102,6 +265,26 @@ export async function fetchProviderAccount(
 ): Promise<IProviderAccount | undefined> {
     const accounts = await fetchProviderAccounts();
     return accounts.find((account) => account.providerId === providerId);
+}
+
+/**
+ * Forces a fresh 9router-derived read for one provider, bypassing the
+ * refresh-interval cache gate above — this is what
+ * `useRefreshProviderAccountQuota()` calls. Falls back to the stub's
+ * refresh behavior for providers with no 9router mapping, or when 9router
+ * isn't reachable right now.
+ */
+export async function forceRefreshProviderAccountQuota(
+    providerId: ProviderAccountId,
+): Promise<IQuotaSnapshot | undefined> {
+    if (getNineRouterProviderRef(providerId)) {
+        const fallback = await fetchProviderAccount(providerId);
+        if (fallback) {
+            const refreshed = await refreshProviderAccountFromNineRouter(fallback);
+            if (refreshed) return refreshed.quota;
+        }
+    }
+    return stubRefreshProviderAccountQuota(providerId);
 }
 
 /** Pure helper: returns a new list with `providerId`'s account replaced. */
@@ -156,9 +339,10 @@ export async function stubDisconnectProviderAccount(
 }
 
 /**
- * Stub "refresh" — re-derives the same quota (no-op beyond touching the
- * timestamp implicitly via a new Date). P6 replaces this with a real
- * QuotaService fetch.
+ * Stub "refresh" fallback — used by `forceRefreshProviderAccountQuota` for
+ * providers with no 9router mapping (openrouter/local), or when 9router
+ * isn't reachable. Just re-reads the current (stub) quota; there's nothing
+ * to actually refresh without a real backend for those cases.
  */
 export async function stubRefreshProviderAccountQuota(
     providerId: ProviderAccountId,
@@ -251,10 +435,15 @@ export function useRefreshProviderAccountQuota() {
             providerId,
         }: {
             providerId: ProviderAccountId;
-        }) => stubRefreshProviderAccountQuota(providerId),
+        }) => forceRefreshProviderAccountQuota(providerId),
         onSuccess: async (_data, { providerId }) => {
+            // A forced refresh can change status/email too (not just quota),
+            // so invalidate the list alongside this provider's detail entry.
             await queryClient.invalidateQueries({
                 queryKey: providerAccountKeys.detail(providerId),
+            });
+            await queryClient.invalidateQueries({
+                queryKey: providerAccountKeys.all(),
             });
         },
     });

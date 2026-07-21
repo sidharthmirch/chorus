@@ -4,6 +4,9 @@ import {
     deriveQuotaLevel,
     formatQuotaLabel,
     formatQuotaResetWindow,
+    isProviderAccountId,
+    isProviderAccountStatus,
+    isProviderAuthKind,
     makeQuotaSnapshot,
 } from "./ProviderAccounts";
 
@@ -89,5 +92,55 @@ describe("formatQuotaLabel", () => {
     it("rounds the percentage", () => {
         const quota = makeQuotaSnapshot(0.628);
         expect(formatQuotaLabel(quota, now)).toBe("63%");
+    });
+});
+
+describe("isProviderAccountId", () => {
+    it("accepts all six known provider ids", () => {
+        for (const id of [
+            "anthropic",
+            "openai",
+            "google",
+            "copilot",
+            "openrouter",
+            "local",
+        ]) {
+            expect(isProviderAccountId(id)).toBe(true);
+        }
+    });
+
+    it("rejects unknown strings", () => {
+        expect(isProviderAccountId("claude")).toBe(false);
+        expect(isProviderAccountId("")).toBe(false);
+    });
+});
+
+describe("isProviderAuthKind", () => {
+    it("accepts all three known auth kinds", () => {
+        expect(isProviderAuthKind("oauth")).toBe(true);
+        expect(isProviderAuthKind("api-key")).toBe(true);
+        expect(isProviderAuthKind("none-local")).toBe(true);
+    });
+
+    it("rejects unknown strings", () => {
+        expect(isProviderAuthKind("apikey")).toBe(false);
+    });
+});
+
+describe("isProviderAccountStatus", () => {
+    it("accepts all five known statuses", () => {
+        for (const status of [
+            "connected",
+            "needs-auth",
+            "expired",
+            "error",
+            "not-configured",
+        ]) {
+            expect(isProviderAccountStatus(status)).toBe(true);
+        }
+    });
+
+    it("rejects unknown strings", () => {
+        expect(isProviderAccountStatus("disconnected")).toBe(false);
     });
 });
