@@ -16,10 +16,7 @@ import { check, DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
 import { useTheme } from "@ui/hooks/useTheme";
-import Settings, {
-    SETTINGS_DIALOG_ID,
-    type SettingsTabId,
-} from "./components/Settings";
+import Settings, { SETTINGS_DIALOG_ID } from "./components/Settings";
 import { SidebarProvider } from "./providers/SidebarProvider";
 import { AppSidebar } from "./components/AppSidebar";
 import { ThemeProvider } from "@ui/themes/theme-provider";
@@ -188,8 +185,12 @@ function AppContent() {
 
     const [reviewsDialogOpen, setReviewsDialogOpen] = useState(false);
     const [_waitlistDialogOpen, _setWaitlistDialogOpen] = useState(false);
-    const [defaultSettingsTab, setDefaultSettingsTab] =
-        useState<SettingsTabId>("general");
+    // Loose `string`, not a section-id union: `Settings`'s `section` prop
+    // resolves old 12-tab ids (and the new 5-section ids) internally via
+    // `settings/registry.ts#resolveSettingsSection` -- App.tsx doesn't need
+    // to know the IA to pass a value through.
+    const [defaultSettingsSection, setDefaultSettingsSection] =
+        useState<string>("accounts");
     const { db } = useDatabase();
 
     const { isQuickChatWindow, zoomLevel, setZoomLevel } = useAppContext();
@@ -763,20 +764,15 @@ function AppContent() {
         void checkReviewsDialog();
     }, [db]);
 
-    // Listen for events to open API keys settings
+    // Listen for events to open settings to a specific section. Payload is a
+    // loose string (old 12-tab ids or the new 5-section ids) --
+    // `Settings`'s `section` prop resolves it via
+    // `settings/registry.ts#resolveSettingsSection`.
     useEffect(() => {
         const unlisten = listen(
             "open_settings",
-            (event: {
-                payload: {
-                    tab: SettingsTabId | "quick-chat";
-                };
-            }) => {
-                setDefaultSettingsTab(
-                    event.payload.tab === "quick-chat"
-                        ? "defaults"
-                        : event.payload.tab,
-                );
+            (event: { payload: { tab: string } }) => {
+                setDefaultSettingsSection(event.payload.tab);
                 dialogActions.openDialog(SETTINGS_DIALOG_ID);
             },
         );
@@ -917,9 +913,18 @@ function AppContent() {
                         <Route path="/fleet" element={<FleetView />} />
                         {/* REWORK-W8: Wiki vault (append-only route list) */}
                         <Route path="/wiki" element={<WikiView />} />
+                        {/* REWORK-W3: Settings deep links (append-only route list).
+                            Renders nothing here -- Settings.tsx (mounted
+                            below, always-on) watches useLocation() itself
+                            and opens the dialog when the path matches; these
+                            two routes exist so /settings[/:section] is a
+                            real, recognized destination instead of an
+                            unmatched path. */}
+                        <Route path="/settings" element={null} />
+                        <Route path="/settings/:section" element={null} />
                     </Routes>
                     {!isQuickChatWindow && !isArtifactWindow && (
-                        <Settings tab={defaultSettingsTab || "general"} />
+                        <Settings section={defaultSettingsSection} />
                     )}
                     <ToolPermissionDialog />
                     <Toaster
