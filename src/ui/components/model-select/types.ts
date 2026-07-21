@@ -43,3 +43,35 @@ export interface ModelCatalogGroup {
     heading: string;
     models: ModelConfig[];
 }
+
+/**
+ * `ManageModelsBox`'s pre-rework mode union — moved here (from
+ * `ManageModelsBox.tsx`) so `ModelSelect.tsx` can depend on it without a
+ * circular import (`ManageModelsBox.tsx` imports `ModelSelect` for its P3
+ * internals; `ManageModelsBox.tsx` re-exports this type for back-compat).
+ * Field names/shapes are FROZEN — 4 external call sites
+ * (`ChatInput.tsx` x2, `MultiChat.tsx` x1, `MultiChatDeprecationPath.tsx` x1)
+ * construct these structurally (docs/rework/w4-model-select-inventory.md §1).
+ */
+export type ModelPickerMode =
+    | {
+          type: "default";
+          onToggleModelConfig: (id: string) => void;
+          onClearModelConfigs: () => void;
+          onSelectAllModelConfigs: (modelConfigs: ModelConfig[]) => void;
+          /** ⌘⇧A: add all visible models without removing current selection */
+          onUnionSelectAllVisibleModelConfigs?: (modelConfigs: ModelConfig[]) => void;
+          /** When set, UI reflects this list instead of global compare metadata */
+          selectedModelConfigsForChat?: ModelConfig[];
+          onReorderSelectedModelConfigs?: (modelConfigs: ModelConfig[]) => void;
+      }
+    | {
+          type: "add"; // used for adding to an existing set
+          checkedModelConfigIds: string[];
+          onAddModel: (id: string) => void;
+      }
+    | {
+          type: "single"; // single select for updating selectedModelConfig
+          onSetModel: (id: string) => void;
+          selectedModelConfigId: string;
+      };
