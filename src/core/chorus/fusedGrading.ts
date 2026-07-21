@@ -13,18 +13,32 @@ export interface GradingPerspective {
 }
 
 /**
+ * Neutralizes literal `<response …>` / `</response>` tokens inside untrusted
+ * model text so a response cannot break out of its own block and inject a
+ * forged block attributed to a different model (which would skew the displayed
+ * grades). Escaping the `<` to `&lt;` (this is plain prompt text, not HTML, so
+ * the grading model reads it literally) breaks the tag token. `p.model` is a
+ * trusted Chorus catalog id and needs no escaping.
+ */
+function neutralizeResponseTags(text: string): string {
+    return text.replace(/<(\/?response)/gi, "&lt;$1");
+}
+
+/**
  * Builds the grading prompt. Deliberately separate from
  * Prompts.SYNTHESIS_INTERJECTION (the fused *answer* itself) — grading is
  * always a second, independent call, never mixed into the synthesis prompt.
  * See docs/rework/w6-chat-recon.md §6 for why.
  */
+
 export function buildGradingPrompt(
     synthesisText: string,
     perspectives: GradingPerspective[],
 ): string {
     const perspectiveBlocks = perspectives
         .map(
-            (p) => `<response model="${p.model}">\n${p.text}\n</response>`,
+            (p) =>
+                `<response model="${p.model}">\n${neutralizeResponseTags(p.text)}\n</response>`,
         )
         .join("\n\n");
 

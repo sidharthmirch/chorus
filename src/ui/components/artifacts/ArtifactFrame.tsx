@@ -128,7 +128,10 @@ export function ArtifactFrame({
             }
 
             const href = getHrefFromPayload(data.payload);
-            if (href) void openUrl(href);
+            // Defense-in-depth: the artifact runs untrusted, model-authored
+            // code and controls this href entirely — only hand http(s) URLs to
+            // the OS opener, never file:/javascript:/custom schemes.
+            if (href && /^https?:\/\//i.test(href)) void openUrl(href);
         };
 
         window.addEventListener("message", handleMessage);

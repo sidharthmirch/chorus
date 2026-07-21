@@ -164,7 +164,15 @@ function assembleHtmlDocument(
 ): string {
     let doc = htmlSource.trim();
 
-    if (!/<html[\s>]/i.test(doc)) {
+    // SECURITY (architecture §3.2): only treat the source as an already-complete
+    // document when it STARTS with <html> (after an optional doctype / comments /
+    // whitespace). A mere `<html>` *somewhere* in the string is not enough — a
+    // fragment like `<script>…</script><html>…` would otherwise run its leading
+    // script before the CSP <meta> we inject after <html>. Anything that doesn't
+    // start clean is wrapped whole, so all of it lands in <body> after the CSP.
+    const startsAsFullDocument =
+        /^\s*(?:<!doctype[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<html[\s>]/i.test(doc);
+    if (!startsAsFullDocument) {
         doc = `<!DOCTYPE html>\n<html>\n<head></head>\n<body>\n${doc}\n</body>\n</html>`;
     } else if (!/<head[^>]*>/i.test(doc)) {
         doc = doc.replace(
@@ -221,30 +229,39 @@ export const SVG_ARTIFACT_CSP =
     "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:;";
 
 /**
- * Injects a CSP `<meta>` tag as the FIRST child of `<head>` — required
- * position per architecture §3.2. Falls back to synthesizing a `<head>` (or
- * a whole document) if the input is malformed; in practice `assembleHtml/
- * SvgDocument` always produce a `<head>`, so the primary branch is what
- * actually runs.
+ * Injects a CSP `<meta>` as the FIRST thing the HTML parser sees inside
+ * `<head>`, so the policy is active before ANY body/script content (a
+ * meta-delivered CSP is not retroactive — architecture §3.2).
+ *
+ * SECURITY: we do NOT trust the position of a model-supplied `<head>`. Only a
+ * head that IMMEDIATELY follows `<html>` (whitespace-only between) is treated
+ * as the canonical head and gets the meta as its first child (the clean,
+ * common case from assembleHtml/SvgDocument). In every other case — no head, a
+ * decoy `<head>` placed after `<body>`, or a script before the head — we FORCE
+ * our own `<head>…</head>` as the immediate first child of `<html>`. The
+ * parser then processes our CSP meta before it ever reaches the body, and any
+ * later/decoy head is harmlessly ignored/merged. This closes the decoy-`<head>`
+ * bypass that would otherwise let a pre-CSP `<script>` run with no policy.
  */
 export function injectCspMeta(html: string, cspContent: string): string {
     const meta = `<meta http-equiv="Content-Security-Policy" content="${cspContent}">`;
 
-    const headOpenMatch = /<head([^>]*)>/i.exec(html);
-    if (headOpenMatch) {
-        const insertAt = headOpenMatch.index + headOpenMatch[0].length;
+    const htmlOpenMatch = /<html([^>]*)>/i.exec(html);
+    if (!htmlOpenMatch) {
+        // No <html> at all — wrap so the CSP is unavoidably first.
+        return `<!DOCTYPE html><html><head>${meta}</head><body>${html}</body></html>`;
+    }
+
+    const afterHtml = htmlOpenMatch.index + htmlOpenMatch[0].length;
+    const immediateHead = /^\s*<head([^>]*)>/i.exec(html.slice(afterHtml));
+    if (immediateHead) {
+        // Canonical head directly after <html>: inject as its first child.
+        const insertAt = afterHtml + immediateHead.index + immediateHead[0].length;
         return html.slice(0, insertAt) + meta + html.slice(insertAt);
     }
 
-    const htmlOpenMatch = /<html([^>]*)>/i.exec(html);
-    if (htmlOpenMatch) {
-        const insertAt = htmlOpenMatch.index + htmlOpenMatch[0].length;
-        return (
-            html.slice(0, insertAt) + `<head>${meta}</head>` + html.slice(insertAt)
-        );
-    }
-
-    return `<!DOCTYPE html><html><head>${meta}</head><body>${html}</body></html>`;
+    // No trustworthy leading head: force our own CSP head first.
+    return html.slice(0, afterHtml) + `<head>${meta}</head>` + html.slice(afterHtml);
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +386,7 @@ function buildArtifact(
         messageId: meta.messageId,
         chatId: meta.chatId,
         modelName: meta.modelName,
+        modelId: meta.modelId,
         createdAt,
     };
 

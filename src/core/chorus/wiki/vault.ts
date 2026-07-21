@@ -34,6 +34,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 import path from "path";
 import { db } from "../DB";
+import { resolveWithinVault } from "./paths";
 
 const VAULT_PATH_KEY = "wiki_vault_path";
 
@@ -101,15 +102,15 @@ export async function listVaultFiles(vaultPath: string): Promise<string[]> {
 }
 
 export async function readNoteRaw(vaultPath: string, relativePath: string): Promise<string> {
-    return readTextFile(path.join(vaultPath, relativePath));
+    return readTextFile(resolveWithinVault(vaultPath, relativePath));
 }
 
 export async function noteExistsOnDisk(vaultPath: string, relativePath: string): Promise<boolean> {
-    return exists(path.join(vaultPath, relativePath));
+    return exists(resolveWithinVault(vaultPath, relativePath));
 }
 
 export async function getNoteMtime(vaultPath: string, relativePath: string): Promise<Date> {
-    const info = await stat(path.join(vaultPath, relativePath));
+    const info = await stat(resolveWithinVault(vaultPath, relativePath));
     return info.mtime ?? new Date();
 }
 
@@ -122,7 +123,7 @@ export async function writeNoteRaw(
     relativePath: string,
     content: string,
 ): Promise<void> {
-    const absolutePath = path.join(vaultPath, relativePath);
+    const absolutePath = resolveWithinVault(vaultPath, relativePath);
     const dir = path.dirname(absolutePath);
     if (!(await exists(dir))) {
         await mkdir(dir, { recursive: true });
@@ -131,7 +132,7 @@ export async function writeNoteRaw(
 }
 
 export async function deleteNoteRaw(vaultPath: string, relativePath: string): Promise<void> {
-    await remove(path.join(vaultPath, relativePath));
+    await remove(resolveWithinVault(vaultPath, relativePath));
 }
 
 /**
