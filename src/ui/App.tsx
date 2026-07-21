@@ -72,7 +72,7 @@ import { Button } from "./components/ui/button";
 import { DatabaseProvider } from "./providers/DatabaseProvider";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { ToolPermissionDialog } from "./components/ToolPermissionDialog";
+import { ToolPermissionDialog } from "./components/settings/ToolPermissionDialog";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import * as ToolsetsAPI from "@core/chorus/api/ToolsetsAPI";
 import * as ChatAPI from "@core/chorus/api/ChatAPI";
