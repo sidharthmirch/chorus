@@ -1,6 +1,13 @@
 import React, { useState, useRef } from "react";
 import { useCopyToClipboard } from "usehooks-ts";
-import { CheckIcon, Copy, Play, Terminal, X } from "lucide-react";
+import {
+    CheckIcon,
+    Copy,
+    ExternalLinkIcon,
+    Play,
+    Terminal,
+    X,
+} from "lucide-react";
 import { Command } from "@tauri-apps/plugin-shell";
 import RetroSpinner from "../ui/retro-spinner";
 import { Button } from "../ui/button";
@@ -18,6 +25,16 @@ interface CodeBlockProps {
      * Otherwise, `content` will be used.
      */
     contentToCopy?: string;
+    /**
+     * W2 — Inline Artifacts. When provided, renders a small "Open preview"
+     * button alongside copy/run (top-right, visible on hover). NOT wired to
+     * anything in MultiChat's P4 commit yet — see .rework/PROGRESS.md for
+     * why (opening the *right* artifact from a specific code block needs
+     * the global artifact index, which isn't threaded this deep in one
+     * pass). Safe to pass from any future caller that already knows which
+     * artifact this block corresponds to.
+     */
+    onOpenPreview?: () => void;
 }
 
 export const CodeBlock = React.memo(
@@ -27,6 +44,7 @@ export const CodeBlock = React.memo(
         language = undefined,
         overrideRunCommand = false,
         contentToCopy,
+        onOpenPreview,
     }: CodeBlockProps) => {
         if (typeof content !== "string") {
             throw new Error("CodeBlock must receive content");
@@ -147,6 +165,26 @@ export const CodeBlock = React.memo(
                             </TooltipTrigger>
                             <TooltipContent className="font-sans">
                                 <p>Run command</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
+                    {onOpenPreview && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    className="absolute right-10 top-2 p-1.5 rounded bg-background invisible group-hover/code-block:visible transition-all text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onOpenPreview();
+                                    }}
+                                    aria-label="Open preview"
+                                >
+                                    <ExternalLinkIcon className="w-3.5 h-3.5" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="font-sans">
+                                <p>Open preview</p>
                             </TooltipContent>
                         </Tooltip>
                     )}
