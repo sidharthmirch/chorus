@@ -8,7 +8,6 @@
  * prop did.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import {
     Select,
@@ -17,7 +16,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../ui/select";
-import { Checkbox } from "../ui/checkbox";
 import {
     SettingsManager,
     type Settings as CoreSettings,
@@ -27,72 +25,14 @@ import { useModelProfiles } from "@core/chorus/api/ModelProfilesAPI";
 import { useModelConfigs } from "@core/chorus/api/ModelsAPI";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
-import type { ModelConfig } from "@core/chorus/Models";
-import { getProviderName } from "@core/chorus/Models";
 import {
     modelConfigSupportsVision,
     isModelConfigEffectivelyVisible,
 } from "@core/chorus/chatCreationDefaults";
+import { formatCostSuffix } from "./formatCostSuffix";
+import { ChatModelsChecklist } from "./ChatModelsChecklist";
 
 const NONE = "__none__";
-
-function formatCostSuffix(config: ModelConfig): string {
-    if (
-        config.promptPricePerToken === undefined &&
-        config.completionPricePerToken === undefined
-    ) {
-        return "cost unknown";
-    }
-    const inM =
-        config.promptPricePerToken !== undefined
-            ? (config.promptPricePerToken * 1_000_000).toFixed(2)
-            : "?";
-    const outM =
-        config.completionPricePerToken !== undefined
-            ? (config.completionPricePerToken * 1_000_000).toFixed(2)
-            : "?";
-    return `$${inM} / 1M input · $${outM} / 1M output`;
-}
-
-const PROVIDER_LABELS: Record<string, string> = {
-    anthropic: "Anthropic",
-    openai: "OpenAI",
-    google: "Google AI (Gemini)",
-    openrouter: "OpenRouter",
-    grok: "Grok",
-    perplexity: "Perplexity",
-    ollama: "Ollama",
-    lmstudio: "LM Studio",
-};
-
-const PROVIDER_ORDER = [
-    "anthropic",
-    "openai",
-    "google",
-    "openrouter",
-    "grok",
-    "perplexity",
-    "ollama",
-    "lmstudio",
-];
-
-function groupByProvider(models: ModelConfig[]): [string, ModelConfig[]][] {
-    const groups = new Map<string, ModelConfig[]>();
-    for (const m of models) {
-        const provider = getProviderName(m.modelId);
-        const existing = groups.get(provider) ?? [];
-        existing.push(m);
-        groups.set(provider, existing);
-    }
-    return Array.from(groups.entries()).sort(([a], [b]) => {
-        const ai = PROVIDER_ORDER.indexOf(a);
-        const bi = PROVIDER_ORDER.indexOf(b);
-        if (ai === -1 && bi === -1) return a.localeCompare(b);
-        if (ai === -1) return 1;
-        if (bi === -1) return -1;
-        return ai - bi;
-    });
-}
 
 export function ModelDefaultsPanel() {
     const settingsManager = SettingsManager.getInstance();
@@ -209,14 +149,6 @@ export function ModelDefaultsPanel() {
             (p) => p.id === defaultFallbackModelProfileId,
         );
 
-    const staleChatModelIds = useMemo(
-        () =>
-            (defaultChatModels ?? []).filter(
-                (id) => !visibleModels.some((m) => m.id === id),
-            ),
-        [defaultChatModels, visibleModels],
-    );
-
     const toggleDefaultChatModel = (id: string, checked: boolean) => {
         void (async () => {
             const visibleIds = new Set(visibleModels.map((c) => c.id));
@@ -236,11 +168,6 @@ export function ModelDefaultsPanel() {
             await persist({ defaultChatModels: next });
         })();
     };
-
-    const providerGroups = useMemo(
-        () => groupByProvider(visibleModels),
-        [visibleModels],
-    );
 
     return (
         <div className="space-y-6">
@@ -422,88 +349,15 @@ export function ModelDefaultsPanel() {
 
             <Separator />
 
-            <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                    <label className="font-semibold">Default Chat Models</label>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                            setDefaultChatModels(null);
-                            void persist({ defaultChatModels: null });
-                        }}
-                    >
-                        Clear
-                    </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                    Optional explicit list: every new regular chat starts with
-                    exactly these models (in order). When cleared, new chats use{" "}
-                    <span className="font-medium text-foreground/90">
-                        Default Fallback Model
-                    </span>{" "}
-                    if set, otherwise your ⌘J multi-model list, then the first
-                    visible model.
-                </p>
-                {staleChatModelIds.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                        Some saved defaults are no longer visible and will be
-                        skipped.
-                    </p>
-                )}
-                <div className="max-h-72 overflow-y-auto border rounded-md p-3 space-y-4">
-                    {visibleModels.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                            No visible models. Configure them in the catalog
-                            above.
-                        </p>
-                    ) : (
-                        providerGroups.map(([provider, models]) => {
-                            const label = PROVIDER_LABELS[provider] ?? provider;
-                            return (
-                                <div key={provider}>
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                                        {label}
-                                    </div>
-                                    <div className="pl-1 space-y-2">
-                                        {models.map((m) => (
-                                            <label
-                                                key={m.id}
-                                                className="flex items-start gap-2 text-sm cursor-pointer"
-                                            >
-                                                <Checkbox
-                                                    className="mt-0.5"
-                                                    checked={
-                                                        defaultChatModels?.includes(
-                                                            m.id,
-                                                        ) ?? false
-                                                    }
-                                                    onCheckedChange={(
-                                                        checked,
-                                                    ) =>
-                                                        toggleDefaultChatModel(
-                                                            m.id,
-                                                            !!checked,
-                                                        )
-                                                    }
-                                                />
-                                                <span>
-                                                    <span className="font-medium">
-                                                        {m.displayName}
-                                                    </span>
-                                                    <span className="text-muted-foreground text-xs block">
-                                                        {formatCostSuffix(m)}
-                                                    </span>
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
+            <ChatModelsChecklist
+                visibleModels={visibleModels}
+                defaultChatModels={defaultChatModels}
+                onToggle={toggleDefaultChatModel}
+                onClear={() => {
+                    setDefaultChatModels(null);
+                    void persist({ defaultChatModels: null });
+                }}
+            />
         </div>
     );
 }
