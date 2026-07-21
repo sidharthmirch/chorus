@@ -32,7 +32,7 @@ documented risk calls, not bugs, and are listed in the user-test queue.
       (variant "quick-chat") inside its existing Popover — this session's
       commit. Same commit as P3's ModelPills touch-up.
 
-## Frozen composer-popover contract (W6 — verbatim, from `ModelSelectPopover.tsx`)
+## Frozen composer-popover contract (W6 — verbatim, from `ModelSelectPopover.tsx`, final as of P3/P4)
 ```ts
 export interface ModelSelectPopoverProps {
     id: string; // dialog-store id (dialogActions.openDialog(id) / useDialogStore convention)
@@ -44,13 +44,15 @@ export interface ModelSelectPopoverProps {
     onUnionSelectAllVisibleModelConfigs?: (modelConfigs: ModelConfig[]) => void;
     onOpenProfile?: (modelConfigId: string) => void;
     onAddApiKey: () => void;
+    onAddCustomModel?: () => void; // added during P3; defaults to navigate("/new-prompt") if omitted
     showCost?: boolean;
 }
 export function ModelSelectPopover(props: ModelSelectPopoverProps): JSX.Element;
 ```
 Mountable directly by W6 (bypasses `ManageModelsBox`/`ModelPickerMode`
 entirely), or indirectly via `ManageModelsBox`'s `mode.type === "default"`
-branch once P3 lands (same field names, so the adapter is 1:1).
+branch (now live as of P3, commit eaf3b9f — same field names, 1:1 adapter
+in `ModelSelect.tsx`).
 
 ## Architecture plan (written before coding, so a resumer doesn't have to
 re-derive it from scratch)
