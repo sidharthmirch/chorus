@@ -90,9 +90,10 @@ function readEnum<T extends string>(
     allowed: readonly T[],
 ): T | undefined {
     const str = readString(value);
-    return str && (allowed as readonly string[]).includes(str)
-        ? (allowed.find((a) => a === str) as T)
-        : undefined;
+    if (str === undefined) return undefined;
+    // `T extends string` makes `candidate === str` valid without a cast —
+    // `.find` already returns `T | undefined`.
+    return allowed.find((candidate) => candidate === str);
 }
 
 function toMachine(value: unknown): IMachine | undefined {

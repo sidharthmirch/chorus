@@ -24,13 +24,10 @@ async function fetchFleetSettings(): Promise<Record<string, string>> {
         "SELECT key, value FROM app_metadata WHERE key IN (?, ?)",
         [FLEET_ENDPOINT_KEY, FLEET_COST_PRESET_KEY],
     );
-    return rows.reduce(
-        (acc, row) => {
-            acc[row.key] = row.value;
-            return acc;
-        },
-        {} as Record<string, string>,
-    );
+    return rows.reduce((acc: Record<string, string>, row) => {
+        acc[row.key] = row.value;
+        return acc;
+    }, {});
 }
 
 function useFleetSettings() {
