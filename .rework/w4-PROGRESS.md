@@ -1,22 +1,20 @@
 # W4 Progress — Model Select Rework
 
-## State: P1+P2 done (badcba2, ed567ad) + ModelSelect container done (075f979).
-model-select/** is a complete, tested component vocabulary INCLUDING the
-`ModelSelect` adapter over `ModelPickerMode`. Still dead code — nothing in
-the live app imports `model-select/**` yet.
+## State: DONE. All four phases complete and committed
+(9a14714, 29ea1c6, badcba2, 59d3ae8, ed567ad, 075f979, eaf3b9f, + the
+ModelPills/QuickChatModelSelector commit closing this session). The old
+1202-line `ManageModelsBox.tsx` is now ~65 lines delegating to
+`model-select/**`; `QuickChatModelSelector.tsx` and `ModelPills.tsx` are on
+the same vocabulary. tsc/vitest/eslint all green across the repo (182
+tests passing).
 ## NEXT ACTION
-Do the actual P3 swap: rewrite `ManageModelsBox.tsx` to a thin wrapper that
-resolves `showCost`/`onAddApiKey`/`onOpenProfile` and delegates to
-`<ModelSelect id={id} mode={mode} .../>`, while keeping
-`MANAGE_MODELS_CHAT_DIALOG_ID`/`MANAGE_MODELS_COMPARE_DIALOG_ID`/
-`MANAGE_MODELS_COMPARE_INLINE_DIALOG_ID` exports and the `{mode, id}` props
-byte-for-byte (inventory §1 — 4 external call sites). Then rewrite
-`QuickChatModelSelector.tsx` internals onto `ModelSelectList` (variant
-"quick-chat", `ignoreActiveProfile`) inside its existing Popover chrome,
-keeping props + the posthog `quick_chat_model_selected` capture identical.
-Then refresh `ModelPills.tsx`'s `ManageModelsButtonCompare` visuals toward
-composer.md's pill spec without touching its props. Run tsc + vitest +
-eslint after each file; commit at each green checkpoint.
+None outstanding for W4. If resumed: re-run the three gates
+(`tsc --noEmit`, `vitest run`, `eslint` on the touched paths listed in the
+handoff report) to confirm nothing drifted, then hand off to the
+orchestrator for merge. Open items are the two flagged in "Decisions log"
+below (quick-chat's dropped text-based safety filters, and the
+`visible-models` settings-tab routing for the profile chip) — both are
+documented risk calls, not bugs, and are listed in the user-test queue.
 
 ## Phase checklist
 - [x] P0 — inventory doc (`docs/rework/w4-model-select-inventory.md`)
@@ -26,11 +24,13 @@ eslint after each file; commit at each green checkpoint.
       ModelSelectList, SelectedPreviewPanel + drag-reorder,
       ModelSelectPopover w/ frozen props, ProfileFilterBar,
       ModelSettingsRows for W3, ModelSelect container adapting
-      ModelPickerMode) — commits badcba2, ed567ad, 075f979. Still dead code.
-- [ ] P3 — swap ManageModelsBox/QuickChatModelSelector/ModelPills internals
-      behind unchanged external props    <- current
-- [ ] P4 — confirm QuickChatModelSelector fully on shared components
-      (folding into P3 since it's a small file touched in the same phase)
+      ModelPickerMode) — commits badcba2, ed567ad, 075f979.
+- [x] P3 — swap: `ManageModelsBox.tsx` is now a thin `ModelSelect` shell
+      (commit eaf3b9f); `ModelPills.tsx`'s avatar sizing tightened to
+      composer.md's ~16px spec — this session's commit.
+- [x] P4 — `QuickChatModelSelector.tsx` rebuilt on `ModelSelectList`
+      (variant "quick-chat") inside its existing Popover — this session's
+      commit. Same commit as P3's ModelPills touch-up.
 
 ## Frozen composer-popover contract (W6 — verbatim, from `ModelSelectPopover.tsx`)
 ```ts
@@ -114,8 +114,49 @@ owned paths per `00-ARCHITECTURE.md §8`):
 - 2026-07-21 P0: favorites/pins persist as a new `app_metadata` JSON key
   (`pinned_model_config_ids`), not a migration — per P3 guidance to prefer
   app_metadata over schema change.
-- (pending) any `useRef`/`setTimeout`/`as` uses will be logged here with
-  file:line + justification as they're written, per ORCHESTRATION.md.
+- No `useRef`/`useImperativeHandle`/`setTimeout` anywhere in `model-select/**`
+  or the three swapped files (verified via grep across the whole touched
+  surface). The pre-rework OpenRouter/local refresh spinners' cosmetic
+  600ms `setTimeout` floor was dropped when ported — `CatalogGroupsList.tsx`'s
+  `RefreshButton` now just tracks each mutation's own `isPending`, which
+  still shows a spinner for the mutation's real duration, just without an
+  artificial minimum. A deliberate simplification, not a regression.
+- **Full `as`-assertion audit** (grep-verified across every touched file;
+  all 4 are the DB-row/JSON/exhaustive-switch category ORCHESTRATION.md
+  permits, each with its own inline justification comment at the site):
+  - `core/chorus/api/ModelFavorites.ts:18` — `JSON.parse(value) as unknown`:
+    narrows `any` down to `unknown` immediately (safening), followed by a
+    runtime `Array.isArray`/`typeof` check before anything escapes.
+  - `core/chorus/api/ModelAccountView.ts:78` —
+    `${exhaustiveCheck as string}`: standard exhaustive-switch-guard
+    template-literal cast, same idiom as the pre-existing, unmodified
+    `accounts/providerAccountDisplay.ts:authKindBadgeLabel`.
+  - `model-select/useModelCatalog.ts:133` —
+    `provider as keyof typeof apiKeys`: ported from `ManageModelsBox.tsx`'s
+    identical pre-rework check; safe because `hasApiKey`'s lookup just
+    returns `undefined` (treated as "not configured") for a `ProviderName`
+    `ApiKeys` doesn't key on, rather than throwing.
+  - `model-select/useModelCatalog.ts:171` and
+    `model-select/CatalogGroupsList.tsx:93` —
+    `Object.fromEntries(...)  as Record<DirectProvider, ...>` /
+    `Object.keys(...) as DirectProvider[]`: both widen-then-narrow casts
+    where the runtime keys are provably exactly `DirectProvider` (built by
+    mapping the exhaustive `DIRECT_PROVIDERS` tuple / a `Record` typed with
+    every union member required).
+- 2026-07-21 P4: `QuickChatModelSelector.tsx`'s pre-rework
+  `!id.includes("chorus") && !displayName.includes("Deprecated")` text
+  filters were dropped when it was rebuilt on `ModelSelectList`/
+  `useModelCatalog` — the real flags they were guarding
+  (`models.is_internal`, `models.is_deprecated`) are already enforced by
+  `getFilteredModelConfigs`, the same pipeline `ManageModelsBox` has always
+  relied on without those text filters. Flagged as a documented risk (not
+  a silent one) in case some `chorus::*` row is missing `is_internal` in
+  practice — see User-test queue.
+- 2026-07-21 P3: the per-model "profile" chip and any locked-row "Add API
+  key" CTA route to `Settings.tsx`'s existing `"visible-models"` tab (via
+  the `open_settings` event) since W3's dedicated Models section doesn't
+  exist yet. Whoever wires the real Models tab (W3) should repoint
+  `ManageModelsBox.tsx`'s `handleOpenProfile`/`handleAddApiKey`.
 
 ## Landmines / do-not
 - Do NOT change the exported dialog-id string *values*
@@ -139,7 +180,32 @@ owned paths per `00-ARCHITECTURE.md §8`):
   assume they're interchangeable.
 
 ## User-test queue
-(filled in as P3 lands — will include: selection persists across the swap,
-multi-model chat compare unaffected, reply picker unaffected, quick-chat
-picker consistent with the composer popover, both themes, deprecated-models
-disclosure, favorites persist across restart.)
+- Main chat model picker (⌘J): opening it now shows the new two-column
+  "Manage models" modal (search, provider groups, quota bars, favorites)
+  instead of the old single-column command palette. Confirm selection
+  still persists per-chat and multi-model chat/compare is unaffected.
+- Reply-chat model picker: still a single-column list (unchanged shape);
+  confirm picking a model still works and closes the dialog.
+- "Add model" inline button (tools block / legacy compare block): confirm
+  adding a model still works and closing behaves the same.
+- Quick chat's model picker: now grouped by provider (was a flat list) —
+  confirm this reads fine, and that no expected model is missing. In
+  particular check for any `chorus::`-prefixed or "Deprecated"-named model
+  that might have relied on QuickChatModelSelector's now-removed text-based
+  safety filters rather than the `is_internal`/`is_deprecated` flags (see
+  Decisions log) — if one surfaces, it's a data-flag gap to fix at the
+  source, not a UI bug.
+- Favorites (star icon): pin/unpin a model, restart the app, confirm the
+  pin survived (stored in `app_metadata.pinned_model_config_ids`).
+- Deprecated models: confirm they now appear under a closed-by-default
+  "Deprecated" disclosure per surface instead of being fully absent.
+- Model Profiles filter/Apply: confirm the profile dropdown + "Apply"
+  button still work identically to before (ported, not redesigned).
+- Profile chip (per-model variant switcher) in the Selected panel: only
+  appears when a model has a sibling `model_configs` row sharing its base
+  model; clicking it opens Settings → Visible Models (temporary route —
+  see Decisions log).
+- Both light and dark themes — nothing here was visually verified at
+  runtime (cannot run the app), only reasoned through DESIGN.md tokens.
+- Drag-reorder in the Selected preview panel (composer modal) — confirm it
+  still reorders the compare list the same way the old pill strip did.

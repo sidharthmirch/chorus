@@ -1,26 +1,37 @@
+import { useCallback, useState } from "react";
+import { emit } from "@tauri-apps/api/event";
+import { usePostHog } from "posthog-js/react";
 import { ProviderLogo } from "./ui/provider-logo";
-import { CheckIcon } from "lucide-react";
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@ui/components/ui/popover";
-import {
-    Command,
-    CommandEmpty,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@ui/components/ui/command";
-import { getProviderName, ModelConfig } from "@core/chorus/Models";
-import { useCallback, useState } from "react";
-import { usePostHog } from "posthog-js/react";
-import { hasApiKey } from "@core/utilities/ProxyUtils";
-import { useMemo } from "react";
+import { Command } from "@ui/components/ui/command";
+import { getProviderName } from "@core/chorus/Models";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
-import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
-import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
-import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
+import { ModelSelectList } from "./model-select/ModelSelectList";
+
+/**
+ * P4 swap (docs/rework/w4-model-select-inventory.md §2): now built on the
+ * same `ModelSelectList`/`ModelRow`/`useModelCatalog` vocabulary as
+ * `ManageModelsBox`'s add/single modes, instead of its own bespoke
+ * cmdk-default-filter list. Two deliberate, documented behavior changes
+ * from the pre-rework version (not silent regressions — see PROGRESS.md
+ * decisions log and the PR test plan):
+ *   1. Models are now grouped by provider (matching every other surface)
+ *      instead of one flat list — the explicit point of "one vocabulary."
+ *   2. The old belt-and-suspenders `!id.includes("chorus") &&
+ *      !displayName.includes("Deprecated")` text filters are dropped in
+ *      favor of the real flags they were guarding against
+ *      (`models.is_internal` / `models.is_deprecated`, already enforced by
+ *      `getFilteredModelConfigs` inside `useModelCatalog` — the same
+ *      pipeline `ManageModelsBox`, which never had those text filters,
+ *      has always relied on).
+ * Kept identical: props (`onModelSelect`, `open?`, `onOpenChange?`), Popover
+ * chrome, the posthog `quick_chat_model_selected` capture, and quick chat's
+ * ambient use case ignoring the active model profile.
+ */
 
 interface ModelSelectorProps {
     onModelSelect: (modelId: string) => void;
@@ -35,77 +46,30 @@ export function QuickChatModelSelector({
 }: ModelSelectorProps) {
     const posthog = usePostHog();
     const [isOpen, setIsOpen] = useState(false);
-    const { data: apiKeys } = AppMetadataAPI.useApiKeys();
+    const { data: selectedModelConfigQuickChat } =
+        ModelsAPI.useSelectedModelConfigQuickChat();
 
     const onChangeOpen = useCallback(
         (newOpen: boolean) => {
-            console.log("Popover onOpenChange called", newOpen);
             setIsOpen(newOpen);
             onOpenChange?.(newOpen);
         },
         [onOpenChange],
     );
 
-    // Use the Quick Chat model hook to keep track of the selected model
-    const { data: selectedModelConfigQuickChat } =
-        ModelsAPI.useSelectedModelConfigQuickChat();
-    const modelConfigsQuery = ModelsAPI.useModelConfigs();
-
-    // Determine if a model should be allowed based on whether user has the API key
-    const isModelAllowed = useCallback(
-        (model: ModelConfig) => {
-            // Get the provider for this model
-            const provider = getProviderName(model.modelId);
-
-            // Local models (ollama, lmstudio) don't require API keys
-            if (provider === "ollama" || provider === "lmstudio") {
-                return true;
-            }
-
-            // If user has API key for this provider, allow it
-            if (
-                apiKeys &&
-                provider &&
-                hasApiKey(
-                    provider.toLowerCase() as keyof typeof apiKeys,
-                    apiKeys,
-                )
-            ) {
-                return true;
-            }
-
-            return false;
-        },
-        [apiKeys],
-    );
-
-    const providerVisibilityMap = useProviderVisibilityMap();
-
-    const quickChatSelectableModelConfigs = useMemo(
-        () =>
-            getFilteredModelConfigs(
-                modelConfigsQuery?.data ?? [],
-                providerVisibilityMap,
-                null, // Active profile not applied to ambient chat
-            ).filter(
-                (config) =>
-                    config.isEnabled &&
-                    !config.id.includes("chorus") &&
-                    !config.displayName.includes("Deprecated") &&
-                    isModelAllowed(config),
-            ) ?? [],
-        [modelConfigsQuery, isModelAllowed, providerVisibilityMap],
-    );
-
     const handleModelSelect = useCallback(
         (modelId: string) => {
             onModelSelect(modelId);
-            posthog?.capture("quick_chat_model_selected", {
-                modelId,
-            });
+            posthog?.capture("quick_chat_model_selected", { modelId });
+            onChangeOpen(false); // Close after selection — ported behavior.
         },
-        [onModelSelect, posthog],
+        [onModelSelect, posthog, onChangeOpen],
     );
+
+    const handleAddApiKey = useCallback(() => {
+        void emit("open_settings", { tab: "api-keys" });
+        onChangeOpen(false);
+    }, [onChangeOpen]);
 
     return (
         <Popover
@@ -137,48 +101,26 @@ export function QuickChatModelSelector({
                 </button>
             </PopoverTrigger>
             <PopoverContent
-                className="p-0 ml-6 bg-background rounded-lg text-foreground"
+                className="w-[340px] p-0 ml-6 bg-background rounded-lg text-foreground"
                 onKeyDown={(e) => {
                     if (e.key === "Escape") {
                         e.stopPropagation();
                     }
                 }}
             >
-                <Command>
-                    <CommandInput placeholder="Choose an ambient chat model..." />
-                    <CommandEmpty>No models found</CommandEmpty>
-                    <CommandList className="max-h-[300px] overflow-y-auto">
-                        {quickChatSelectableModelConfigs.map((config) => (
-                            <CommandItem
-                                key={config.id}
-                                onSelect={() => {
-                                    console.log(
-                                        "CommandItem onSelect called",
-                                        config.id,
-                                    );
-                                    handleModelSelect(config.id);
-                                    onChangeOpen(false); // Close after selection
-                                }}
-                                disabled={!isModelAllowed(config)}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <ProviderLogo
-                                        provider={getProviderName(
-                                            config.modelId,
-                                        )}
-                                        size="sm"
-                                    />
-                                    {config.displayName}
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                        {config.id ===
-                                            selectedModelConfigQuickChat?.id && (
-                                            <CheckIcon className="w-4 h-4 ml-2" />
-                                        )}
-                                    </div>
-                                </div>
-                            </CommandItem>
-                        ))}
-                    </CommandList>
+                <Command shouldFilter={false}>
+                    <ModelSelectList
+                        variant="quick-chat"
+                        checkedIds={
+                            selectedModelConfigQuickChat
+                                ? [selectedModelConfigQuickChat.id]
+                                : []
+                        }
+                        onSelect={handleModelSelect}
+                        onAddApiKey={handleAddApiKey}
+                        ignoreActiveProfile
+                        placeholder="Choose an ambient chat model..."
+                    />
                 </Command>
             </PopoverContent>
         </Popover>

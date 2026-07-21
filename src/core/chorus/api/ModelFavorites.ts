@@ -11,6 +11,10 @@ export const PINNED_MODEL_CONFIG_IDS_KEY = "pinned_model_config_ids";
 export function parsePinnedModelConfigIds(value: string | undefined): string[] {
     if (!value) return [];
     try {
+        // `as`: narrows JSON.parse's `any` down to `unknown` immediately
+        // (safening, not widening) — same pattern already used in
+        // ProviderAccountsAPI.ts's row parsing; everything below is a
+        // runtime Array.isArray/typeof check before any value escapes here.
         const parsed = JSON.parse(value) as unknown;
         if (!Array.isArray(parsed)) return [];
         return parsed.filter((v): v is string => typeof v === "string");

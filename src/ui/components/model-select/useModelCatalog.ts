@@ -124,6 +124,12 @@ export function useModelCatalog({
                 if (!model.isEnabled) return "model-disabled";
                 const provider = getProviderName(model.modelId);
                 if (provider === "ollama" || provider === "lmstudio") return undefined;
+                // `as`: ported from ManageModelsBox.tsx's identical pre-rework
+                // check. ProviderName has members ApiKeys doesn't key on
+                // (ollama/lmstudio, already excluded above; meta) — safe
+                // because hasApiKey's lookup (apiKeys[providerKey]) just
+                // returns undefined for a non-key, which hasApiKey already
+                // treats as "not configured" rather than throwing.
                 if (apiKeys && hasApiKey(provider as keyof typeof apiKeys, apiKeys)) {
                     return undefined;
                 }
@@ -147,6 +153,10 @@ export function useModelCatalog({
         const openrouterModels = systemModels.filter(
             (m) => getProviderName(m.modelId) === "openrouter",
         );
+        // `as`: Object.fromEntries() widens to Record<string, ModelConfig[]>;
+        // safe here because the entries come from mapping DIRECT_PROVIDERS
+        // (typed `readonly DirectProvider[]`, one entry per union member) —
+        // the resulting object's keys are exactly DirectProvider, exhaustively.
         const directByProvider = Object.fromEntries(
             DIRECT_PROVIDERS.map((provider) => [
                 provider,

@@ -70,6 +70,11 @@ export function accountViaInfo(
             return { label, quota: account.quota };
         default: {
             const exhaustiveCheck: never = account.authKind;
+            // `as`: standard exhaustive-switch guard (same pattern already
+            // used unmodified in accounts/providerAccountDisplay.ts's
+            // authKindBadgeLabel) — this branch is unreachable as long as
+            // IProviderAccount["authKind"]'s cases above stay exhaustive;
+            // the cast only serves the error-message template literal.
             throw new Error(`Unhandled auth kind: ${exhaustiveCheck as string}`);
         }
     }

@@ -85,6 +85,11 @@ export function CatalogGroupsList({
                     </ProviderGroup>
                 )}
 
+            {/* `as`: Object.keys() widens to string[]; safe here because
+                DIRECT_PROVIDER_HEADINGS is typed Record<DirectProvider, string>
+                with every union member as a required key, so its runtime keys
+                are exactly DirectProvider — same idiom as useModelCatalog.ts's
+                directByProvider cast below. */}
             {(Object.keys(DIRECT_PROVIDER_HEADINGS) as DirectProvider[]).map(
                 (provider) =>
                     catalog.groups.directByProvider[provider].length > 0 && (
