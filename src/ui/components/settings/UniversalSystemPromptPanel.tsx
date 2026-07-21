@@ -5,8 +5,8 @@
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useReactQueryAutoSync } from "use-react-query-auto-sync";
-import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { useDatabase } from "@ui/hooks/useDatabase";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { UNIVERSAL_SYSTEM_PROMPT_DEFAULT } from "@core/chorus/prompts/prompts";

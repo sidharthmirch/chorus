@@ -4,8 +4,8 @@
  * items #22-24). Mounted inside the App section's Advanced disclosure.
  */
 import { useEffect, useState } from "react";
-import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 import { SettingsManager } from "@core/utilities/Settings";
 import { toast } from "sonner";
 import { relaunch } from "@tauri-apps/plugin-process";
