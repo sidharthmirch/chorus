@@ -32,6 +32,7 @@ import Onboarding from "./components/Onboarding";
 import ProjectView from "./components/ProjectView";
 import ArtifactWindowView from "./components/artifacts/ArtifactWindowView";
 import FleetView from "./components/fleet/FleetView";
+import WikiView from "./components/wiki/WikiView";
 import {
     onOpenUrl,
     getCurrent as getCurrentDeepLink,
@@ -914,6 +915,8 @@ function AppContent() {
                         />
                         {/* REWORK-W7: Fleet board + worktrees (append-only route list) */}
                         <Route path="/fleet" element={<FleetView />} />
+                        {/* REWORK-W8: Wiki vault (append-only route list) */}
+                        <Route path="/wiki" element={<WikiView />} />
                     </Routes>
                     {!isQuickChatWindow && !isArtifactWindow && (
                         <Settings tab={defaultSettingsTab || "general"} />

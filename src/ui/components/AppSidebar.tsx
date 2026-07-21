@@ -93,6 +93,10 @@ import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
 // touches in this file. All logic lives in the imported component, kept
 // under this workstream's own ownership (src/ui/components/fleet/**).
 import { FleetSessionsCluster } from "@ui/components/fleet/FleetSessionsCluster";
+// REWORK-W8: Wiki sidebar nav entry — a single, self-contained render line
+// below (search "REWORK-W8"), separate from and not overlapping W7's block
+// above. All logic lives in the imported component (src/ui/components/wiki/**).
+import { WikiNavEntry } from "@ui/components/wiki/WikiNavEntry";
 
 function isToday(date: Date) {
     const today = new Date();
@@ -801,6 +805,12 @@ export function AppSidebarInner() {
                                         ⌘N
                                     </span>
                                 </button>
+
+                                {/* REWORK-W8: Wiki nav entry — single, self-contained render
+                                    line (own navigate/active-state logic lives in the imported
+                                    component). Placed at the top-level nav, distinct from and
+                                    not overlapping W7's Sessions cluster below. */}
+                                <WikiNavEntry />
 
                                 {/* Minimized models panel */}
                                 {minimizedEntries.length > 0 && (

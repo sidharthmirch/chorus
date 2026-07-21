@@ -1,20 +1,19 @@
 # W8 Progress — Wiki Vault (Obsidian-style)
 
-## State: P2 — index + hooks done
+## State: P4 — UI (tree, note view, search, graph) done; route + nav wired
 ## NEXT ACTION
-Build the `/wiki` route (P3): append the route in `App.tsx`, add the single
-Wiki nav entry in `AppSidebar.tsx` (near the top of `AppSidebarInner`'s
-`SidebarMenu`, right after the "Start New Chat" button and BEFORE the
-Minimized-models/`FleetSessionsCluster` block at ~line 841 — do not touch
-that block), then build `src/ui/components/wiki/`: `WikiView.tsx` (tree +
-tabs + content panel via `ResizablePanelGroup`), `VaultTree.tsx`, an empty
-state for "no vault chosen yet" (wire to `usePickVault`), `NoteView.tsx` +
-`FrontmatterTable.tsx` + `WikiNoteBody.tsx` (renders `splitNoteBodyIntoBlocks`
-output: markdown blocks through `MessageMarkdown`, linked blocks through a
-small local renderer + `WikiLinkToken.tsx`) + `BacklinksList.tsx` +
-`LocalGraph.tsx` (1-hop static SVG; needs a small deterministic layout
-helper -- write it as `src/core/chorus/wiki/graphLayout.ts` + tests, mirrors
-how vaultTree.ts/folderColors.ts were split out).
+P5: wiki-mcp builtin toolset. Create `src/core/chorus/wiki/wikiToolset.ts`
+(`ToolsetWiki extends Toolset`, following `toolsets/web.ts`'s `addCustomTool`
+pattern exactly — no MCP server, 4 tools: `read_note`, `write_note`,
+`search_vault`, `get_backlinks`, each with a small local type-guard on its
+args rather than an `as` cast). Register it in `ToolsetsManager.ts`
+(`_builtInToolsets` array — see Landmines below, this is the one
+unavoidable non-owned-file touch beyond AppSidebar/App.tsx). Add a small
+self-contained "enable wiki tools" toggle in `WikiView.tsx`'s header calling
+the existing `useUpdateToolsetsConfig` from `api/ToolsetsAPI.ts` (Settings.tsx,
+where this would normally live, isn't built on this integration branch
+yet). Then: final read-through, fill in the PR test plan, confirm tsc/lint/
+vitest all still green, final commit.
 
 ## Phase checklist
 - [x] P1 — `parse.ts` (frontmatter via gray-matter, wikilink extraction incl.
@@ -38,12 +37,33 @@ how vaultTree.ts/folderColors.ts were split out).
       are (they'd need a real Tauri runtime; `../DB`'s top-level
       `await Database.load(...)` would hang under plain vitest/Node -- kept
       entirely out of every test file's import graph, verified empirically).
-- [ ] P3 — `/wiki` route, sidebar nav entry, vault tree, note view
-      (properties table, wikilink-aware body, backlinks, local graph).  <- current
-- [ ] P4 — Search view, full graph view, folder color legend.
+- [x] P3 — `App.tsx` `/wiki` route (append-only); `AppSidebar.tsx` gains
+      `WikiNavEntry` (one import + one render line, own navigate/active-
+      state logic, placed right after "Start New Chat" and before the
+      Minimized-models/`FleetSessionsCluster` block — neither touched).
+      `WikiView.tsx` (header + tabs + `ResizablePanelGroup` tree/content;
+      tab/note/query state lives in URL search params, so /wiki is
+      deep-linkable without a second `<Route>`), `VaultTree.tsx`,
+      `VaultPickerEmptyState.tsx`, `NoteView.tsx` (nested
+      `ResizablePanelGroup` for the right-rail local graph, per the brief's
+      explicit "right-rail" over the ASCII mock's single-column sketch),
+      `FrontmatterTable.tsx` (tags render as clickable chips ->
+      Search), `WikiNoteBody.tsx` + `WikiLinkToken.tsx` (existing note ->
+      `text-accent-600` + navigate; missing -> subdued dotted-underline +
+      an AlertDialog "Create new note?" confirmation), `BacklinksList.tsx`,
+      `LocalGraph.tsx` + `graphLayout.ts` (+ 12 vitest cases) for the
+      deterministic radial 1-hop layout.
+- [x] P4 — `SearchView.tsx` (debounced live filter, 300ms setTimeout —
+      orchestrator-pre-authorized), `GraphView.tsx` (grid-of-folder-clusters
+      layout via `graphLayout.ts`'s `layoutGraphByFolder`, filter dims
+      non-matches + "N of M nodes" readout), `WikiGraphSvg.tsx` (shared
+      renderer, diamond=focus/circle=regular per design/wiki.md),
+      `folderColorClasses.ts` (WikiFolderColor -> Tailwind class — see
+      decisions log below on why `accent` needs the `-600` ramp suffix).
+      101 vitest cases total now (added graphLayout.test.ts).
 - [ ] P5 — wiki-mcp builtin toolset (read_note/write_note/search_vault/
       get_backlinks), enable-toggle in the Wiki header (Settings.tsx isn't
-      built on this branch yet).
+      built on this branch yet).                                    <- current
 
 ## Decisions log
 - 2026-07-21 Read order per brief: CLAUDE.md, DESIGN.md,
@@ -134,6 +154,36 @@ how vaultTree.ts/folderColors.ts were split out).
 - 2026-07-21 Migration v148 claimed (`docs/rework/MIGRATIONS-LEDGER.md`
   updated); max version on this branch prior to this change was 147 (W1's
   `provider_accounts`).
+- 2026-07-21 **The folder-color legend's "accent" bucket uses `accent-600`,
+  not bare `accent`.** `tailwind.config.cjs` (shared, not touched) defines
+  `colors.accent` twice in one object literal — once as `{DEFAULT,
+  foreground}`, once as the `colorPalette.accent` 25-900 ramp — and the
+  second literal key wins entirely, so bare `bg-accent`/`text-accent`/
+  `fill-accent` don't reliably resolve. W7's `fleet/fleetTone.ts` already
+  hit and documented this exact issue; `src/ui/components/wiki/
+  folderColorClasses.ts` mirrors its fix (`accent-600`, the ramp step
+  already in real use elsewhere). `success`/`warning`/`helper` are each
+  defined once and resolve fine bare. Wikilink text color
+  (`WikiLinkToken.tsx`) also uses `text-accent-600` for the same reason —
+  matches design/wiki.md's own deviation-table entry ("Link color:
+  `color: accent-600`").
+- 2026-07-21 `/wiki`'s tab/active-note/query state lives in
+  `useSearchParams` (`?tab=&note=&q=`) rather than component state or a
+  second route — deep-linkable/back-button-friendly for free, and stays
+  inside the ownership/coordination rule that only `App.tsx`'s literal
+  `<Route>` list is append-only-shared (the query string isn't a route).
+- 2026-07-21 NoteView's local graph is a nested `ResizablePanelGroup` pane
+  (not a fixed `w-[300px]` div) — DESIGN.md's "Do use ResizablePanelGroup
+  for new split layouts" plus its "no arbitrary Tailwind values" rule both
+  push away from a hardcoded pixel width; the design doc's own "~300px"
+  note becomes the panel's `defaultSize`/`minSize`/`maxSize` instead.
+- 2026-07-21 A VaultTree folder's count badge shows **total files nested
+  under it** (recursive), not "backlinks in folder" — design/wiki.md's own
+  prose and ASCII mock disagree with each other here (prose says folder
+  badges mean backlinks too; the mock never actually shows a folder-level
+  badge at all, only file-level ones). File-level badges ARE backlink
+  counts, unambiguously matching both the prose and the mock. Flagging the
+  folder-badge call as a judgment resolution, not a spec citation.
 
 ## Landmines / do-not
 - **`ToolsetsManager.ts` needs one small, unavoidable edit in P5** (register
