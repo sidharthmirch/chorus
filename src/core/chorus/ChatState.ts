@@ -62,6 +62,21 @@ export interface IMode {
  */
 export type ViewMode = "columns" | "focus" | "fused";
 export const VIEW_MODES: ViewMode[] = ["columns", "focus", "fused"];
+
+/**
+ * One row of the Fused view mode's grading table (design/chat.md's
+ * "Grading · influence weights" footer). Produced by a `simpleLLM()` call
+ * (not the streaming pipeline) after synthesis completes, persisted as JSON
+ * on the synthesis message's `grades_json` column (migration 149) — see
+ * `api/MessageAPI.ts`'s fused-grading mutation and
+ * docs/rework/w6-chat-recon.md §6. Frozen per 00-ARCHITECTURE.md §5.
+ */
+export interface IGrade {
+    model: string; // model config id, matches Message.model
+    score: number; // 0-100
+    weightPct: number; // 0-100, how much this model's answer influenced the fused response
+    note: string; // short human-readable rationale, e.g. "structure, tables, citations"
+}
 // `as ViewMode` here only widens the array's element type for the .includes
 // check itself; the function's real job (and the only thing callers rely
 // on) is the `value is ViewMode` predicate, which IS runtime-checked below —
@@ -101,6 +116,9 @@ export interface Message {
     completionTokens?: number;
     totalTokens?: number;
     costUsd?: number;
+    // Fused view mode (P4): per-model grades, present only on the synthesis
+    // message ("chorus::synthesize") once grading has run. See IGrade above.
+    grades?: IGrade[];
 }
 
 export interface MessagePart {
@@ -354,14 +372,21 @@ function encodeBrainstormBlock(block: BrainstormBlock): LLMMessage[] {
     ];
 }
 
-function encodeCompareBlockForSynthesis(block: CompareBlock): LLMMessage[] {
+/**
+ * Shared by both the legacy "compare" block's manual Synthesize button and
+ * the "tools" block's Fused view mode (P4) — takes the plain message list
+ * rather than a specific block shape so it works for either. See
+ * docs/rework/w6-chat-recon.md §6: the prompt itself (SYNTHESIS_INTERJECTION)
+ * must not change, only which messages feed it.
+ */
+function encodeMessagesForSynthesis(messages: Message[]): LLMMessage[] {
     // include all responses, regardless of whether they're selected
     return [
         {
             role: "user",
             content: `${Prompts.SYNTHESIS_INTERJECTION}
 
-        ${block.messages
+        ${messages
             .map(
                 (message) =>
                     `<perspective sender="${message.model}">
@@ -516,11 +541,22 @@ export function llmConversation(messageSets: MessageSetDetail[]): LLMMessage[] {
 export function llmConversationForSynthesis(
     messageSets: MessageSetDetail[],
 ): LLMMessage[] {
-    const finalCompareBlock = messageSets[messageSets.length - 1].compareBlock;
+    const finalSet = messageSets[messageSets.length - 1];
 
-    const synthesisMessages = finalCompareBlock
-        ? encodeCompareBlockForSynthesis(finalCompareBlock)
-        : [];
+    // "tools" is today's live multi-model block type; "compare" is the
+    // legacy one the manual Synthesize button still operates on for old
+    // chats. Anything else has no meaningful "perspectives" to synthesize.
+    // See docs/rework/w6-chat-recon.md §6.
+    const perspectiveMessages =
+        finalSet.selectedBlockType === "tools"
+            ? finalSet.toolsBlock.chatMessages.filter(
+                  (m) => m.model !== "chorus::synthesize",
+              )
+            : finalSet.selectedBlockType === "compare"
+              ? finalSet.compareBlock.messages
+              : [];
+
+    const synthesisMessages = encodeMessagesForSynthesis(perspectiveMessages);
 
     return [...llmConversation(messageSets.slice(0, -1)), ...synthesisMessages];
 }

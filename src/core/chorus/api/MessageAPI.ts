@@ -13,6 +13,7 @@ import {
     CompareBlock,
     ChatBlock,
     UserBlock,
+    IGrade,
 } from "@core/chorus/ChatState";
 import * as Reviews from "../reviews";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,11 @@ import { UpdateQueue } from "../UpdateQueue";
 import posthog from "posthog-js";
 import { v4 as uuidv4 } from "uuid";
 import { simpleLLM } from "../simpleLLM";
+import {
+    buildGradingPrompt,
+    parseGradesResponse,
+    GradingPerspective,
+} from "../fusedGrading";
 import { SimpleCompletionMode } from "../ModelProviders/simple/ISimpleCompletionProvider";
 import * as Prompts from "../prompts/prompts";
 import { useNavigate } from "react-router-dom";
@@ -133,6 +139,7 @@ export interface MessageDBRow {
     total_tokens: number | null;
     cost_usd: number | null;
     actual_model_id: string | null;
+    grades_json: string | null;
 }
 
 export interface MessagePartDBRow {
@@ -172,6 +179,12 @@ export function readMessage(
         totalTokens: row.total_tokens ?? undefined,
         costUsd: row.cost_usd ?? undefined,
         actualModelId: row.actual_model_id ?? undefined,
+        // Same JSON-in-TEXT-column parsing convention as readMessagePart's
+        // tool_calls/tool_results just below: `as` narrows straight out of
+        // JSON.parse's `any`, immediately after the runtime null check.
+        grades: row.grades_json
+            ? (JSON.parse(row.grades_json) as IGrade[])
+            : undefined,
     };
 }
 
@@ -2337,17 +2350,28 @@ export function useStreamSynthesis() {
         mutationFn: async ({
             chatId,
             messageSetId,
+            // Which block's messages to synthesize. Defaults to "compare"
+            // (the original, still-live legacy manual-button call site) so
+            // existing callers are unaffected; the Fused view mode (P4)
+            // passes "tools" — today's actual multi-model block type. See
+            // docs/rework/w6-chat-recon.md §6 for why this is a
+            // generalization of the existing plumbing rather than a new one.
+            blockType = "compare",
         }: {
             chatId: string;
             messageSetId: string;
+            blockType?: "tools" | "compare";
         }) => {
             const messageSets = await getMessageSets(chatId);
+            const messageSet = messageSets.find((m) => m.id === messageSetId);
+            const existingMessages =
+                blockType === "tools"
+                    ? messageSet?.toolsBlock?.chatMessages
+                    : messageSet?.compareBlock?.messages;
             if (
-                messageSets
-                    .find((m) => m.id === messageSetId)
-                    ?.compareBlock?.messages.some(
-                        (m) => m.model === "chorus::synthesize",
-                    )
+                existingMessages?.some(
+                    (m) => m.model === "chorus::synthesize",
+                )
             ) {
                 console.debug(
                     "Skipping synthesis because it already exists",
@@ -2371,7 +2395,7 @@ export function useStreamSynthesis() {
                 message: createAIMessage({
                     chatId,
                     messageSetId,
-                    blockType: "compare",
+                    blockType,
                     model: "chorus::synthesize",
                     selected: true, // auto-select the synthesis response
                 }),
@@ -2409,15 +2433,17 @@ export function useSelectSynthesis() {
         mutationKey: ["selectSynthesis"] as const,
         mutationFn: async ({
             messageSetId,
+            blockType = "compare",
         }: {
             chatId: string;
             messageSetId: string;
+            blockType?: "tools" | "compare";
         }) => {
             await db.execute(
                 `UPDATE messages SET selected = (
                     CASE WHEN model = $2 THEN 1 ELSE 0 END
-                ) WHERE message_set_id = $1 AND block_type = 'compare'`,
-                [messageSetId, "chorus::synthesize"],
+                ) WHERE message_set_id = $1 AND block_type = $3`,
+                [messageSetId, "chorus::synthesize", blockType],
             );
         },
         onSuccess: async (_data, variables, _context) => {
@@ -2430,6 +2456,7 @@ export function useSelectSynthesis() {
             await streamSynthesis.mutateAsync({
                 chatId: variables.chatId,
                 messageSetId: variables.messageSetId,
+                blockType: variables.blockType,
             });
         },
     });
@@ -2639,9 +2666,11 @@ export function useDeselectSynthesis() {
         mutationKey: ["deselectSynthesis"] as const,
         mutationFn: async ({
             messageSetId,
+            blockType = "compare",
         }: {
             chatId: string;
             messageSetId: string;
+            blockType?: "tools" | "compare";
         }) => {
             const result = await db.execute(
                 `
@@ -2653,13 +2682,72 @@ export function useDeselectSynthesis() {
         )
         UPDATE messages SET selected = (
             CASE WHEN id = (SELECT id FROM to_select) THEN 1 ELSE 0 END
-        ) WHERE message_set_id = $1 AND block_type = 'compare'
+        ) WHERE message_set_id = $1 AND block_type = $3
         `,
-                [messageSetId, "chorus::synthesize"],
+                [messageSetId, "chorus::synthesize", blockType],
             );
             return result.rowsAffected > 0;
         },
         onSuccess: async (_data, variables, _context) => {
+            await queryClient.invalidateQueries({
+                queryKey: messageKeys.messageSets(variables.chatId),
+            });
+        },
+    });
+}
+
+/**
+ * Fused view mode (P4), grading step. Deliberately a SEPARATE call from
+ * synthesis (useStreamSynthesis, above) via simpleLLM rather than the
+ * streaming pipeline — see docs/rework/w6-chat-recon.md §6 for why: it keeps
+ * SYNTHESIS_INTERJECTION (shared with the legacy manual Synthesize button)
+ * completely unmodified, and lets grading fail independently without ever
+ * corrupting the already-successfully-rendered fused answer.
+ */
+export function useComputeFusedGrades() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationKey: ["computeFusedGrades"] as const,
+        mutationFn: async ({
+            synthesisMessageId,
+            synthesisText,
+            perspectives,
+        }: {
+            chatId: string;
+            synthesisMessageId: string;
+            synthesisText: string;
+            perspectives: GradingPerspective[];
+        }) => {
+            const prompt = buildGradingPrompt(synthesisText, perspectives);
+
+            let raw: string;
+            try {
+                raw = await simpleLLM(prompt, { maxTokens: 800 });
+            } catch (error) {
+                // Grading is best-effort: the fused answer itself already
+                // rendered successfully via the independent synthesis call.
+                console.error("Fused grading call failed", error);
+                return;
+            }
+
+            const grades = parseGradesResponse(
+                raw,
+                perspectives.map((p) => p.model),
+            );
+            if (!grades) {
+                console.error(
+                    "Fused grading response could not be parsed",
+                    raw,
+                );
+                return;
+            }
+
+            await db.execute(
+                "UPDATE messages SET grades_json = ? WHERE id = ?",
+                [JSON.stringify(grades), synthesisMessageId],
+            );
+        },
+        onSuccess: async (_data, variables) => {
             await queryClient.invalidateQueries({
                 queryKey: messageKeys.messageSets(variables.chatId),
             });

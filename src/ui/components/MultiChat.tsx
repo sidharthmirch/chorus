@@ -2321,6 +2321,188 @@ function FocusBlockView({
     );
 }
 
+/**
+ * Fused view mode (P4): after all selected models finish answering, an
+ * auto-triggered synthesis call (the existing, generalized
+ * useStreamSynthesis/useSelectSynthesis pipeline, blockType "tools") produces
+ * one fused answer; a second, independent simpleLLM call grades each
+ * model's contribution. See docs/rework/w6-chat-recon.md §6 for the full
+ * reasoning — in particular why grading is a separate call rather than
+ * baked into the synthesis prompt.
+ *
+ * Defined here (not a separate file) for the same reason as FocusBlockView:
+ * it renders ToolsBlockView directly while waiting for synthesis to kick in,
+ * with no cross-file circular import.
+ */
+function FusedBlockView({
+    messageSetId,
+    toolsBlock,
+    isLastRow = false,
+    isQuickChatWindow,
+    minimizedModels,
+    onMinimize,
+    modeId,
+}: {
+    messageSetId: string;
+    toolsBlock: ToolsBlock;
+    isLastRow: boolean;
+    isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    modeId?: string;
+}) {
+    const { chatId } = useParams();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const selectSynthesis = MessageAPI.useSelectSynthesis();
+    const computeFusedGrades = MessageAPI.useComputeFusedGrades();
+
+    const modelMessages = toolsBlock.chatMessages.filter(
+        (m) =>
+            m.model !== "chorus::synthesize" && !minimizedModels.has(m.model),
+    );
+    const synthesisMessage = toolsBlock.chatMessages.find(
+        (m) => m.model === "chorus::synthesize",
+    );
+
+    const allIdle =
+        modelMessages.length > 1 &&
+        modelMessages.every((m) => m.state === "idle");
+
+    // Auto-trigger synthesis once every model has answered — the ONLY
+    // difference from the legacy manual-click flow is that this fires from
+    // an effect instead of a button. Guarded by isPending (not a ref) to
+    // avoid double-firing while the first call is still in flight.
+    useEffect(() => {
+        if (
+            isLastRow &&
+            allIdle &&
+            !synthesisMessage &&
+            chatId &&
+            !selectSynthesis.isPending
+        ) {
+            selectSynthesis.mutate({
+                chatId,
+                messageSetId,
+                blockType: "tools",
+            });
+        }
+    }, [
+        isLastRow,
+        allIdle,
+        synthesisMessage,
+        chatId,
+        messageSetId,
+        selectSynthesis,
+    ]);
+
+    // Once the fused answer itself has finished streaming, grade it —
+    // independent second call, see the file-level doc comment above.
+    useEffect(() => {
+        if (
+            synthesisMessage &&
+            synthesisMessage.state === "idle" &&
+            synthesisMessage.text.trim().length > 0 &&
+            !synthesisMessage.grades &&
+            chatId &&
+            !computeFusedGrades.isPending
+        ) {
+            computeFusedGrades.mutate({
+                chatId,
+                synthesisMessageId: synthesisMessage.id,
+                synthesisText: synthesisMessage.text,
+                perspectives: modelMessages.map((m) => ({
+                    model: m.model,
+                    text: m.text,
+                })),
+            });
+        }
+    }, [synthesisMessage, chatId, computeFusedGrades, modelMessages]);
+
+    if (!synthesisMessage) {
+        // Still fanning out / not ready to fuse yet — fall back to the
+        // exact normal columns rendering so the user sees the individual
+        // streaming responses rather than a blank state.
+        return (
+            <ToolsBlockView
+                messageSetId={messageSetId}
+                toolsBlock={toolsBlock}
+                isLastRow={isLastRow}
+                isQuickChatWindow={isQuickChatWindow}
+                minimizedModels={minimizedModels}
+                onMinimize={onMinimize}
+                modeId={modeId}
+            />
+        );
+    }
+
+    const getDisplayName = (modelId: string) =>
+        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+
+    return (
+        <div className={`w-full ${isQuickChatWindow ? "" : "px-10"}`}>
+            <div className="w-full max-w-prose border border-accent-600 rounded-md p-4 relative">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                        <span aria-hidden>⚭</span>
+                        <span>Fused response</span>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                        {modelMessages.length} models
+                    </span>
+                </div>
+                <MessageMarkdown text={synthesisMessage.text} />
+                {synthesisMessage.grades &&
+                    synthesisMessage.grades.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-border">
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">
+                                Grading · influence weights
+                            </div>
+                            <div className="space-y-1.5">
+                                {synthesisMessage.grades.map((grade) => (
+                                    <div
+                                        key={grade.model}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <span className="text-xs w-28 truncate flex-shrink-0">
+                                            {getDisplayName(grade.model)}
+                                        </span>
+                                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-accent-500"
+                                                style={{
+                                                    width: `${grade.weightPct}%`,
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="text-[11px] font-mono tabular-nums w-9 text-right text-muted-foreground">
+                                            {grade.weightPct}%
+                                        </span>
+                                        <span className="text-[11px] font-mono tabular-nums w-7 text-right">
+                                            {grade.score}
+                                        </span>
+                                        <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">
+                                            {grade.note}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                <div className="relative h-4 mt-1">
+                    <MessageCostDisplay
+                        costUsd={synthesisMessage.costUsd}
+                        promptTokens={synthesisMessage.promptTokens}
+                        completionTokens={synthesisMessage.completionTokens}
+                        isStreaming={synthesisMessage.state === "streaming"}
+                        isQuickChatWindow={isQuickChatWindow}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function UserBlockView({
     userBlock,
     userMessageRef,
@@ -2450,6 +2632,17 @@ const MessageSetView = memo(
                         chatQuery.data?.viewMode === "focus" &&
                         !isQuickChatWindow ? (
                             <FocusBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        ) : chatQuery.data?.viewMode === "fused" &&
+                          !isQuickChatWindow ? (
+                            <FusedBlockView
                                 messageSetId={messageSetId}
                                 toolsBlock={messageSet.toolsBlock}
                                 isLastRow={isLastRow}
