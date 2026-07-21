@@ -20,6 +20,7 @@ import { VaultTree } from "./VaultTree";
 import { NoteView } from "./NoteView";
 import { SearchView } from "./SearchView";
 import { GraphView } from "./GraphView";
+import { WikiToolsToggle } from "./WikiToolsToggle";
 
 type WikiTab = "note" | "search" | "graph";
 
@@ -113,7 +114,8 @@ export default function WikiView() {
                         {vaultPath}
                     </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
+                    <WikiToolsToggle />
                     <div className="flex items-center rounded-lg border border-border overflow-hidden">
                         {tabs.map((tab) => (
                             <button

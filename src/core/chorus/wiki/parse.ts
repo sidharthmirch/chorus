@@ -26,6 +26,19 @@ export function parseFrontmatter(raw: string): {
     return { frontmatter: toFrontmatterRecord(parsed.data), body: parsed.content };
 }
 
+/** Inverse of parseFrontmatter: serializes a body + frontmatter object back
+ *  into one file's raw text. Used for frontmatter-safe writes
+ *  (wikiToolset.ts's `write_note`): when new content has no frontmatter of
+ *  its own, the caller passes the EXISTING frontmatter here instead of
+ *  losing it. No-ops (returns the body verbatim) when there's nothing to
+ *  serialize. */
+export function stringifyNote(body: string, frontmatter: Record<string, unknown>): string {
+    if (Object.keys(frontmatter).length === 0) {
+        return body;
+    }
+    return matter.stringify(body, frontmatter);
+}
+
 interface LineInfo {
     text: string;
     /** Offset of this line's first character in the original string. */

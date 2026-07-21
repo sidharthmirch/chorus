@@ -1,19 +1,11 @@
 # W8 Progress — Wiki Vault (Obsidian-style)
 
-## State: P4 — UI (tree, note view, search, graph) done; route + nav wired
+## State: All 5 phases done. tsc/lint/vitest green. Ready for orchestrator review/PR.
 ## NEXT ACTION
-P5: wiki-mcp builtin toolset. Create `src/core/chorus/wiki/wikiToolset.ts`
-(`ToolsetWiki extends Toolset`, following `toolsets/web.ts`'s `addCustomTool`
-pattern exactly — no MCP server, 4 tools: `read_note`, `write_note`,
-`search_vault`, `get_backlinks`, each with a small local type-guard on its
-args rather than an `as` cast). Register it in `ToolsetsManager.ts`
-(`_builtInToolsets` array — see Landmines below, this is the one
-unavoidable non-owned-file touch beyond AppSidebar/App.tsx). Add a small
-self-contained "enable wiki tools" toggle in `WikiView.tsx`'s header calling
-the existing `useUpdateToolsetsConfig` from `api/ToolsetsAPI.ts` (Settings.tsx,
-where this would normally live, isn't built on this integration branch
-yet). Then: final read-through, fill in the PR test plan, confirm tsc/lint/
-vitest all still green, final commit.
+None required to ship v1. If resuming: the only deferred item is wiring a
+live progress readout (`IRebuildProgress`, already plumbed through
+`useRebuildIndex`) into the header's rebuild button, which currently just
+shows a spinner. Everything else in the brief is done — see checklist.
 
 ## Phase checklist
 - [x] P1 — `parse.ts` (frontmatter via gray-matter, wikilink extraction incl.
@@ -61,9 +53,26 @@ vitest all still green, final commit.
       `folderColorClasses.ts` (WikiFolderColor -> Tailwind class — see
       decisions log below on why `accent` needs the `-600` ramp suffix).
       101 vitest cases total now (added graphLayout.test.ts).
-- [ ] P5 — wiki-mcp builtin toolset (read_note/write_note/search_vault/
-      get_backlinks), enable-toggle in the Wiki header (Settings.tsx isn't
-      built on this branch yet).                                    <- current
+- [x] P5 — `wikiToolset.ts` (`ToolsetWiki extends Toolset`, follows
+      `toolsets/web.ts`'s `addCustomTool` pattern, no MCP server): `read_note`
+      (raw file text, or a clear "doesn't exist, use write_note" message),
+      `write_note` (frontmatter-safe create/update via `index.ts`'s new
+      `writeNoteFrontmatterSafe`, which also backs `useSaveNote` now),
+      `search_vault`, `get_backlinks` — args validated with local type
+      guards (`requireStringArg`, throws a clear message), not `as` casts.
+      Registered in `ToolsetsManager.ts` (one import + one array entry — see
+      Landmines). `WikiToolsToggle.tsx` in the Wiki header (Switch +
+      tooltip, calls the pre-existing `useUpdateToolsetsConfig`) so the
+      toolset is reachable without Settings.tsx. `relink.ts` was already
+      the v2 typed stub from P2. 93 vitest cases total (added
+      `stringifyNote` round-trip cases to parse.test.ts).
+
+All 5 phases done. Final gate results (this worktree, portable node):
+- `tsc --noEmit`: 0 errors, whole project.
+- `eslint` on every file this workstream touched or created (`src/core/
+  chorus/wiki`, `src/ui/components/wiki`, plus the 3 shared files below):
+  0 errors, 0 warnings.
+- `vitest run src/core/chorus/wiki`: 7 files, 93 tests, all passing.
 
 ## Decisions log
 - 2026-07-21 Read order per brief: CLAUDE.md, DESIGN.md,
@@ -218,6 +227,109 @@ vitest all still green, final commit.
   rows first; `getVaultTree`/search/graph queries always filter by the
   current `vault_path`.
 
-## User-test queue
-- (P1) Nothing user-facing yet — parse/vault are pure logic + fs plumbing.
-  Full end-to-end test plan lands with the PR once P3-P5 are in.
+## Forbidden-feature audit (ORCHESTRATION.md §"Forbidden-feature policy")
+- `as` assertions: exactly 3, all in the explicitly permitted categories,
+  each with an adjacent comment: `index.ts` rowToIndexed's two
+  `JSON.parse(...) as ...` (category c: DB row -> typed mapping, column
+  set proven since this workstream controls the INSERT); `parse.ts`'s
+  `toFrontmatterRecord`'s `data as Record<string, unknown>` (category b:
+  narrowing `unknown` right after a runtime `typeof`/`Array.isArray`
+  check). No other `as` anywhere in `src/core/chorus/wiki/**` or
+  `src/ui/components/wiki/**`.
+- `useRef`: none used.
+- `useImperativeHandle`: none used.
+- `setTimeout`: one use, `SearchView.tsx`'s 300ms search debounce —
+  exactly the "debounce" case ORCHESTRATION.md pre-authorizes.
+
+## Exported signatures (core, for anyone integrating against this workstream)
+- `vault.ts`: `pickVaultDirectory()`, `getVaultPath()`, `setVaultPath(path)`,
+  `clearVaultPath()`, `listVaultFiles(vaultPath)`, `readNoteRaw`/
+  `writeNoteRaw`/`deleteNoteRaw`/`noteExistsOnDisk`/`getNoteMtime(vaultPath,
+  relativePath)`, `watchVault(vaultPath, onChange)`.
+- `parse.ts`: `parseFrontmatter(raw)`, `stringifyNote(body, frontmatter)`,
+  `extractWikilinks(text)`, `extractHeadings(text)`, `getImmuneRanges(text)`,
+  `getBlockSeparatorRanges(text)`, `parseNote(raw)`, `noteTitle`/
+  `titleFromPath`/`folderOfPath`/`topFolderOfPath(path)`,
+  `resolveWikilinkTarget(target, files)`.
+- `index.ts`: `indexFile`/`removeFileFromIndex`/`rebuildIndex(vaultPath,
+  onProgress?)`, `writeNoteFrontmatterSafe(vaultPath, path, content)`,
+  `getNote`/`getBacklinks`/`searchVault`/`getGraph`/`getLocalGraph`/
+  `getVaultTree`/`getResolvableFiles`/`hasIndexedAnyFiles(vaultPath, ...)`.
+- `useWiki.ts` (React Query hooks): `useVaultPath`, `usePickVault`,
+  `useRebuildIndex`, `useWikiVaultWatcher`, `useVaultTree`, `useNote`,
+  `useBacklinks`, `useSearchVault`, `useVaultGraph`, `useLocalGraph`,
+  `useResolveWikilink`, `useCreateNote`, `useSaveNote`, `useDeleteNote`,
+  `useHasIndexedAnyFiles`.
+- `wikiToolset.ts`: `ToolsetWiki` (registered in `ToolsetsManager.ts`) with
+  tools `wiki_read_note`, `wiki_write_note`, `wiki_search_vault`,
+  `wiki_get_backlinks` (namespaced `<toolsetName>_<suffix>` per
+  `Toolsets.ts`'s convention).
+- `graphLayout.ts`: `layoutLocalGraph`, `layoutFullGraph`,
+  `layoutGraphByFolder`.
+- Types (`types.ts`): `IVaultNote`, `IWikilinkMatch`, `IBacklinkEntry`,
+  `ISearchResult`, `IWikiGraph`/`IWikiGraphNode`/`IWikiGraphEdge`,
+  `WikiFolderColor`, `IVaultTreeNode` (`IVaultTreeFolder`|`IVaultTreeFile`),
+  `IWikiIndexRow`, `IResolvableFile`.
+
+## Open questions for the orchestrator
+1. `body_cache` in `wiki_index` (decisions log above) — comfortable with
+   the "cache, not source of truth" reading of 00-ARCHITECTURE §7, or
+   should search instead re-read files live / use a smaller cached
+   excerpt? Current implementation is fully rebuildable either way.
+2. VaultTree folder-count semantics (recursive file count vs. summed
+   backlinks) — the source docs disagree with themselves; I picked file
+   count as the more legible/expected behavior. Flag if that should change.
+3. `ToolsetsManager.ts` registration touch — fine as a precedent for "any
+   future builtin toolset workstream," or should there be a formal
+   extension point instead (e.g. a registry file per toolset that
+   `ToolsetsManager` auto-discovers)? Out of scope for me to build now,
+   but worth deciding before a W9 hits the same situation.
+
+## User-test queue (full v1 test plan)
+1. **Pick a vault.** Open `/wiki` via the sidebar "Wiki" entry (top of the
+   nav, above Projects). Empty state appears; click "Choose folder", pick
+   any folder of `.md` files (or a fresh empty folder). Tree renders;
+   count badges fill in once indexing finishes (near-instant for a small
+   folder).
+2. **Large-vault sanity.** Point it at a ~1k-file vault (e.g. a big
+   Obsidian vault, or a generated fixture). Confirm the tree renders and
+   the index finishes in a reasonable time (rebuildIndex batches fs reads
+   25 at a time). Rebuild index again (header refresh icon) and confirm
+   it completes and re-reflects any edits made outside Chorus.
+3. **Note view.** Click a note with YAML frontmatter and `[[wikilinks]]`
+   in its body. Confirm: title, frontmatter properties table (mono keys),
+   body renders markdown (bold/italic/lists/quotes/code) AND wikilinks are
+   colored/clickable, backlinks section lists notes that mention it with
+   a snippet, right-rail local graph shows the note + its neighbors.
+4. **Wikilink navigation.** Click an existing wikilink -> navigates to
+   that note. Click a wikilink to a note that doesn't exist -> "Create
+   new note?" dialog -> Create -> navigates to the new (mostly empty)
+   note, and it now appears in the tree.
+5. **Search.** Search tab, type a query matching some note titles/bodies
+   -> live-filtered results with folder chip, snippet, link count. Click
+   a result -> opens it in Note view. "View results as Graph" -> switches
+   to Graph tab with the same query pre-filled as the filter.
+6. **Graph.** Graph tab: nodes clustered/colored by top-level folder,
+   legend matches; typing in the filter dims non-matching nodes and shows
+   "N of M nodes"; clicking a node navigates to that note.
+7. **wiki-mcp from chat.** In the Wiki header, flip on "Wiki tools in
+   chat". Start a chat and ask a model to, e.g., "read concepts/
+   transformer-architecture.md and rewrite its intro to be one paragraph
+   shorter" (or whatever exists in your test vault) — confirm it calls
+   read_note then write_note, the file updates on disk, frontmatter (if
+   any) survives untouched, and the Wiki tab reflects the change. Also
+   try `search_vault`/`get_backlinks` prompts ("what notes mention TSMC?").
+8. **fs-permission flow.** Since `fs:read-all`/`fs:write-all`/`fs:scope
+   **/*` and `dialog:default` are already granted app-wide (pre-existing,
+   confirmed in this ledger's decisions log), there should be no OS-level
+   permission prompt beyond the folder picker dialog itself — flag if
+   your platform shows anything unexpected.
+9. **Both themes.** Toggle light/dark; re-check note view, wikilink color,
+   frontmatter table, tree active-highlight, and the graph legend/nodes
+   all still read clearly (I reasoned about token usage but could not
+   render either theme myself).
+10. **Rebuild index.** After manually editing/adding/deleting a `.md` file
+    in the vault folder OUTSIDE Chorus (e.g. in a text editor), confirm
+    the watcher picks it up within ~1s (or, if the watcher doesn't fire —
+    see the Rust `watch` feature caveat above — that clicking "Rebuild
+    index" reflects the change).

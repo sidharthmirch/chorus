@@ -15,7 +15,14 @@
  */
 import { db } from "../DB";
 import * as vaultFs from "./vault";
-import { folderOfPath, noteTitle, parseNote, topFolderOfPath } from "./parse";
+import {
+    folderOfPath,
+    noteTitle,
+    parseFrontmatter,
+    parseNote,
+    stringifyNote,
+    topFolderOfPath,
+} from "./parse";
 import {
     computeBacklinkCounts,
     getBacklinkEdgesFor,
@@ -123,6 +130,35 @@ export async function indexFile(vaultPath: string, relativePath: string): Promis
         updatedAt,
         indexedAt: new Date(),
     });
+}
+
+/**
+ * Frontmatter-safe write: if `newContent` carries no YAML frontmatter of
+ * its own and the note already exists with some, the EXISTING frontmatter
+ * is preserved and only the body is replaced (write_note's "frontmatter-
+ * safe" requirement — a model rewriting "just the intro" shouldn't silently
+ * erase `type`/`tags`/etc.). Re-indexes afterwards. Works for both create
+ * and update -- there's nothing to preserve on a brand-new file.
+ */
+export async function writeNoteFrontmatterSafe(
+    vaultPath: string,
+    relativePath: string,
+    newContent: string,
+): Promise<void> {
+    const { frontmatter: newFrontmatter, body: newBody } = parseFrontmatter(newContent);
+    const hasOwnFrontmatter = Object.keys(newFrontmatter).length > 0;
+
+    let finalContent = newContent;
+    if (!hasOwnFrontmatter && (await vaultFs.noteExistsOnDisk(vaultPath, relativePath))) {
+        const existingRaw = await vaultFs.readNoteRaw(vaultPath, relativePath);
+        const { frontmatter: existingFrontmatter } = parseFrontmatter(existingRaw);
+        if (Object.keys(existingFrontmatter).length > 0) {
+            finalContent = stringifyNote(newBody, existingFrontmatter);
+        }
+    }
+
+    await vaultFs.writeNoteRaw(vaultPath, relativePath, finalContent);
+    await indexFile(vaultPath, relativePath);
 }
 
 export async function removeFileFromIndex(vaultPath: string, relativePath: string): Promise<void> {

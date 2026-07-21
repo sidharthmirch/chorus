@@ -9,6 +9,7 @@ import {
     parseFrontmatter,
     parseNote,
     resolveWikilinkTarget,
+    stringifyNote,
     titleFromPath,
     topFolderOfPath,
 } from "./parse";
@@ -44,6 +45,23 @@ describe("parseFrontmatter", () => {
         const { frontmatter, body } = parseFrontmatter("");
         expect(frontmatter).toEqual({});
         expect(body).toBe("");
+    });
+});
+
+describe("stringifyNote", () => {
+    it("round-trips frontmatter + body back into one file's raw text", () => {
+        const raw = ["---", "type: company", "sector: semiconductors", "---", "", "Body text."].join(
+            "\n",
+        );
+        const { frontmatter, body } = parseFrontmatter(raw);
+        const restringified = stringifyNote(body, frontmatter);
+        const reparsed = parseFrontmatter(restringified);
+        expect(reparsed.frontmatter).toEqual(frontmatter);
+        expect(reparsed.body.trim()).toBe(body.trim());
+    });
+
+    it("returns the body verbatim when there is no frontmatter to add", () => {
+        expect(stringifyNote("just a body", {})).toBe("just a body");
     });
 });
 

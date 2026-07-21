@@ -21,6 +21,7 @@ import {
     rebuildIndex,
     removeFileFromIndex,
     searchVault,
+    writeNoteFrontmatterSafe,
     type IRebuildProgress,
 } from "./index";
 
@@ -243,8 +244,10 @@ export function useSaveNote(vaultPath: string | undefined) {
         mutationKey: ["wiki", "saveNote"] as const,
         mutationFn: async ({ path, content }: { path: string; content: string }) => {
             const resolvedVaultPath = requireVaultPath(vaultPath);
-            await vault.writeNoteRaw(resolvedVaultPath, path, content);
-            await indexFile(resolvedVaultPath, path);
+            // Frontmatter-safe: a future note editor that only edits the
+            // body shouldn't have to round-trip frontmatter it never
+            // touched (same reasoning as wiki-mcp's write_note).
+            await writeNoteFrontmatterSafe(resolvedVaultPath, path, content);
             return path;
         },
         onSuccess: async () => {
