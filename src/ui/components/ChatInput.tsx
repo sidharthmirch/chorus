@@ -39,12 +39,16 @@ import { handleInputPasteWithAttachments } from "@ui/lib/utils";
 import { inputActions, useInputStore } from "@core/infra/InputStore";
 import { useSearchParams } from "react-router-dom";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
+import * as ModesAPI from "@core/chorus/api/ModesAPI";
 import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as ProjectAPI from "@core/chorus/api/ProjectAPI";
 import { getFilteredModelConfigs } from "@core/utilities/ModelFiltering";
 import { useProviderVisibilityMap } from "@core/chorus/api/ProviderVisibilityAPI";
 import { PromptProfilePill } from "./PromptProfilePill";
+import { ModePickerPill } from "./composer/ModePickerPill";
+import { OptimizeButton } from "./composer/OptimizeButton";
+import { PromptOptimizerDialog } from "./composer/PromptOptimizerDialog";
 import { syncGlobalCompareMetadataToConfigIds } from "@core/chorus/ChatCompareSelection";
 import { modelConfigQueries } from "@core/chorus/api/ModelsAPI";
 
@@ -113,6 +117,12 @@ export function ChatInput({
 
     const chatCompareModelConfigs =
         ModelConfigChatAPI.useChatCompareModelConfigs(chatId);
+    // Chat-level default mode/stance (P2 will add a composer picker that can
+    // override this per-send; until then this just reads the persisted
+    // per-chat default, which is None/undefined for every chat that hasn't
+    // set one, so this is a no-op in practice until a mode is actually
+    // chosen somewhere).
+    const chatModeId = ModesAPI.useChatModeId(chatId);
     const appMetadata = useWaitForAppMetadata();
     const cautiousEnter = appMetadata["cautious_enter"] === "true";
 
@@ -300,6 +310,7 @@ export function ChatInput({
                     chatId,
                     userMessageSetParent: currentMessageSet,
                     selectedBlockType: BLOCK_TYPE,
+                    modeId: chatModeId.data ?? undefined,
                 });
             if (!userMessageSetId || !aiMessageSetId) {
                 console.error("couldn't insert message set");
@@ -394,6 +405,25 @@ export function ChatInput({
             await filePaste.mutateAsync(files);
         }
     };
+
+    // Prompt Optimizer (P5) — replacing the draft is undoable: stash the
+    // pre-optimize text in this closure (not persisted anywhere; the drafts
+    // store, DraftAPI, only ever tracks ONE current value, see
+    // docs/rework/w6-chat-recon.md §9) and offer a one-shot "Undo" toast
+    // action that restores it.
+    const handleApplyOptimizedDraft = useCallback(
+        (optimizedText: string) => {
+            const previousDraft = draft;
+            setDraft(optimizedText);
+            toast("Draft replaced with optimized prompt", {
+                action: {
+                    label: "Undo",
+                    onClick: () => setDraft(previousDraft),
+                },
+            });
+        },
+        [draft, setDraft],
+    );
 
     const handleInputFocus = useCallback(() => {
         setIsFocused(true);
@@ -779,6 +809,8 @@ export function ChatInput({
                         )}
                         {!isReply && <ToolsBox />}
                         {!isReply && <PromptProfilePill chatId={chatId} />}
+                        {!isReply && <ModePickerPill chatId={chatId} />}
+                        {!isReply && <OptimizeButton />}
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 h-7">
@@ -863,6 +895,16 @@ export function ChatInput({
                             },
                             selectedModelConfigId: replyToModelConfig?.id ?? "",
                         }}
+                    />
+                )}
+
+                {!isReply && (
+                    <PromptOptimizerDialog
+                        draft={draft}
+                        visibleModelConfigs={visibleModelConfigs}
+                        currentSelection={chatCompareModelConfigs}
+                        onApply={handleApplyOptimizedDraft}
+                        onApplyModelSet={selectAllCompareModelConfigs}
                     />
                 )}
             </div>
