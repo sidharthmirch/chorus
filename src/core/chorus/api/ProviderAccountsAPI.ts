@@ -6,6 +6,7 @@ import {
     ProviderAccountId,
     makeQuotaSnapshot,
 } from "../accounts/ProviderAccounts";
+import { detectNineRouter } from "../accounts/nineRouterClient";
 
 /**
  * Frozen consumer surface for provider accounts (OAuth-forward + quota
@@ -183,6 +184,28 @@ export function useQuota(providerId: ProviderAccountId) {
             const account = await fetchProviderAccount(providerId);
             return account?.quota;
         },
+    });
+}
+
+/**
+ * How often to re-probe 9router's health endpoint while its status is
+ * displayed (e.g. the P4 onboarding card's "9router not detected — Check
+ * again" state). Not part of the frozen IProviderAccount contract — this is
+ * lifecycle-detection plumbing additive to it (docs/rework/w1-provider-notes.md §6).
+ */
+const NINEROUTER_HEALTH_POLL_INTERVAL_MS = 10_000;
+
+/**
+ * Is a local 9router instance reachable on :20128 right now? Polled on an
+ * interval (via TanStack Query's `refetchInterval`, not a manual
+ * `setTimeout`) so onboarding UI can reflect the user starting/stopping it
+ * without a manual refresh.
+ */
+export function useNineRouterStatus() {
+    return useQuery({
+        queryKey: ["nineRouterStatus"] as const,
+        queryFn: detectNineRouter,
+        refetchInterval: NINEROUTER_HEALTH_POLL_INTERVAL_MS,
     });
 }
 
