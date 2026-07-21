@@ -1,51 +1,86 @@
 # W2 Progress — Inline Artifacts
 
-## State: P2 — ArtifactFrame + renderer registry complete (tsc/lint/vitest green)
+## State: P3 — ArtifactPanel complete (tsc/lint/vitest green); ready for P4 wiring
 
 ## NEXT ACTION
-Implement `src/ui/components/artifacts/ArtifactPanel.tsx` (P3): props
-roughly `{ artifacts: IArtifact[], selectedIndex: number, onSelectIndex:
-(i: number) => void, onClose: () => void, className?: string }` (finalize
-exact shape when wiring P4's chat-level state — see architecture §3.3 /
-design/artifacts.md for the full component inventory). Structure: header
-(40px, `border-b border-border`) — title (derived from
-`artifacts[selectedIndex].title`) + model pill (reuse whatever ModelPills.tsx
-exports for a single-model chip, or a minimal inline avatar+name if that
-component expects a full column context) + version stepper "vN of M" (mono
-11px, `text-muted-foreground`, ‹/› buttons `h-6 w-6`) + action buttons (copy
-via `CopyButton`/`SimpleCopyButton` at src/ui/components/CopyButton.tsx,
-download via `@tauri-apps/plugin-dialog` `save()` + `@tauri-apps/plugin-fs`
-`writeTextFile()`, fullscreen via CSS (a `fixed inset-0 z-50` toggle is
-simplest — no Tauri API needed for in-window fullscreen), open-in-window via
-`@tauri-apps/api/webviewWindow`'s `WebviewWindow` constructor (2.5.0 exposes
-this at that import path — confirmed in package.json, not yet used anywhere
-in the codebase so there's no existing call site to mirror; pass the
-artifact's `document`/`code` via a query param or a temp file since
-WebviewWindow loads a URL, not srcdoc — simplest is a new Tauri window
-pointed at a small in-app route like `/artifact-window/:id` that re-reads
-the artifact from a shared store, OR write `artifact.document` to a temp
-file via plugin-fs and load it as a `file://` URL; DECIDE AND RECORD HERE
-which approach before implementing — the file:// approach loses the sandbox
-entirely (a real window has no `sandbox` attribute equivalent), so the
-in-app-route approach is very likely the right one; flag this as an open
-question to the orchestrator if it's not resolvable from existing patterns),
-close (X button). Segmented Preview/Code tabs via `tabs.tsx`
-(`TabsList`/`TabsTrigger`/`TabsContent`) styled per artifacts.md's deviation
-table (11.5px, active = `bg-foreground text-background`). Preview tab
-dispatches through `getArtifactRenderer(artifact.kind)` from `./registry`
-(call `registerDefaultArtifactRenderers()` once, e.g. at panel module load)
-— render an "unsupported kind" fallback if `undefined` (covers future
-chart/table). Code tab reuses `CodeBlock` from `renderers/CodeBlock.tsx`
-passing `content={artifacts[selectedIndex].code}`
-`language={artifacts[selectedIndex].language}`. Empty state (`artifacts.length
-=== 0`, or panel rendered with no selection): teaching copy per brief
-("Artifacts appear when a model writes HTML/SVG"). Footer (40px, optional):
-provenance line, mono 11px muted — v1 has no real source/tool metadata to
-show yet (that's W6 fused/tool-output territory per architecture §3.1) so
-this can just be a placeholder or omitted entirely for v1; note the decision
-here once made. Both themes — no new literals, semantic tokens only per
-DESIGN.md. Keep this component UNMOUNTED/unused by anything else (dead code)
-until the single P4 wiring commit, per the brief's resumability rule.
+Do the P4 MultiChat wiring in ONE minimal commit. Read
+`.rework/PROGRESS.md`'s "Landmines" section below FIRST for the exact
+MultiChat.tsx line ranges (already re-confirmed against the current file).
+Steps:
+1. In MultiChat.tsx, add chat-level state: `artifacts: IArtifact[]`
+   (built via `useMemo` — see types.ts's note: extraction must be memoized
+   per message, keyed on messageId+text, or ids/createdAt won't stay
+   referentially stable across re-renders), `selectedArtifactIndex: number`,
+   `artifactPanelOpen: boolean`. Build the artifacts list by mapping over
+   the messages currently rendered (both call sites at MultiChat.tsx:658 and
+   :940 — confirm exact line numbers again after your own edits shift them)
+   through `extractArtifacts(part.content / fullText, { messageId, chatId,
+   modelName: <the column's model id/display name> })` and flattening.
+   Order chronologically by message creation time (NOT `IArtifact.createdAt`
+   — that's extraction-time, see types.ts) for P5 later; P4 can start with
+   simple append-order since true chronological sort is explicitly a P5 task.
+2. Read `AppMetadataAPI.ts`'s existing hook pattern (e.g.
+   `useShowOpenRouter`/`useSetShowOpenRouter` at lines ~101-104 and ~83-99)
+   and add an analogous `useDetectArtifacts`/`useSetDetectArtifacts` pair
+   for the `detect_artifacts` app_metadata key, default-on (mirror
+   `useShowOpenRouter`'s `=== "true"` check but treat MISSING key as `true`
+   default — e.g. `appMetadata?.["detect_artifacts"] !== "false"` — since
+   `useShowOpenRouter` defaults to off/false-when-missing and we need the
+   opposite default). Put these two hooks in AppMetadataAPI.ts (core API
+   file — read the ownership table: not explicitly owned by another
+   workstream, safe to extend) OR co-locate in your own
+   `src/core/chorus/artifacts/` if you'd rather not touch a shared file;
+   DECIDE which and record it here once done (leaning: put it in
+   AppMetadataAPI.ts next to the other flag hooks, for consistency — it's
+   additive, not a shared-file conflict risk).
+3. Auto-open: when a NEW artifact appears (the memoized list grows) AND
+   `useDetectArtifacts()` is true, set `artifactPanelOpen = true` and
+   `selectedArtifactIndex` to the new last index. Use a `useEffect` keyed on
+   `artifacts.length` (compare against a previous-length ref/state) — this
+   is exactly the kind of "genuinely time-based/state-transition UX" the
+   orchestrator's forbidden-feature policy already covers for `useRef`; a
+   plain `useState` holding previous length also works and avoids `useRef`
+   entirely, prefer that.
+4. Mount `<ArtifactPanel>` as the THIRD `ResizablePanel` sibling, immediately
+   after the existing `repliesDrawerOpen && (...)` block (currently ends
+   around MultiChat.tsx:3374, right before the closing
+   `</ResizablePanelGroup>` at :3376 — RE-VERIFY these exact numbers first,
+   they will have shifted from step 1's edits). Follow the exact
+   `ResizableHandle` + `ResizablePanel` shape used for RepliesDrawer
+   (:3362-3373), with `defaultSize={35}`, `minSize={25}` or similar per
+   artifacts.md's "~35-40%, min 380px" guidance (ResizablePanel uses
+   percentage sizes, not pixels — 380px min isn't directly expressible;
+   approximate with `minSize` as a percentage and note the approximation
+   here). Gate the whole block on `artifactPanelOpen && artifacts.length >
+   0`, passing `artifacts`, `selectedArtifactIndex`,
+   `onSelectIndex={setSelectedArtifactIndex}`,
+   `onClose={() => setArtifactPanelOpen(false)}`.
+5. `MessageMarkdown` gains the optional `onArtifactDetected` prop (additive
+   — default undefined, existing call sites in MultiChatDeprecationPath.tsx
+   and SummaryDialog.tsx keep compiling untouched). Simplest correct
+   implementation: MessageMarkdown itself doesn't need to call
+   `extractArtifacts` internally (that would duplicate step 1's work) —
+   instead, thread whether the CURRENT message produced artifacts as a
+   boolean/count down from MultiChat's own already-computed list, OR (if
+   you want MessageMarkdown to stay self-contained and this prop genuinely
+   useful for OTHER callers later) have it independently detect and report
+   via the callback while MultiChat's own `useMemo` remains the source of
+   truth for the panel's actual content — pick whichever keeps the
+   MultiChat diff smaller; record the choice here.
+6. CodeBlock.tsx gets an "Open preview" affordance (small button, next to
+   the existing copy/run buttons at CodeBlock.tsx:121-152) that calls up
+   through props to whatever MultiChat wires — needs a new optional prop on
+   CodeBlock (e.g. `onOpenArtifactPreview?: () => void`) rendered only when
+   provided, so the two OTHER CodeBlock call sites (Code tab inside
+   ArtifactPanel itself, and any other renderer usage) don't get an
+   affordance that makes no sense there. Wire MultiChat to pass a handler
+   that opens the panel at the matching artifact's index (match by
+   `messageId` + fence position, or simplest: by matching `code`/`content`
+   string against `artifacts[i].code`).
+Keep the ENTIRE diff to MultiChat.tsx to mount + state + the two callback
+props — no new business logic there; anything more complex belongs in your
+own files under `src/core/chorus/artifacts/` or
+`src/ui/components/artifacts/`.
 
 ## Phase checklist
 - [x] P1 — Core extraction (pure TS, no UI): `types.ts` + `extract.ts` +
@@ -56,9 +91,18 @@ until the single P4 wiring commit, per the brief's resumability rule.
       + `registry.ts` (`registerArtifactRenderer`/`getArtifactRenderer`) +
       `MermaidArtifactRenderer.tsx` + `defaultRenderers.ts`. All dead code
       (nothing imports this subtree yet) — safe, inert until P3/P4.
-- [ ] P3 — ArtifactPanel.tsx (Preview/Code tabs, header, version stepper,
-      actions, empty state, footer provenance)              <- current
-- [ ] P4 — MultiChat wiring (single minimal commit: mount + state + callback)
+- [x] P3 — `ArtifactPanel.tsx` (header: close/title/model-pill/overflow-menu
+      [copy, download, open-in-window, reload-preview]/fullscreen; tabs row:
+      Preview/Code + version stepper "vN of M"; content dispatches through
+      the P2 registry; empty state; unsupported-kind fallback). Supporting
+      files: `downloadArtifact.ts` (save dialog + fs write, saves
+      `artifact.code` not `artifact.document`), `openArtifactWindow.ts` +
+      `ArtifactWindowView.tsx` + ONE new appended route
+      (`/artifact-window`) in App.tsx for "open in window" (see Decisions
+      log for why). Still dead code — nothing outside this subtree imports
+      `ArtifactPanel` yet except the new App.tsx route (which is inert
+      until something actually opens such a window).
+- [ ] P4 — MultiChat wiring (single minimal commit: mount + state + callback)   <- current
 - [ ] P5 — Versions + polish (chronological ordering, attribution pill,
       regeneration append, esc-to-close, reduced-motion)
 
@@ -117,6 +161,74 @@ until the single P4 wiring commit, per the brief's resumability rule.
   be used in P2 (iframe DOM ref, per orchestrator pre-authorization) — will
   log the specific call sites here when added. No `as` assertions used in
   P1.
+- 2026-07-21 (P2) `useRef<HTMLIFrameElement>` used in `ArtifactFrame.tsx`
+  solely to compare `event.source === iframeRef.current?.contentWindow` in
+  the postMessage handler, so error/link messages are attributed to THIS
+  artifact's own frame — pre-authorized per ORCHESTRATION.md ("DOM refs ...
+  iframe handles"). No `setTimeout` used. No `as` assertions — postMessage
+  payloads are narrowed via `typeof`/`in` type guards instead
+  (`isArtifactFrameMessage`/`describeErrorPayload`/`getHrefFromPayload`),
+  deliberately avoiding the `as { type: string; payload: unknown }` pattern
+  `renderers/HTML.tsx` uses for the same kind of data.
+- 2026-07-21 (P2) mermaid rendering decision implemented: registered
+  `MermaidArtifactRenderer` (wraps the existing `renderers/Mermaid.tsx`
+  `MermaidPreview`) for kind "mermaid" in `defaultRenderers.ts`, confirming
+  the P1 forward-note. `getArtifactRenderer("chart"|"table")` returns
+  `undefined` in v1 — `ArtifactPanel` (P3) renders an "unsupported kind"
+  fallback for those.
+- 2026-07-21 (P3) "Open in window" implemented via a dynamically-created
+  `WebviewWindow` (`@tauri-apps/api/webviewWindow`, already a dependency —
+  `core:webview:allow-create-webview-window` is ALREADY granted in
+  `src-tauri/capabilities/default.json`, confirmed by reading the file, so
+  NO capability/Rust change was needed). The new window has no shared JS
+  memory with the main window, so instead of serializing the (potentially
+  large) assembled document through a URL/IPC, the new window is pointed at
+  a new appended route `/artifact-window?messageId=...&artifactId=...`
+  (`ArtifactWindowView.tsx`) that re-fetches the source message via the
+  already-exported `MessageAPI.fetchMessage` and re-runs the same pure
+  `extractArtifacts` to reconstruct the identical artifact (ids are
+  deterministic — see P1's id-stability decision — so this always finds the
+  same one). This is the "derivation, not storage" philosophy applied one
+  level up. **UNTESTED against a running app** (cannot run Tauri here) —
+  flagged prominently in the user-test queue below; if it doesn't work, the
+  most likely failure points are (a) window label collisions if the
+  sanitized label isn't unique enough, (b) the `url` resolution for a
+  dynamically created window pointing at an app-relative path vs. needing a
+  full origin — see `WebviewOptions.url`'s doc comment in
+  `node_modules/@tauri-apps/api/webview.d.ts:381-389`, which says a route
+  like `/path` is appended to the app's base URL, which should be correct,
+  but has not been runtime-verified.
+- 2026-07-21 (P3) `App.tsx` changes (append-only per coordination §4): added
+  one import (`ArtifactWindowView`), one `<Route path="/artifact-window">`
+  entry (end of the `<Routes>` list), one derived `isArtifactWindow` const
+  (`location.pathname === "/artifact-window"`, reusing the already-
+  destructured `location` from `useLocation()` at line ~136), and threaded
+  that const into the THREE existing `!isQuickChatWindow && ...` chrome
+  conditionals (`AppSidebar`, `CommandMenu`, `Settings`) so the detached
+  artifact window doesn't render the full app shell. Nothing else in
+  App.tsx touched; did not modify `isQuickChatWindow`/AppProvider.tsx at
+  all (kept the diff local to App.tsx).
+- 2026-07-21 (P3) Download saves `artifact.code` (clean source), never
+  `artifact.document` (carries our CSP meta + postMessage bridge, meaningless
+  outside our own sandboxed iframe). svg kind gets wrapped in a minimal
+  standalone (CSP-free, bridge-free) HTML shell before saving so it opens
+  correctly in a real browser; mermaid kind saves as `.mmd` (raw diagram
+  source) instead of mislabeling it `.html`, despite the design copy's
+  generic "Download as .html" — v1's mermaid artifacts were never HTML to
+  begin with.
+- 2026-07-21 (P3) Footer provenance line (artifacts.md's "src: 8 × 10-Q ·
+  tool: financial-lookup" example) was OMITTED for v1 — there is no real
+  source/tool metadata attached to an `IArtifact` yet (that's W6
+  fused-pipeline/tool-output territory per architecture §3.1's non-goals),
+  so a footer would either be empty or fabricated. Revisit once a producer
+  actually populates such metadata.
+- 2026-07-21 (P3) Model pill renders `IArtifact.modelName` verbatim (both as
+  the `ProviderLogo`'s `modelId` — for provider-icon inference — and as the
+  visible label text). If P4's wiring passes a raw internal model id rather
+  than a friendly display name, the pill will look less polished; P4 should
+  prefer passing a display name if one is readily available at the
+  `extractArtifacts` call site, since `IArtifact.modelName` has no separate
+  display-name field per the frozen §3.1 shape.
 
 ## Landmines / do-not
 - Pre-existing, UNRELATED tsc failure on a clean checkout: `src/ui/components/
@@ -160,5 +272,40 @@ until the single P4 wiring commit, per the brief's resumability rule.
   compiling untouched).
 
 ## User-test queue
-(empty — nothing UI-facing shipped yet; P1 is pure logic covered by the
-automated vitest suite. Will populate once P2/P3 land.)
+
+Nothing is reachable from the running app yet (ArtifactPanel/ArtifactFrame
+are dead code until P4 mounts them) — these can't be tested until then,
+listed here so they aren't forgotten:
+
+- "Open in window" (`openArtifactWindow.ts`) is completely untested against
+  a real Tauri build — verify a new detached window actually opens, shows
+  the artifact full-window with no app chrome (no sidebar/command menu),
+  and that clicking it again on an already-open artifact focuses the
+  existing window instead of erroring.
+- Download (`downloadArtifact.ts`) — verify the save dialog appears, the
+  written `.html` file opens correctly in a real browser (html and svg
+  kinds), and a mermaid artifact downloads as `.mmd` with the raw diagram
+  text.
+- ArtifactFrame's external-link interception — an artifact containing
+  `<a href="https://...">` should NOT navigate the iframe away from the
+  preview; clicking it should open the user's default browser instead
+  (verify Tauri's `openUrl` actually fires).
+- ArtifactFrame's error bridge — an artifact whose script throws should
+  show the inline red error banner at the bottom of the preview, not a
+  silent failure or a crashed iframe.
+- Both light and dark theme — panel header/tabs/empty-state have only been
+  reasoned about via DESIGN.md tokens, never visually rendered.
+
+## Landmines / do-not (P3 additions)
+
+- `ArtifactWindowView.tsx` calls `registerDefaultArtifactRenderers()` at
+  module scope, same as `ArtifactPanel.tsx` — this is intentionally
+  idempotent (registering the same kind twice just overwrites with the same
+  value) so it's safe for both to do it independently; don't "fix" this by
+  centralizing it into a single call site unless you also handle the
+  detached-window case (which has no shared module state with the main
+  window's React tree).
+- Do not read `IArtifact.document` for anything user-facing outside
+  `ArtifactFrame`/the registry renderers (download, copy, and the Code tab
+  all intentionally use `.code`). `.document` is an implementation detail of
+  the sandboxed preview.
