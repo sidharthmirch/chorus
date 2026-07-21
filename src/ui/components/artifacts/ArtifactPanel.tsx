@@ -166,8 +166,22 @@ export function ArtifactPanel({
         toast.success("Copied artifact code");
     };
 
+    // esc closes the panel when something INSIDE it has focus (relies on
+    // ordinary DOM event bubbling from whatever descendant is focused — a
+    // sandboxed iframe's own keydowns never reach here at all, since a
+    // cross-document boundary doesn't bubble, so this never steals Escape
+    // from an artifact that uses it as an in-content key, e.g. a game's
+    // pause action). Fullscreen-exit (above) is intentionally separate and
+    // window-level, since fullscreen visually covers the whole viewport.
+    const handlePanelKeyDown = (event: React.KeyboardEvent) => {
+        if (event.key === "Escape" && !fullscreen) {
+            onClose();
+        }
+    };
+
     return (
         <div
+            onKeyDown={handlePanelKeyDown}
             className={cn(
                 "flex h-full w-full min-h-0 flex-col bg-sidebar motion-reduce:transition-none",
                 fullscreen && "fixed inset-0 z-50",

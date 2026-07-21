@@ -97,6 +97,14 @@ export function ArtifactFrame({
     const [runtimeError, setRuntimeError] = useState<string | undefined>(
         undefined,
     );
+    // One-time check (not a live-updating listener — the OS setting almost
+    // never changes mid-session, and RetroLoadingBar's animation is driven
+    // by setInterval, not CSS, so a `motion-reduce:` Tailwind class can't
+    // reach it anyway). Read via a lazy initializer so it's a pure read at
+    // mount, not a side effect during render.
+    const [prefersReducedMotion] = useState(
+        () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    );
     const frameKey = `${artifact.id}:${reloadToken}`;
 
     // A new key means React is about to fully remount the iframe below —
@@ -134,7 +142,13 @@ export function ArtifactFrame({
         <div className={cn("relative h-full w-full bg-background", className)}>
             {!loaded && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background">
-                    <RetroLoadingBar width={24} speed={480} />
+                    {prefersReducedMotion ? (
+                        <span className="font-mono text-xs text-muted-foreground">
+                            Loading…
+                        </span>
+                    ) : (
+                        <RetroLoadingBar width={24} speed={480} />
+                    )}
                 </div>
             )}
             <iframe

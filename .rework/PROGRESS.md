@@ -1,73 +1,76 @@
 # W2 Progress — Inline Artifacts
 
-## State: P4 — MultiChat wiring landed (tsc/lint/vitest green); ready for P5 polish
+## State: P5 mostly done (esc-to-close, reduced-motion landed; tsc/lint/vitest green). ONE real gap found and documented, NOT yet fixed — see NEXT ACTION.
 
 ## NEXT ACTION
-Do P5 (versions + polish). Concretely, in order:
-1. **Chronological cross-message ordering.** `collectChatArtifacts.ts`
-   currently orders by message-SET iteration order (whatever order
-   `messageSetsQuery.data` comes back in, which is presumably already
-   creation-order from `fetchMessageSets`'s SQL, but this hasn't been
-   explicitly verified against `messages`/`message_sets` table `ORDER BY`
-   clauses in MessageAPI.ts — check `fetchMessageSets`'s SQL there first).
-   Within a single message SET, `messagesFromSet()` currently orders by
-   block-kind (chatBlock, then toolsBlock, then compareBlock, then
-   brainstorm) rather than by actual message timestamp — if a set's
-   `compareBlock.synthesis` message was created AFTER its `toolsBlock`
-   siblings chronologically (likely, since synthesis runs after the
-   compared responses), the current order doesn't reflect that. Decide
-   whether this matters enough to fix (probably: add each message's own
-   `createdAt`/ordering field if `Message` exposes one — spot-checked
-   ChatState.ts's `Message` interface and it does NOT currently carry a
-   timestamp field, only `MessageSet.createdAt` does — so true per-message
-   chronological sort may require joining back to `MessageSet.createdAt`
-   plus a stable tiebreaker, OR accepting message-set-order as "good
-   enough" chronological granularity for v1 and only reordering block-kinds
-   within a set by removing the artificial chat/tools/compare/brainstorm
-   grouping bias). RECORD the decision either way — this is exactly the
-   kind of thing that's easy to get subtly wrong without being able to run
-   the app with real multi-model compare/brainstorm data.
-2. **Regeneration append verification.** Confirm (by reading, since this
-   can't be run) that when a message is regenerated/restarted
-   (`useRestartMessage` in MessageAPI.ts), the OLD message row is preserved
-   (new message, old kept, both present in `messageSetsQuery.data`) rather
-   than being overwritten in place — `collectChatArtifacts` only produces
-   an "immutable log" naturally if the underlying data already is one. If
-   regeneration mutates the existing message row in place instead of
-   creating a new one, the "regeneration appends, never overwrites" design
-   requirement isn't actually satisfiable from data alone and needs a
-   different approach (e.g. tracking a version history separately) — this
-   is a case where reading `useRestartMessage`'s implementation matters
-   more than writing code; report back if this reveals a real gap rather
-   than silently working around it.
-3. **`esc` closes panel when focused.** Add a `keydown` listener (window
-   level, mirroring `ArtifactPanel`'s own existing fullscreen-escape effect)
-   that closes the panel — needs to NOT fire when a text input inside the
-   panel has focus (there currently isn't one, so this is low-risk) and
-   needs to not fight with `ArtifactFrame`'s sandboxed iframe (key events
-   inside a cross-origin-opaque iframe do NOT bubble to the parent window,
-   so this is naturally scoped to the panel chrome, not the artifact's own
-   content — verify this reasoning holds, don't just assume).
-4. **Reduced-motion.** Audit `ArtifactPanel.tsx`'s `fullscreen` CSS toggle
-   (currently `fixed inset-0 z-50`, no transition classes added at all —
-   so there's nothing to guard yet) and `ArtifactFrame.tsx`'s
-   `RetroLoadingBar` (this animates via `setInterval` regardless of
-   `prefers-reduced-motion` — decide whether to skip/simplify it under
-   reduced motion, e.g. render a static "Loading…" label instead via a
-   `useMediaQuery`-style check; there's no existing reduced-motion hook in
-   the codebase to reuse — search for one before writing a new one).
-5. **Per-model attribution pill polish** — revisit the P3 decision that the
-   model pill shows `IArtifact.modelName` verbatim: now that P4 actually
-   resolves a display name via `modelConfigsQuery.data?.find(...)
-   ?.displayName ?? modelId` in MultiChat.tsx (see `chatArtifacts`'s
-   `useMemo` there), verify this reads naturally in the header (falls back
-   to the raw model id string when a config lookup misses, e.g. for a
-   since-removed/renamed model — acceptable but worth a glance).
-Also carry forward from P3/P4 (not strictly "P5" but unresolved):
-   `openArtifactWindow.ts` is untested end-to-end (see User-test queue);
-   CodeBlock's `onOpenPreview` prop exists but has no caller anywhere yet
-   (see Decisions log) — wiring it is optional polish, not required for
-   "Done means".
+**Fix regeneration versioning — a verified real gap, not speculative.**
+Investigated by reading (not guessing) `useRestartMessage` in
+`src/core/chorus/api/MessageAPI.ts` (~line 886-1009): regenerating a
+message runs
+`UPDATE messages SET text = '', ..., streaming_token = $1, state =
+'streaming' WHERE id = $2 ...` then `DELETE FROM message_parts WHERE
+message_id = $1 ...` — i.e. it OVERWRITES THE SAME MESSAGE ROW IN PLACE
+(same `id`) and deletes its old parts. It does NOT create a new message.
+This means `collectChatArtifacts` (which derives purely from CURRENT
+`messageSetsQuery.data`) genuinely LOSES the pre-regeneration artifact the
+moment regeneration completes — the design's "regeneration appends, never
+overwrites (immutable log)" requirement is **not currently satisfied**.
+Worse: simply "accumulating history across renders" isn't a safe quick fix
+either, because `IArtifact.id` is deterministic on `messageId:artifact:index`
+(P1's frozen scheme) and `messageId` DOESN'T CHANGE across a regeneration —
+so a naive `id`-keyed accumulator would treat the regenerated content as
+"the same artifact, already recorded" and silently DROP the new version
+instead of losing the old one (a different, arguably worse bug).
+The fix path (sketched, not implemented — needs a decision, then careful
+work, ideally review against `useRestartMessage`'s ACTUAL runtime behavior
+since none of this has been tested against a live regeneration):
+maintain an accumulating `artifactHistory: IArtifact[]` in MultiChat (or a
+new small stateful hook in `src/core/chorus/artifacts/`), and de-duplicate
+NOT by `IArtifact.id` but by a compound key of
+`(messageId, message.streamingToken)` — `streamingToken` is a FRESH
+`uuidv4()` generated on every restart (confirmed at MessageAPI.ts ~line
+950/1055) and IS present on `Message` (`Message.streamingToken` in
+ChatState.ts), so it's a ready-made "which occurrence of this message is
+this" key with no schema change needed. When a message's current
+`streamingToken` differs from the last one recorded for that `messageId`,
+treat its freshly-extracted artifacts as new history entries to APPEND
+(keep the old ones); when unchanged, skip re-adding (already recorded).
+This needs real care around: messages that were never restarted (no
+`streamingToken`, or it's cleared back to `null`/`undefined` once
+`streaming` finishes per `UPDATE messages SET streaming_token = NULL,
+state = 'idle'` at MessageAPI.ts ~line 652 — so the token is NOT stable
+once idle either, meaning the dedup key probably needs to snapshot the
+token AT THE MOMENT an artifact is captured into history, not read it live
+off the current message each time). This is genuinely fiddly and
+untestable here — flag to the orchestrator/user as a known incomplete item
+rather than shipping a guessed "fix" that could corrupt version history in
+subtle ways.
+
+Two lower-priority items investigated and found to be ALREADY FINE (no
+code change made, documented for the next reader so this isn't
+re-investigated from scratch):
+- **Cross-message-set chronological ordering**: `fetchMessageSets`'s SQL
+  (MessageAPI.ts ~line 192-197) is `SELECT ... FROM message_sets WHERE
+  chat_id = ? ORDER BY level, id` — `level` is the sequential turn index,
+  so `messageSetsQuery.data`'s array order IS already chronological across
+  sets; `collectChatArtifacts` iterating it in order is correct.
+- **Within-set block-kind ordering**: `messagesFromSet()`'s fixed order
+  (chat, then tools, then compare+synthesis, then brainstorm) is a
+  heuristic, not a proven-exact chronological order — `Message` has NO
+  per-message timestamp field (confirmed in ChatState.ts), so exact
+  ordering when multiple block kinds coexist in ONE message set (POSSIBLE
+  per the data model — `useAddMessageToCompareBlock` etc. can add
+  messages of a different `blockType` into an existing set) can't be
+  verified either way without one. Left as-is; low practical impact
+  (mixing block kinds within one set, for artifact-bearing responses
+  specifically, is likely rare) but explicitly NOT proven correct — don't
+  assume it is if this ever matters for a bug report.
+
+Once a decision is made on the regeneration-versioning fix (implement it,
+or explicitly accept the gap for v1 and say so in the PR description), P5
+is complete. Everything else in "Done means" (extraction suite,
+lint/build, sandbox contract, versions navigate, copy/download/fullscreen)
+is already satisfied.
 
 ## Phase checklist
 - [x] P1 — Core extraction (pure TS, no UI): `types.ts` + `extract.ts` +
@@ -93,8 +96,20 @@ Also carry forward from P3/P4 (not strictly "P5" but unresolved):
       the resumability convention — see the git log; the MultiChat.tsx diff
       itself is ONE commit, +58/-0 lines, purely additive (verified via
       `git diff --stat`). See Landmines for exact line ranges.
-- [ ] P5 — Versions + polish (chronological ordering, attribution pill,
-      regeneration append, esc-to-close, reduced-motion)   <- current
+- [~] P5 — Versions + polish. DONE: `esc` closes the panel when something
+      inside it has focus (`ArtifactPanel.tsx`'s new `onKeyDown` on the root
+      div, separate from the pre-existing fullscreen-escape effect);
+      reduced-motion respected for the loading indicator (`ArtifactFrame.tsx`
+      checks `prefers-reduced-motion` once via a lazy `useState` initializer
+      and shows static "Loading…" text instead of the animated
+      `RetroLoadingBar`); cross-message-set chronological ordering
+      investigated and confirmed already correct (see NEXT ACTION);
+      per-model attribution pill already resolves a display name as of P4.
+      NOT DONE, real gap found: regeneration does not actually append a new
+      version — `useRestartMessage` overwrites the message row in place, so
+      the pre-regeneration artifact is lost, not preserved. See NEXT ACTION
+      for the full investigation and a sketched (not implemented) fix path.
+      <- current, blocked on a design decision more than on more reading
 
 ## Decisions log
 - 2026-07-21 `IArtifact.modelName` kept as required `string` (not `string |
@@ -278,6 +293,30 @@ Also carry forward from P3/P4 (not strictly "P5" but unresolved):
   rather than adding unverifiable responsive logic. If this matters,
   the fix is a `<div>` sibling to that existing mobile-overlay block,
   following its exact `@2xl:hidden` pattern.
+- 2026-07-21 (P5) `esc`-closes-panel is implemented via a plain React
+  `onKeyDown` on the panel's OWN root div (relying on ordinary DOM
+  bubbling from whatever descendant currently has focus), NOT a
+  window-level listener — deliberately, so it only fires when focus is
+  actually inside the panel, and NEVER intercepts Escape from the
+  sandboxed preview iframe (a cross-document boundary; the iframe's own
+  keydowns can't bubble to the parent document at all, confirmed as a
+  correct assumption, not just asserted). The pre-existing fullscreen-exit
+  effect (window-level) was left untouched and unmerged with this — the
+  two are mutually exclusive by construction (the new handler explicitly
+  checks `!fullscreen` before closing).
+- 2026-07-21 (P5) Reduced-motion is a ONE-TIME `matchMedia` check via a
+  lazy `useState` initializer in `ArtifactFrame.tsx`, not a live-updating
+  listener — deliberately: `RetroLoadingBar`'s animation is
+  `setInterval`-driven (not CSS), so Tailwind's `motion-reduce:` variant
+  can't reach it regardless; a live OS-setting toggle mid-session is not
+  worth the extra complexity for a loading spinner. No reduced-motion
+  precedent existed anywhere else in the codebase (grepped for
+  `prefers-reduced-motion`/`motion-reduce` before starting) — this is a
+  new, minimal, self-contained pattern, not a reuse of something existing.
+- 2026-07-21 (P5) INVESTIGATED, NOT FIXED: regeneration does not append a
+  new artifact version — it overwrites. See NEXT ACTION for the full
+  writeup (verified by reading `useRestartMessage`'s actual SQL, not
+  guessed). This is the one explicitly incomplete item in "Done means".
 
 ## Landmines / do-not
 - (P4) Exact current MultiChat.tsx line ranges (re-verify with `grep -n` if
@@ -358,6 +397,14 @@ action-button items below it (still none of which have been runtime-verified):
   (e.g. "now make it single-player against an AI paddle"). Expected: panel
   auto-jumps to the new version, version stepper reads "v2 of 2", `‹` steps
   back to the pong game from before.
+- **KNOWN GAP, expected to fail — test to confirm the scope of the issue,
+  not to report it as a surprise**: click the regenerate/restart button on
+  an artifact-bearing response instead of asking a new question. Per
+  PROGRESS.md's NEXT ACTION, this is expected to LOSE the pre-regeneration
+  artifact entirely (version count stays the same / drops, rather than
+  going up) because `useRestartMessage` overwrites the message row in
+  place. Confirming this actually reproduces (vs. something else entirely
+  happening) would help scope the real fix.
 - Toggle the `detect_artifacts` app_metadata flag off (no Settings UI for
   this yet — set it directly via SQL:
   `UPDATE app_metadata SET value='false' WHERE key='detect_artifacts';`
