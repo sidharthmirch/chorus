@@ -10,7 +10,14 @@ import {
     isProviderAuthKind,
     makeQuotaSnapshot,
 } from "../accounts/ProviderAccounts";
-import { detectNineRouter, getNineRouterProviderRef } from "../accounts/nineRouterClient";
+import {
+    detectNineRouter,
+    findActiveConnectionForProvider,
+    getNineRouterProviderRef,
+    nineRouterClient,
+    NINEROUTER_BASE_URL,
+} from "../accounts/nineRouterClient";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { deriveProviderAccountFromNineRouter } from "../accounts/QuotaService";
 
 /**
@@ -27,9 +34,13 @@ import { deriveProviderAccountFromNineRouter } from "../accounts/QuotaService";
  * `NINEROUTER_QUOTA_REFRESH_INTERVAL_MS`. `openrouter`/`local` remain on the
  * in-memory stub below (that join to existing ApiKeysForm/OllamaClient state
  * is still a documented TODO, not attempted here — see .rework/PROGRESS.md).
- * Connect/disconnect mutations also remain stub-only for now (the real
- * OAuth browser-flow question is an open item for the orchestrator, same
- * file) — when 9router is unreachable, the stub's last mutation is what
+ * Connect/disconnect are now wired to 9router (`connectProviderAccount` opens
+ * 9router's authorize URL in the system browser; `disconnectProviderAccount`
+ * deletes the 9router connection), falling back to the stub store for
+ * non-9router providers or when 9router is unreachable. The connect exchange
+ * completion is UNTESTED end-to-end (needs a live 9router — see the function
+ * doc + .rework/progress/W1.md). When 9router is unreachable, the stub's last
+ * mutation is what
  * `fetchProviderAccounts` falls back to; when 9router is reachable, live
  * derived data wins. The exported hook signatures are unchanged throughout.
  */
@@ -339,6 +350,73 @@ export async function stubDisconnectProviderAccount(
 }
 
 /**
+ * Real connect: for a 9router-forwarded OAuth provider, kick off 9router's
+ * authorize flow in the system browser. 9router hosts the OAuth callback and
+ * completes the PKCE exchange server-side (Chorus never sees the token); the
+ * connected account then surfaces through `fetchProviderAccounts()`'s 9router
+ * derivation once the UI re-fetches after the browser round trip.
+ *
+ * UNTESTED end-to-end (needs a live 9router): this assumes 9router auto-
+ * completes at its own callback route. If instead it hands the `code` back to
+ * the opener, finishing the exchange would need a Chorus-side loopback
+ * listener (new Rust) calling `nineRouterClient.exchangeCode(...)` — the client
+ * method already exists. Tracked as a follow-up in .rework/progress/W1.md.
+ * openrouter/local keep the existing stub behavior.
+ */
+export async function connectProviderAccount(
+    providerId: ProviderAccountId,
+): Promise<IProviderAccount> {
+    const ref = getNineRouterProviderRef(providerId);
+    if (ref) {
+        const redirectUri = `${NINEROUTER_BASE_URL}/api/oauth/${ref.id}/callback`;
+        const authorize = await nineRouterClient.getAuthorizeUrl(
+            ref.id,
+            redirectUri,
+        );
+        await openUrl(authorize.url);
+        // The browser flow is async and out-of-process; return the current
+        // (still-pending) account. The mutation's onSuccess invalidates the
+        // queries, and useProviderAccounts/useNineRouterStatus polling flips it
+        // to "connected" once 9router stores the connection.
+        const current = await fetchProviderAccount(providerId);
+        if (current) return current;
+    }
+    return stubConnectProviderAccount(providerId);
+}
+
+/**
+ * Real disconnect: 9router's only "disconnect" is DELETE /api/providers/:id
+ * (docs/rework/w1-provider-notes.md §2.2). Delete the matching connection,
+ * then re-derive so the cached row reflects the removal immediately. Falls
+ * back to the local stub update when 9router is unreachable or the provider
+ * isn't 9router-mapped.
+ */
+export async function disconnectProviderAccount(
+    providerId: ProviderAccountId,
+): Promise<IProviderAccount> {
+    const ref = getNineRouterProviderRef(providerId);
+    if (ref) {
+        try {
+            const connections = await nineRouterClient.listConnections();
+            const active = findActiveConnectionForProvider(connections, ref.id);
+            if (active) {
+                await nineRouterClient.deleteConnection(active.id);
+                const fallback = await fetchProviderAccount(providerId);
+                if (fallback) {
+                    const refreshed =
+                        await refreshProviderAccountFromNineRouter(fallback);
+                    if (refreshed) return refreshed;
+                }
+            }
+        } catch {
+            // 9router unreachable — nothing to delete server-side; fall through
+            // to the local stub update so the UI still reflects the intent.
+        }
+    }
+    return stubDisconnectProviderAccount(providerId);
+}
+
+/**
  * Stub "refresh" fallback — used by `forceRefreshProviderAccountQuota` for
  * providers with no 9router mapping (openrouter/local), or when 9router
  * isn't reachable. Just re-reads the current (stub) quota; there's nothing
@@ -401,7 +479,7 @@ export function useConnectProviderAccount() {
             providerId,
         }: {
             providerId: ProviderAccountId;
-        }) => stubConnectProviderAccount(providerId),
+        }) => connectProviderAccount(providerId),
         onSuccess: async () => {
             await queryClient.invalidateQueries({
                 queryKey: providerAccountKeys.all(),
@@ -418,7 +496,7 @@ export function useDisconnectProviderAccount() {
             providerId,
         }: {
             providerId: ProviderAccountId;
-        }) => stubDisconnectProviderAccount(providerId),
+        }) => disconnectProviderAccount(providerId),
         onSuccess: async () => {
             await queryClient.invalidateQueries({
                 queryKey: providerAccountKeys.all(),
