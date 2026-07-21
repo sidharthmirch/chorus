@@ -31,6 +31,7 @@ import ListPrompts from "./components/ListPrompts";
 import Onboarding from "./components/Onboarding";
 import ProjectView from "./components/ProjectView";
 import ArtifactWindowView from "./components/artifacts/ArtifactWindowView";
+import FleetView from "./components/fleet/FleetView";
 import {
     onOpenUrl,
     getCurrent as getCurrentDeepLink,
@@ -911,6 +912,8 @@ function AppContent() {
                             path="/artifact-window"
                             element={<ArtifactWindowView />}
                         />
+                        {/* REWORK-W7: Fleet board + worktrees (append-only route list) */}
+                        <Route path="/fleet" element={<FleetView />} />
                     </Routes>
                     {!isQuickChatWindow && !isArtifactWindow && (
                         <Settings tab={defaultSettingsTab || "general"} />

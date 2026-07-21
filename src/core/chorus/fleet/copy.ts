@@ -5,13 +5,36 @@
  * it stays out of `protocol.ts` and out of `fixtures.ts`.
  */
 
-import { FleetRoleId, FleetSessionStatus } from "./protocol";
+import {
+    FleetMetaTone,
+    FleetRoleId,
+    FleetSessionStatus,
+    MachineStatus,
+} from "./protocol";
 
 export const FLEET_COLUMN_LABELS: Record<FleetSessionStatus, string> = {
     queued: "Queued",
     running: "Running",
     "needs-review": "Needs review",
     merged: "Merged",
+};
+
+/**
+ * Tone for each column HEADER's status dot — distinct from a merged
+ * card's own meta-text tone (`kanbanFormat.ts#formatSessionMeta`, which is
+ * `"muted"` for merged sessions). Per the design fixture's own data, the
+ * Merged *column* dot is accent (`var(--acc)`) while merged *cards* inside
+ * it read muted ("yesterday", "2d ago") — the same "landed state gets the
+ * accent treatment at the container level" pattern seen with ticket rows
+ * in the Worktrees view (see `FleetMetaTone`'s doc comment in
+ * protocol.ts). Kept as its own table rather than reusing
+ * `formatSessionMeta` for a different purpose.
+ */
+export const FLEET_COLUMN_DOT_TONE: Record<FleetSessionStatus, FleetMetaTone> = {
+    queued: "muted",
+    running: "success",
+    "needs-review": "warning",
+    merged: "accent",
 };
 
 /** Column order for the Board's 4 kanban lanes. */
@@ -21,6 +44,13 @@ export const FLEET_COLUMN_ORDER: FleetSessionStatus[] = [
     "needs-review",
     "merged",
 ];
+
+/** Machines strip status dot — design/fleet.md only shows "green if online, gray if idle"; `offline` groups with `idle` (both "not currently doing work") rather than borrowing the destructive/red token, which DESIGN.md reserves for actual errors. */
+export const FLEET_MACHINE_DOT_TONE: Record<MachineStatus, FleetMetaTone> = {
+    online: "success",
+    idle: "muted",
+    offline: "muted",
+};
 
 export interface IFleetRoleInfo {
     id: FleetRoleId;

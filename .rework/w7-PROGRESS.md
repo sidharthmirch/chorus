@@ -5,18 +5,22 @@ integration branch, which already has W1 + W2 merged — `success`/`warning`
 tokens confirmed present in `src/ui/themes/index.ts` + `tailwind.config.cjs`
 before P1 started).
 
-## State: P1 complete — protocol + adapters
+## State: P2 complete — Board view
 
 ## NEXT ACTION
 
-Start P2 (Board view): create `src/ui/components/fleet/` React components
-(`FleetHeader`, `KanbanBoard`, `KanbanColumn`, `KanbanCard`,
-`FleetEmptyState`) and a `FleetView.tsx` top-level component; wire it as the
-`/fleet` route at the end of `App.tsx`'s route list (append-only). Use
-`useFleetSessions()` + `buildKanbanColumns()` (already built and tested in
-P1) to render. Card anatomy per `docs/rework/design/fleet.md`'s Component
-Inventory + this ledger's Decisions log (agent avatar = `ProviderLogo` via
-`agentProviderName`, not a hex-colored letter chip).
+Start P3 (Worktrees view): replace the placeholder
+`src/ui/components/fleet/WorktreesView.tsx` with the real feature/ticket
+tree — `FeatureCard.tsx` (branch/title header + `formatFeatureBadge`,
+ticket rows via `formatTicketMeta`, a small "Worker" role chip on tickets
+with status `running`/`awaiting-merge` only — see Decisions log below for
+why not on `merged`/`queued`), a supervisor strip (state + `pulse` via
+`FleetStatusDot`'s existing `pulse` prop + note text), and the exact
+explanatory paragraph from the design mock ("Every ticket runs in its own
+git worktree branched off the feature worktree...", bolding "spawned on
+demand"). Wire `useFleetFeatures()` (already built in P1) into it from
+`FleetView.tsx` (currently unused there — grep confirms). Segmented
+Board/Worktrees control already exists (`FleetHeader.tsx`).
 
 ## Phase checklist
 
@@ -25,8 +29,15 @@ Inventory + this ledger's Decisions log (agent avatar = `ProviderLogo` via
       `kanbanFormat.ts`, `worktreeFormat.ts`, `agentDisplay.ts`, `copy.ts`,
       `time.ts`, `fleetSettings.ts`, `useFleet.ts` + unit tests;
       `docs/rework/fleet-protocol.md`)
-- [ ] P2 — Board view (`/fleet` route, kanban columns/cards)     <- current
-- [ ] P3 — Worktrees view (feature/ticket tree, supervisor strip)
+- [x] P2 — Board view (`/fleet` route in `App.tsx`; `FleetView.tsx`,
+      `FleetHeader.tsx`, `KanbanBoard.tsx`, `KanbanColumn.tsx`,
+      `KanbanCard.tsx`, `AgentBadge.tsx`, `FleetProgressBar.tsx`,
+      `FleetStatusDot.tsx`, `fleetTone.ts`, `FleetEmptyState.tsx`,
+      `FleetFooterHint.tsx`, `FleetView.types.ts`; dispatch (via a machine-
+      picker `Popover`) and pause/resume are wired against the adapter,
+      not just rendered inert — drag-and-drop is the only thing P2
+      explicitly defers to v2)
+- [ ] P3 — Worktrees view (feature/ticket tree, supervisor strip)   <- current
 - [ ] P4 — Cost presets + machines strip
 - [ ] P5 — Sidebar Sessions cluster
 
@@ -129,6 +140,46 @@ Inventory + this ledger's Decisions log (agent avatar = `ProviderLogo` via
   `GET /cost-estimate`; the UI needs per-role model assignments, not just
   an estimate string). Both documented in `fleet-protocol.md` §4 as
   explicit divergences/supersessions, not silent additions.
+- **P2 — column-header dot tone ≠ card meta tone for "merged".** Same
+  accent-vs-muted split as the ticket/session one above, but at the
+  *column* level: the fixture's Merged column header dot is
+  `var(--acc)`, while cards inside it read muted ("yesterday"). Added a
+  separate `FLEET_COLUMN_DOT_TONE` table (`copy.ts`) rather than reusing
+  `formatSessionMeta`'s tone for a role it was never meant for. Same
+  reasoning for `FLEET_MACHINE_DOT_TONE` (machines strip; `offline` groups
+  with `idle` → muted, since DESIGN.md reserves the destructive/red token
+  for actual errors, and "offline" here just means "not in the pool").
+- **P2 — card anatomy includes `title` and `machine`, not just agent/
+  branch.** The Component Inventory prose in `design/fleet.md` doesn't list
+  "title" as an explicit bullet under "Header row" (it enumerates agent
+  avatar+name, branch, action icons — title is presumably assumed/obvious
+  since every task has one). First pass of `KanbanCard.tsx` missed both
+  `title` and `machine` entirely before typechecking caught nothing (it's
+  valid, just visually incomplete) — caught on manual re-read against
+  `docs/rework/agents/W7-fleet.md`'s own restatement of card anatomy, which
+  *does* list "title" first. Fixed: title renders as its own line
+  (`line-clamp-2`) above the agent/machine/action row; machine renders
+  inline after the agent name as "· {machine}", matching the sidebar
+  fixture's own "claude-code · m4-mini" convention (`sessions[].meta` in
+  the design mock's JS state) for consistency across surfaces.
+- **P2 — dispatch/pause/resume ARE wired (not just rendered).** The brief's
+  "wire nothing" instruction for P2 is scoped explicitly to *drag-and-drop*
+  ("footer hint... drag itself = v2"). The `[→]` dispatch icon (opens a
+  `Popover` machine picker) and `[P]`/`▶` pause/resume icon both call
+  through `useFleet.ts`'s mutations into the adapter, proving the adapter
+  round-trip end-to-end against `MockFleetAdapter` (which genuinely mutates
+  its in-memory session list and notifies subscribers — see P1's
+  `MockFleetAdapter.test.ts`). The Board's "review CTA" is deliberately
+  NOT a button — see P1's decision on that; nothing in
+  `design/fleet.md`'s Interactions section specifies a click behavior for
+  it, so a static "awaiting you" badge is the honest choice.
+- **P2 — `MachinesStrip.tsx` exists but isn't wired into `FleetView` yet.**
+  Wrote it while building the shared `fleetTone.ts`/`FleetStatusDot`
+  primitives (natural to do together), but it's explicitly a P4 deliverable
+  per the phase brief ("P4 — Cost presets + machines: ... machines strip
+  with load fractions"). Left untracked/unstaged on purpose so the P2
+  commit stays scoped to what P2 actually asked for; P4 both stages it and
+  wires it into `FleetView.tsx`.
 
 ## Landmines / do-not
 
