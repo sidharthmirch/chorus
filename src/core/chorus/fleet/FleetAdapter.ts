@@ -21,7 +21,7 @@ export type FleetEventListener = (event: FleetEvent) => void;
 
 export interface FleetAdapter {
     /** For logging/debugging only — never branch UI rendering on this. */
-    readonly kind: "mock" | "fleetd";
+    readonly kind: "mock" | "fleetd" | "orca";
 
     getConnectionState(): FleetConnectionState;
 
