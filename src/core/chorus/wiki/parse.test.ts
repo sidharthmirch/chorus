@@ -330,3 +330,30 @@ describe("resolveWikilinkTarget", () => {
         expect(resolveWikilinkTarget("mixture-of-experts", files)).toBeUndefined();
     });
 });
+
+describe("parseFrontmatter — security (no code execution)", () => {
+    it("does NOT eval a `---js` frontmatter block (gray-matter RCE defense)", () => {
+        // Before the fix, gray-matter's default `javascript` engine would
+        // eval() this and set globalThis.__pwned. The no-eval engine override
+        // must drop the block instead.
+        const g = globalThis as unknown as { __pwned?: boolean };
+        delete g.__pwned;
+        const raw = [
+            "---js",
+            'globalThis.__pwned = true, module.exports = { a: 1 }',
+            "---",
+            "Body text.",
+        ].join("\n");
+        const { frontmatter, body } = parseFrontmatter(raw);
+        expect(g.__pwned).toBeUndefined(); // never executed
+        expect(frontmatter).toEqual({}); // malicious block ignored
+        expect(body.trim()).toBe("Body text.");
+        delete g.__pwned;
+    });
+
+    it("still parses legitimate YAML frontmatter safely", () => {
+        const raw = ["---", "type: company", "ticker: NVDA", "---", "Body."].join("\n");
+        const { frontmatter } = parseFrontmatter(raw);
+        expect(frontmatter).toEqual({ type: "company", ticker: "NVDA" });
+    });
+});

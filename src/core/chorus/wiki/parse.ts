@@ -8,6 +8,31 @@
 import matter from "gray-matter";
 import type { IHeading, IParsedNote, IResolvableFile, IWikilinkMatch } from "./types";
 
+/**
+ * SECURITY: gray-matter's DEFAULT engine set includes a `javascript`/`coffee`
+ * engine that runs `eval()` on the frontmatter block, and the frontmatter
+ * language is auto-detected from the note's own `---<lang>` opening marker.
+ * That means an untrusted note beginning with `---js` (from a picked/synced
+ * vault, or written by a model via the wiki-mcp `write_note` tool) would
+ * execute arbitrary code in the app's main renderer — full RCE. We defuse
+ * this by (a) forcing the default language to YAML and (b) overriding every
+ * code-executing engine with a no-eval stub that simply ignores such a
+ * block. Only safe YAML/JSON frontmatter is ever parsed; a `---js` block is
+ * dropped (its body is still returned). Passing `language: "yaml"` alone is
+ * NOT sufficient — the in-content `---<lang>` marker overrides it — so the
+ * engine override is the actual fix. Covered by parse.test.ts.
+ */
+const noEvalEngine = (): Record<string, unknown> => ({});
+const SAFE_MATTER_OPTIONS = {
+    language: "yaml",
+    engines: {
+        javascript: noEvalEngine,
+        js: noEvalEngine,
+        coffee: noEvalEngine,
+        coffeescript: noEvalEngine,
+    },
+};
+
 /** `data` from gray-matter is typed `unknown` here (see gray-matter.d.ts);
  *  narrow it before trusting it as a plain object. */
 function toFrontmatterRecord(data: unknown): Record<string, unknown> {
@@ -22,7 +47,7 @@ export function parseFrontmatter(raw: string): {
     frontmatter: Record<string, unknown>;
     body: string;
 } {
-    const parsed = matter(raw);
+    const parsed = matter(raw, SAFE_MATTER_OPTIONS);
     return { frontmatter: toFrontmatterRecord(parsed.data), body: parsed.content };
 }
 
