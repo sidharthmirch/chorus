@@ -8,6 +8,12 @@
  * falling back to mock data (a configured-but-unreachable fleetd should
  * read as an honest error state, not fake data — see
  * docs/rework/fleet-protocol.md §5).
+ *
+ * Fleet ↔ Orca integration added a third case: `fleet_backend === "orca"`
+ * (an independent `app_metadata` key, `fleetSettings.ts`) picks
+ * `OrcaCliAdapter` instead, regardless of `fleet_endpoint` — see
+ * docs/rework/fleet-orca-integration.md. `"mock"` stays the default so
+ * nothing regresses for anyone who never opts in.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,8 +22,13 @@ import { toast } from "sonner";
 import { FleetAdapter } from "./FleetAdapter";
 import { FleetdAdapter } from "./FleetdAdapter";
 import { mockFleetAdapter } from "./MockFleetAdapter";
+import { OrcaCliAdapter } from "./OrcaCliAdapter";
 import { FleetConnectionState, IFleetCostPreset } from "./protocol";
-import { useFleetCostPresetId, useFleetEndpoint } from "./fleetSettings";
+import {
+    useFleetBackend,
+    useFleetCostPresetId,
+    useFleetEndpoint,
+} from "./fleetSettings";
 
 const sessionsKey = ["fleet", "sessions"] as const;
 const machinesKey = ["fleet", "machines"] as const;
@@ -26,10 +37,11 @@ const costPresetsKey = ["fleet", "costPresets"] as const;
 
 export function useFleetAdapter(): FleetAdapter {
     const endpoint = useFleetEndpoint();
-    return useMemo<FleetAdapter>(
-        () => (endpoint ? new FleetdAdapter(endpoint) : mockFleetAdapter),
-        [endpoint],
-    );
+    const backend = useFleetBackend();
+    return useMemo<FleetAdapter>(() => {
+        if (backend === "orca") return new OrcaCliAdapter();
+        return endpoint ? new FleetdAdapter(endpoint) : mockFleetAdapter;
+    }, [backend, endpoint]);
 }
 
 export function useFleetConnectionState(): FleetConnectionState {

@@ -89,6 +89,11 @@
                     "name": "binaries/mcp-github",
                     "sidecar": true,
                     "args": true
+                },
+                {
+                    "name": "orca",
+                    "cmd": "orca",
+                    "args": true
                 }
             ]
         },
