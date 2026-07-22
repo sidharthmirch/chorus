@@ -7,6 +7,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { usePostHog } from "posthog-js/react";
 import { updateSavedModelConfigChat } from "./ModelConfigChatAPI";
 import { applyCreationDefaultsForNewChatRow } from "../chatCreationDefaults";
+import { isViewMode, ViewMode } from "../ChatState";
 
 const chatKeys = {
     all: () => ["chats"] as const,
@@ -44,6 +45,9 @@ export type Chat = {
 
     // Cost tracking
     totalCostUsd?: number;
+
+    // View mode (Focus/Columns/Fused) for multi-model responses in this chat.
+    viewMode: ViewMode;
 };
 
 type ChatDBRow = {
@@ -62,6 +66,7 @@ type ChatDBRow = {
     reply_to_id: string | null;
     gc_prototype_chat: number;
     total_cost_usd: number | null;
+    view_mode: string;
 };
 
 function readChat(row: ChatDBRow): Chat {
@@ -82,13 +87,17 @@ function readChat(row: ChatDBRow): Chat {
         replyToId: row.reply_to_id,
         gcPrototype: row.gc_prototype_chat === 1,
         totalCostUsd: row.total_cost_usd ?? undefined,
+        // The CHECK constraint on chats.view_mode guarantees this at the DB
+        // level; isViewMode is a defensive runtime narrowing (no `as`) in
+        // case an older row somehow predates the constraint.
+        viewMode: isViewMode(row.view_mode) ? row.view_mode : "columns",
     };
 }
 
 export async function fetchChat(chatId: string): Promise<Chat> {
     const rows = await db.select<ChatDBRow[]>(
         `SELECT id, title, quick_chat, pinned, project_id, updated_at, created_at, summary, is_new_chat,
-        parent_chat_id, project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd
+        parent_chat_id, project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd, view_mode
         FROM chats
         WHERE id = $1;`,
         [chatId],
@@ -103,7 +112,7 @@ export async function fetchChats(): Promise<Chat[]> {
     return await db
         .select<ChatDBRow[]>(
             `SELECT id, title, quick_chat, pinned, project_id, updated_at, created_at, summary, is_new_chat, parent_chat_id,
-            project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd
+            project_context_summary, project_context_summary_is_stale, reply_to_id, gc_prototype_chat, total_cost_usd, view_mode
             FROM chats
             WHERE reply_to_id IS NULL
             ORDER BY updated_at DESC`,
@@ -416,6 +425,31 @@ export function useRenameChat() {
                 newTitle,
                 chatId,
             ]);
+        },
+        onSuccess: async (_data, variables) => {
+            await queryClient.invalidateQueries(chatQueries.list());
+            await queryClient.invalidateQueries(
+                chatQueries.detail(variables.chatId),
+            );
+        },
+    });
+}
+
+export function useUpdateChatViewMode() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationKey: ["updateChatViewMode"] as const,
+        mutationFn: async ({
+            chatId,
+            viewMode,
+        }: {
+            chatId: string;
+            viewMode: ViewMode;
+        }) => {
+            await db.execute(
+                "UPDATE chats SET view_mode = $1 WHERE id = $2",
+                [viewMode, chatId],
+            );
         },
         onSuccess: async (_data, variables) => {
             await queryClient.invalidateQueries(chatQueries.list());

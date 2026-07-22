@@ -605,6 +605,11 @@ export function injectSystemPrompts(
         isInProject?: boolean;
         universalSystemPrompt?: string;
         promptProfileSystemPrompt?: string;
+        // Active mode/stance prompt (Assist/Critic/Socratic/custom) for this
+        // message set, if any — see docs/rework/w6-chat-recon.md §4. Distinct
+        // from promptProfileSystemPrompt (persona), which is a separate,
+        // pre-existing feature.
+        modeSystemPrompt?: string;
     },
 ): ModelConfig {
     const {
@@ -612,6 +617,7 @@ export function injectSystemPrompts(
         isInProject,
         universalSystemPrompt,
         promptProfileSystemPrompt,
+        modeSystemPrompt,
     } = options ?? {
         isInProject: false,
     };
@@ -622,6 +628,7 @@ export function injectSystemPrompts(
             CHORUS_SYSTEM_PROMPT,
             universalSystemPrompt || UNIVERSAL_SYSTEM_PROMPT_DEFAULT,
             ...(promptProfileSystemPrompt ? [promptProfileSystemPrompt] : []),
+            ...(modeSystemPrompt ? [modeSystemPrompt] : []),
             ...(toolsetInfo ? [TOOLS_MODE_SYSTEM_PROMPT(toolsetInfo)] : []),
             ...(isInProject ? [PROJECTS_SYSTEM_PROMPT] : []),
             ...(modelConfigIn.systemPrompt

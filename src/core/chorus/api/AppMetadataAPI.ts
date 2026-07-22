@@ -236,6 +236,35 @@ export function useApiKeys() {
     });
 }
 
+/**
+ * W2 — Inline Artifacts: gates auto-detection/auto-open of the artifact
+ * panel (docs/rework/00-ARCHITECTURE.md §3.3). Default ON — unlike most
+ * other flags here, a MISSING key means enabled, so this checks `!==
+ * "true"`'s opposite (`!== "false"`) rather than `=== "true"`.
+ */
+export function useDetectArtifacts() {
+    const { data: appMetadata } = useAppMetadata();
+    return appMetadata?.["detect_artifacts"] !== "false";
+}
+
+export function useSetDetectArtifacts() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationKey: ["setDetectArtifacts"] as const,
+        mutationFn: async (enabled: boolean) => {
+            await db.execute(
+                "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, ?)",
+                ["detect_artifacts", enabled ? "true" : "false"],
+            );
+        },
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({
+                queryKey: appMetadataKeys.appMetadata(),
+            });
+        },
+    });
+}
+
 export function useZoomLevel() {
     const { data: appMetadata } = useAppMetadata();
     return parseFloat(appMetadata?.["zoom_level"] || "100");
@@ -257,4 +286,28 @@ export function useSetZoomLevel() {
             });
         },
     });
+}
+
+/**
+ * The plaintext 9router API key Chorus created for itself (via
+ * `nineRouterClient.createApiKey`). 9router shows this value exactly once at
+ * creation time and never again, so it must be cached here rather than
+ * re-fetched. Not secret-tier: it only grants access to the user's own local
+ * 9router instance on :20128, which holds the real provider tokens — see
+ * docs/rework/w1-provider-notes.md §2.5. Plain async functions (not hooks),
+ * mirroring `getCustomBaseUrl`, since `resolveCredential.ts` calls this from
+ * plain provider classes, not React components.
+ */
+export async function getNineRouterApiKey(): Promise<string | undefined> {
+    const result = await db.select<{ value: string }[]>(
+        "SELECT value FROM app_metadata WHERE key = 'nine_router_api_key'",
+    );
+    return result[0]?.value || undefined;
+}
+
+export async function setNineRouterApiKey(key: string): Promise<void> {
+    await db.execute(
+        "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, ?)",
+        ["nine_router_api_key", key],
+    );
 }

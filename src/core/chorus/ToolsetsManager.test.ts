@@ -14,6 +14,13 @@ vi.mock("./api/ToolYoloAPI", () => ({
     checkToolYolo: vi.fn(),
 }));
 
+// The wiki-mcp toolset (registered in ToolsetsManager) transitively imports
+// ../DB, whose module-level `await Database.load()` calls Tauri IPC and touches
+// `window` — absent in the node test env. Stub it so importing the toolset
+// registry doesn't hit the real DB at module-load time. (At runtime the Tauri
+// webview provides `window`, so DB.ts loads normally.)
+vi.mock("./DB", () => ({ db: {} }));
+
 vi.mock("./api/ProjectAPI", () => ({
     fetchProjectYoloMode: vi.fn(),
 }));

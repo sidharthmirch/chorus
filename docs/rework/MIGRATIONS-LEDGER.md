@@ -7,10 +7,10 @@ numbering is assigned at the last rebase before merge, in merge order
 
 | Stream | Migration description | Count | Status |
 |--------|----------------------|-------|--------|
-| W1 | `provider_accounts` table (oauth state + quota cache, non-secret) | 1 | planned |
+| W1 | `provider_accounts` table (oauth state + quota cache, non-secret) | 1 | **integrated as v147** on `claude/rework` |
 | W2 | — (artifacts derive from messages; flag via app_metadata) | 0 | n/a |
-| W4 | — (favorites via app_metadata if adopted) | 0 | n/a |
-| W6 | `modes` table + seeds; `chats.view_mode` column | 2 | planned |
+| W4 | — (favorites via app_metadata: `pinned_model_config_ids`) | 0 | n/a |
+| W6 | `modes`/`chat_modes` tables + `message_sets.mode_id` seed; `chats.view_mode` + `messages.grades_json` | 2 | **integrated as v148, v149** on `claude/rework` |
 | W3 | — (none planned) | 0 | n/a |
-| W7 | — (endpoint/presets via app_metadata) | 0 | n/a |
-| W8 | `wiki_index` cache table (derived, rebuildable) | 1 | planned |
+| W7 | — (endpoint/presets via app_metadata: `fleet_endpoint`, `fleet_cost_preset`) | 0 | n/a |
+| W8 | `wiki_index` cache table (derived, rebuildable) | 1 | **integrated as v150** on `claude/rework` (was v148 on branch; renumbered at merge to avoid W6 collision) |

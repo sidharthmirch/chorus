@@ -39,6 +39,7 @@ import {
     ArrowLeftIcon,
     ArrowRightIcon,
     ChevronRightIcon,
+    ChevronLeftIcon,
     FolderOpenIcon,
     ReplyIcon,
     Trash2Icon,
@@ -153,6 +154,8 @@ import * as ModelConfigChatAPI from "@core/chorus/api/ModelConfigChatAPI";
 import * as ModelsAPI from "@core/chorus/api/ModelsAPI";
 import * as AttachmentsAPI from "@core/chorus/api/AttachmentsAPI";
 import * as DraftAPI from "@core/chorus/api/DraftAPI";
+import * as ModesAPI from "@core/chorus/api/ModesAPI";
+import { ViewModeControl } from "./ViewModeControl";
 import SimpleCopyButton from "./unused/CopyButton";
 import { MessageCostDisplay } from "./MessageCostDisplay";
 import {
@@ -161,6 +164,8 @@ import {
 } from "@core/chorus/ChatCompareSelection";
 import * as AppMetadataAPI from "@core/chorus/api/AppMetadataAPI";
 import { applyDefaultPromptProfileForChat } from "@core/chorus/chatCreationDefaults";
+import { collectChatArtifacts } from "@core/chorus/artifacts/collectChatArtifacts";
+import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import {
     isPermissionGranted,
     requestPermission,
@@ -1292,6 +1297,8 @@ export function ToolsMessageView({
     onStop,
     onDeselect,
     dragHandleProps,
+    modeId,
+    isMain,
 }: {
     message: Message;
     isQuickChatWindow: boolean;
@@ -1302,10 +1309,20 @@ export function ToolsMessageView({
     onStop?: () => void;
     onDeselect?: () => void;
     dragHandleProps?: DragListeners;
+    // Mode/stance active for this message's set, if any (design/chat.md's
+    // "✓ assist" sender-row badge). See docs/rework/w6-chat-recon.md §4.
+    modeId?: string;
+    // Cosmetic role label (design/chat.md's Columns "main"/"hidden" role
+    // badge) — undefined means "don't show a role badge at all" (single-model
+    // chats). true = main, false = hidden. See docs/rework/w6-chat-recon.md §2.
+    isMain?: boolean;
 }) {
     const navigate = useNavigate();
     // const [raw, setRaw] = useState(false);
     // const [streamStartTime, setStreamStartTime] = useState<Date>();
+
+    const modesQuery = ModesAPI.useModes();
+    const activeMode = modesQuery.data?.find((m) => m.id === modeId);
 
     const selectMessage = MessageAPI.useSelectMessage();
     const stopMessage = MessageAPI.useStopMessage();
@@ -1454,6 +1471,23 @@ export function ToolsMessageView({
                                                 {displayModelConfig?.displayName ??
                                                     displayModelId}
                                             </span>
+                                            {isMain !== undefined && (
+                                                <span
+                                                    className={`ml-1.5 text-[10px] font-mono uppercase tracking-wider ${
+                                                        isMain
+                                                            ? "text-accent-foreground"
+                                                            : "text-helper"
+                                                    }`}
+                                                >
+                                                    {isMain ? "main" : "hidden"}
+                                                </span>
+                                            )}
+                                            {activeMode && (
+                                                <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-sm border border-border px-[5px] py-px text-[10px] font-mono text-muted-foreground align-middle">
+                                                    {activeMode.icon}
+                                                    {activeMode.name.toLowerCase()}
+                                                </span>
+                                            )}
                                             {routingBadgeText !== undefined && (
                                                 <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                                                     {routingBadgeText}
@@ -1739,6 +1773,7 @@ function ToolsBlockView({
     isQuickChatWindow,
     minimizedModels,
     onMinimize,
+    modeId,
 }: {
     messageSetId: string;
     toolsBlock: ToolsBlock;
@@ -1746,6 +1781,10 @@ function ToolsBlockView({
     isQuickChatWindow: boolean;
     minimizedModels: Set<string>;
     onMinimize: (modelId: string) => void;
+    // Mode/stance active when this message set was created, if any — see
+    // docs/rework/w6-chat-recon.md §4. Rendered as a small sender-row badge
+    // in ToolsMessageView (design/chat.md's "✓ assist" per-message tag).
+    modeId?: string;
 }) {
     const { chatId } = useParams();
     const queryClient = useQueryClient();
@@ -1785,6 +1824,11 @@ function ToolsBlockView({
         [modelConfigsQuery.data],
     );
     const selectedModelConfigs = chatCompareModelConfigs;
+    // "main" is purely a cosmetic label (index 0 of the chat's selection
+    // order) — no pipeline/data-model concept, matches W4's own comment on
+    // SelectedPreviewPanel.tsx's identical convention. See
+    // docs/rework/w6-chat-recon.md §2.
+    const mainModelId = selectedModelConfigs[0]?.id;
     const currentModelIds = useMemo(
         () => new Set(toolsBlock.chatMessages.map((m) => m.model)),
         [toolsBlock.chatMessages],
@@ -2053,6 +2097,14 @@ function ToolsBlockView({
                                                     toolsBlock.chatMessages
                                                         .length === 1
                                                 }
+                                                modeId={modeId}
+                                                isMain={
+                                                    toolsBlock.chatMessages
+                                                        .length > 1
+                                                        ? message.model ===
+                                                          mainModelId
+                                                        : undefined
+                                                }
                                                 onMinimize={
                                                     toolsBlock.chatMessages
                                                         .length > 1
@@ -2140,6 +2192,317 @@ function ToolsBlockView({
     );
 }
 
+/**
+ * Focus view mode (design/chat.md): the primary ("main") model's response
+ * shown full-width, with the other selected models' responses tucked behind
+ * a small carousel pager ("‹ 2/3 ›") instead of side-by-side columns.
+ * Defined here (not a separate file) specifically so it can call
+ * `ToolsMessageView` directly without a cross-file circular import (this
+ * file already imports view components FROM `MultiChatDeprecationPath.tsx`,
+ * not the reverse — keeping that same one-directional shape).
+ *
+ * Purely presentational — reads the exact same `ToolsBlock.chatMessages`
+ * `ToolsBlockView` reads (hidden models still answer normally via the
+ * existing fan-out; nothing here changes what gets sent to any model). See
+ * docs/rework/w6-chat-recon.md §5.
+ */
+function FocusBlockView({
+    isLastRow = false,
+    isQuickChatWindow,
+    toolsBlock,
+    minimizedModels,
+    onMinimize,
+    modeId,
+}: {
+    messageSetId: string;
+    toolsBlock: ToolsBlock;
+    isLastRow: boolean;
+    isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    modeId?: string;
+}) {
+    const { chatId } = useParams();
+    const chatCompareModelConfigs =
+        ModelConfigChatAPI.useChatCompareModelConfigs(chatId!);
+    const mainModelId = chatCompareModelConfigs[0]?.id;
+
+    const activeMessages = toolsBlock.chatMessages.filter(
+        (m) => !minimizedModels.has(m.model),
+    );
+    const orderedIds = chatCompareModelConfigs.map((c) => c.id);
+    const sorted = [...activeMessages].sort((a, b) => {
+        const aIdx = orderedIds.indexOf(a.model);
+        const bIdx = orderedIds.indexOf(b.model);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        return a.model.localeCompare(b.model);
+    });
+
+    const primary = sorted.find((m) => m.model === mainModelId) ?? sorted[0];
+    const hidden = sorted.filter((m) => m !== primary);
+
+    const [pagerIndex, setPagerIndex] = useState(0);
+
+    if (!primary) {
+        return null;
+    }
+
+    const clampedIndex =
+        hidden.length === 0
+            ? 0
+            : ((pagerIndex % hidden.length) + hidden.length) %
+              hidden.length;
+    const pagedMessage = hidden[clampedIndex];
+
+    return (
+        <div
+            className={`flex flex-col gap-3 w-full ${
+                isQuickChatWindow ? "" : "px-10"
+            }`}
+        >
+            <div className="w-full max-w-prose">
+                <ToolsMessageView
+                    message={primary}
+                    isLastRow={isLastRow}
+                    isQuickChatWindow={isQuickChatWindow}
+                    isOnlyMessage={hidden.length === 0}
+                    modeId={modeId}
+                    isMain={hidden.length > 0 ? true : undefined}
+                    onMinimize={() => onMinimize(primary.model)}
+                    onStop={() => onMinimize(primary.model)}
+                />
+            </div>
+
+            {pagedMessage && (
+                <div className="w-full max-w-prose border border-dashed border-border rounded-md p-3">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <button
+                                type="button"
+                                aria-label="Previous hidden response"
+                                disabled={hidden.length < 2}
+                                onClick={() => setPagerIndex((i) => i - 1)}
+                                className="disabled:opacity-30 hover:text-foreground"
+                            >
+                                <ChevronLeftIcon className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[11px] font-mono tabular-nums">
+                                {clampedIndex + 1}/{hidden.length}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Next hidden response"
+                                disabled={hidden.length < 2}
+                                onClick={() => setPagerIndex((i) => i + 1)}
+                                className="disabled:opacity-30 hover:text-foreground"
+                            >
+                                <ChevronRightIcon className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-helper">
+                            hidden
+                        </span>
+                    </div>
+                    <ToolsMessageView
+                        message={pagedMessage}
+                        isLastRow={isLastRow}
+                        isQuickChatWindow={isQuickChatWindow}
+                        isOnlyMessage={false}
+                        modeId={modeId}
+                        isMain={false}
+                        onMinimize={() => onMinimize(pagedMessage.model)}
+                        onStop={() => onMinimize(pagedMessage.model)}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Fused view mode (P4): after all selected models finish answering, an
+ * auto-triggered synthesis call (the existing, generalized
+ * useStreamSynthesis/useSelectSynthesis pipeline, blockType "tools") produces
+ * one fused answer; a second, independent simpleLLM call grades each
+ * model's contribution. See docs/rework/w6-chat-recon.md §6 for the full
+ * reasoning — in particular why grading is a separate call rather than
+ * baked into the synthesis prompt.
+ *
+ * Defined here (not a separate file) for the same reason as FocusBlockView:
+ * it renders ToolsBlockView directly while waiting for synthesis to kick in,
+ * with no cross-file circular import.
+ */
+function FusedBlockView({
+    messageSetId,
+    toolsBlock,
+    isLastRow = false,
+    isQuickChatWindow,
+    minimizedModels,
+    onMinimize,
+    modeId,
+}: {
+    messageSetId: string;
+    toolsBlock: ToolsBlock;
+    isLastRow: boolean;
+    isQuickChatWindow: boolean;
+    minimizedModels: Set<string>;
+    onMinimize: (modelId: string) => void;
+    modeId?: string;
+}) {
+    const { chatId } = useParams();
+    const modelConfigsQuery = ModelsAPI.useModelConfigs();
+    const selectSynthesis = MessageAPI.useSelectSynthesis();
+    const computeFusedGrades = MessageAPI.useComputeFusedGrades();
+
+    const modelMessages = toolsBlock.chatMessages.filter(
+        (m) =>
+            m.model !== "chorus::synthesize" && !minimizedModels.has(m.model),
+    );
+    const synthesisMessage = toolsBlock.chatMessages.find(
+        (m) => m.model === "chorus::synthesize",
+    );
+
+    const allIdle =
+        modelMessages.length > 1 &&
+        modelMessages.every((m) => m.state === "idle");
+
+    // Auto-trigger synthesis once every model has answered — the ONLY
+    // difference from the legacy manual-click flow is that this fires from
+    // an effect instead of a button. Guarded by isPending (not a ref) to
+    // avoid double-firing while the first call is still in flight.
+    useEffect(() => {
+        if (
+            isLastRow &&
+            allIdle &&
+            !synthesisMessage &&
+            chatId &&
+            !selectSynthesis.isPending
+        ) {
+            selectSynthesis.mutate({
+                chatId,
+                messageSetId,
+                blockType: "tools",
+            });
+        }
+    }, [
+        isLastRow,
+        allIdle,
+        synthesisMessage,
+        chatId,
+        messageSetId,
+        selectSynthesis,
+    ]);
+
+    // Once the fused answer itself has finished streaming, grade it —
+    // independent second call, see the file-level doc comment above.
+    useEffect(() => {
+        if (
+            synthesisMessage &&
+            synthesisMessage.state === "idle" &&
+            synthesisMessage.text.trim().length > 0 &&
+            !synthesisMessage.grades &&
+            chatId &&
+            !computeFusedGrades.isPending
+        ) {
+            computeFusedGrades.mutate({
+                chatId,
+                synthesisMessageId: synthesisMessage.id,
+                synthesisText: synthesisMessage.text,
+                perspectives: modelMessages.map((m) => ({
+                    model: m.model,
+                    text: m.text,
+                })),
+            });
+        }
+    }, [synthesisMessage, chatId, computeFusedGrades, modelMessages]);
+
+    if (!synthesisMessage) {
+        // Still fanning out / not ready to fuse yet — fall back to the
+        // exact normal columns rendering so the user sees the individual
+        // streaming responses rather than a blank state.
+        return (
+            <ToolsBlockView
+                messageSetId={messageSetId}
+                toolsBlock={toolsBlock}
+                isLastRow={isLastRow}
+                isQuickChatWindow={isQuickChatWindow}
+                minimizedModels={minimizedModels}
+                onMinimize={onMinimize}
+                modeId={modeId}
+            />
+        );
+    }
+
+    const getDisplayName = (modelId: string) =>
+        modelConfigsQuery.data?.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+
+    return (
+        <div className={`w-full ${isQuickChatWindow ? "" : "px-10"}`}>
+            <div className="w-full max-w-prose border border-accent-600 rounded-md p-4 relative">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                        <span aria-hidden>⚭</span>
+                        <span>Fused response</span>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                        {modelMessages.length} models
+                    </span>
+                </div>
+                <MessageMarkdown text={synthesisMessage.text} />
+                {synthesisMessage.grades &&
+                    synthesisMessage.grades.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-border">
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">
+                                Grading · influence weights
+                            </div>
+                            <div className="space-y-1.5">
+                                {synthesisMessage.grades.map((grade) => (
+                                    <div
+                                        key={grade.model}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <span className="text-xs w-28 truncate flex-shrink-0">
+                                            {getDisplayName(grade.model)}
+                                        </span>
+                                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-accent-500"
+                                                style={{
+                                                    width: `${grade.weightPct}%`,
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="text-[11px] font-mono tabular-nums w-9 text-right text-muted-foreground">
+                                            {grade.weightPct}%
+                                        </span>
+                                        <span className="text-[11px] font-mono tabular-nums w-7 text-right">
+                                            {grade.score}
+                                        </span>
+                                        <span className="text-[11px] text-muted-foreground truncate flex-1 min-w-0">
+                                            {grade.note}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                <div className="relative h-4 mt-1">
+                    <MessageCostDisplay
+                        costUsd={synthesisMessage.costUsd}
+                        promptTokens={synthesisMessage.promptTokens}
+                        completionTokens={synthesisMessage.completionTokens}
+                        isStreaming={synthesisMessage.state === "streaming"}
+                        isQuickChatWindow={isQuickChatWindow}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function UserBlockView({
     userBlock,
     userMessageRef,
@@ -2191,6 +2554,13 @@ const MessageSetView = memo(
         onMinimize,
     }: MessageSetViewProps) => {
         const { chatId } = useParams();
+        // Focus/Columns/Fused (P3) — read here (not prop-threaded) following
+        // this file's existing convention of block-view components fetching
+        // their own chat-scoped data (see e.g. ToolsBlockView's own
+        // useChatCompareModelConfigs call). TanStack Query dedupes this
+        // against MultiChat()'s own useChat(chatId!) call, so this is not an
+        // extra DB read.
+        const chatQuery = ChatAPI.useChat(chatId!);
 
         const messageSetQuery = MessageAPI.useMessageSet(chatId!, messageSetId);
 
@@ -2255,14 +2625,43 @@ const MessageSetView = memo(
                             isQuickChatWindow={isQuickChatWindow}
                         />
                     ) : messageSet.selectedBlockType === "tools" ? (
-                        <ToolsBlockView
-                            messageSetId={messageSetId}
-                            toolsBlock={messageSet.toolsBlock}
-                            isLastRow={isLastRow}
-                            isQuickChatWindow={isQuickChatWindow}
-                            minimizedModels={minimizedModels}
-                            onMinimize={onMinimize}
-                        />
+                        // Focus/Columns/Fused (P3/P4) — purely presentational
+                        // branch on the chat's viewMode; "columns" (default)
+                        // renders the exact pre-existing ToolsBlockView, kept
+                        // pixel-stable. See docs/rework/w6-chat-recon.md §5/§6.
+                        chatQuery.data?.viewMode === "focus" &&
+                        !isQuickChatWindow ? (
+                            <FocusBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        ) : chatQuery.data?.viewMode === "fused" &&
+                          !isQuickChatWindow ? (
+                            <FusedBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        ) : (
+                            <ToolsBlockView
+                                messageSetId={messageSetId}
+                                toolsBlock={messageSet.toolsBlock}
+                                isLastRow={isLastRow}
+                                isQuickChatWindow={isQuickChatWindow}
+                                minimizedModels={minimizedModels}
+                                onMinimize={onMinimize}
+                                modeId={messageSet.modeId}
+                            />
+                        )
                     ) : messageSet.selectedBlockType === "brainstorm" ? (
                         <BrainstormBlockView
                             brainstormBlock={messageSet.brainstormBlock}
@@ -2306,6 +2705,13 @@ export const SHARE_CHAT_DIALOG_ID = "share-chat-dialog";
 export default function MultiChat() {
     const { chatId } = useParams();
     const chatQuery = ChatAPI.useChat(chatId!);
+    // Chat-level default mode/stance, for the read-only header badge
+    // (design/chat.md's "✓ Assist · default"). The composer (P2) is the
+    // interactive surface for changing it; this just displays it.
+    const activeChatMode = ModesAPI.useChatMode(chatId!);
+    // Focus/Columns/Fused (P3) — presentation only, see
+    // docs/rework/w6-chat-recon.md §5/§6.
+    const updateChatViewMode = ChatAPI.useUpdateChatViewMode();
     const { open: isSidebarOpen } = useSidebar();
 
     const navigate = useNavigate();
@@ -2320,6 +2726,48 @@ export default function MultiChat() {
         ModelConfigChatAPI.useUpdateSavedModelConfigChat();
     const savedCompareLegacyInitRef = useRef<string | null>(null);
     const [searchParams] = useSearchParams();
+
+    // W2 — Inline Artifacts. Chat-scoped state for the artifact panel; the
+    // actual extraction logic lives in collectChatArtifacts.ts (pure,
+    // tested) — this just memoizes over data already loaded above
+    // (messageSetsQuery/modelConfigsQuery), per collectChatArtifacts.ts's
+    // "memoize per message" note.
+    const chatArtifacts = useMemo(
+        () =>
+            collectChatArtifacts(
+                messageSetsQuery.data ?? [],
+                (modelConfigId) =>
+                    modelConfigsQuery.data?.find((m) => m.id === modelConfigId)
+                        ?.displayName ?? modelConfigId,
+                // Raw catalog id (`provider::model`) for the panel's provider
+                // logo — `message.model` is a modelConfig id, which ProviderLogo
+                // can't resolve on its own.
+                (modelConfigId) =>
+                    modelConfigsQuery.data?.find((m) => m.id === modelConfigId)
+                        ?.modelId,
+            ),
+        [messageSetsQuery.data, modelConfigsQuery.data],
+    );
+    const [selectedArtifactIndex, setSelectedArtifactIndex] = useState(0);
+    const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+    const [, setPreviousArtifactCount] = useState(0);
+    const detectArtifactsEnabled = appMetadata["detect_artifacts"] !== "false";
+    // Auto-open + auto-select-newest when a NEW artifact arrives (design's
+    // "auto-jump to newest" versioning behavior). Tracks the previous count
+    // via the functional setState form so it never needs to be a dependency
+    // (avoids a stale-closure bug without needing useRef for this).
+    useEffect(() => {
+        setPreviousArtifactCount((previousCount) => {
+            if (
+                detectArtifactsEnabled &&
+                chatArtifacts.length > previousCount
+            ) {
+                setSelectedArtifactIndex(chatArtifacts.length - 1);
+                setArtifactPanelOpen(true);
+            }
+            return chatArtifacts.length;
+        });
+    }, [chatArtifacts.length, detectArtifactsEnabled]);
 
     // One-time backfill: older main chats have no saved_model_configs_chats row yet
     useEffect(() => {
@@ -3205,6 +3653,32 @@ export default function MultiChat() {
 
                     {/* chat actions - show as individual icon buttons if there are multiple message sets AND we're not in quick chat */}
                     <div className="flex items-center gap-1">
+                        {!isQuickChatWindow && chatQuery.data && (
+                            <div className="mr-1">
+                                <ViewModeControl
+                                    value={chatQuery.data.viewMode}
+                                    onChange={(viewMode) =>
+                                        updateChatViewMode.mutate({
+                                            chatId: chatId!,
+                                            viewMode,
+                                        })
+                                    }
+                                />
+                            </div>
+                        )}
+                        {!isQuickChatWindow && activeChatMode && (
+                            <div className="flex items-center h-7 rounded-full bg-muted px-3 gap-1 text-xs text-muted-foreground mr-1">
+                                {activeChatMode.icon && (
+                                    <span>{activeChatMode.icon}</span>
+                                )}
+                                <span>{activeChatMode.name}</span>
+                                {activeChatMode.tag === "app-default" && (
+                                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                                        · default
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {!isQuickChatWindow &&
                             messageSetsQuery.data &&
                             messageSetsQuery.data.length > 1 && (
@@ -3369,6 +3843,26 @@ export default function MultiChat() {
                                     <RepliesDrawer
                                         onOpenChange={setRepliesDrawerOpen}
                                         replyChatId={replyChatId}
+                                    />
+                                </ResizablePanel>
+                            </>
+                        )}
+                        {artifactPanelOpen && chatArtifacts.length > 0 && (
+                            <>
+                                <ResizableHandle className="shadow-lg" />
+                                <ResizablePanel
+                                    defaultSize={38}
+                                    minSize={28}
+                                    maxSize={55}
+                                    className="shadow-lg"
+                                >
+                                    <ArtifactPanel
+                                        artifacts={chatArtifacts}
+                                        selectedIndex={selectedArtifactIndex}
+                                        onSelectIndex={setSelectedArtifactIndex}
+                                        onClose={() =>
+                                            setArtifactPanelOpen(false)
+                                        }
                                     />
                                 </ResizablePanel>
                             </>

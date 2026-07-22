@@ -2719,6 +2719,91 @@ You have full access to bash commands on the user''''s computer. If you write a 
                 LEGACY_MIGRATION_145_SQL
             },
         },
+        // REWORK-MIGRATION: renumber at rebase (W1 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 147,
+            description: "add provider_accounts table (oauth/quota state, non-secret)",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS provider_accounts (
+                    provider_id TEXT PRIMARY KEY,
+                    auth_kind TEXT NOT NULL,
+                    label TEXT,
+                    account_email TEXT,
+                    status TEXT NOT NULL DEFAULT 'not-configured',
+                    state_json TEXT,
+                    quota_json TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            "#,
+        },
+        // REWORK-MIGRATION: renumber at rebase (W6 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 148,
+            description: "add modes and chat_modes tables, message_sets.mode_id column, seed Assist/Critic/Socratic",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE modes (
+                    id TEXT PRIMARY KEY,
+                    icon TEXT,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    tag TEXT NOT NULL DEFAULT 'custom' CHECK (tag IN ('app-default', 'per-chat', 'custom')),
+                    usage_count INTEGER NOT NULL DEFAULT 0,
+                    author TEXT NOT NULL DEFAULT 'user' CHECK (author IN ('user', 'system')),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE chat_modes (
+                    id TEXT PRIMARY KEY,
+                    chat_id TEXT NOT NULL UNIQUE,
+                    mode_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                ALTER TABLE message_sets ADD COLUMN mode_id TEXT DEFAULT NULL;
+
+                INSERT INTO modes (id, icon, name, description, prompt, tag, author) VALUES
+                    ('mode-assist', '✓', 'Assist', 'Do exactly what''s asked. No pushback, no scope creep.', 'Do exactly what the user asks. Do not push back on the request, question its premise, or expand scope beyond what was asked. Be direct and efficient.', 'app-default', 'system'),
+                    ('mode-critic', '✕', 'Critic', 'Attack every claim. Chase every avenue to prove you wrong.', 'Adopt a critical, skeptical stance. Attack every claim made in this conversation, including your own prior claims. Actively look for counterarguments, edge cases, and reasons the current approach could be wrong. Do not soften criticism for the sake of politeness.', 'app-default', 'system'),
+                    ('mode-socratic', '?', 'Socratic', 'Answers only with questions until you commit.', 'Respond only with clarifying questions until the user has committed to a specific direction. Do not provide direct answers, solutions, or recommendations - guide the user to their own conclusions through questioning.', 'custom', 'system');
+            "#,
+        },
+        // REWORK-MIGRATION: renumber at rebase (W6 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 149,
+            description: "add chats.view_mode and messages.grades_json columns",
+            kind: MigrationKind::Up,
+            sql: r#"
+                ALTER TABLE chats ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'columns' CHECK (view_mode IN ('columns', 'focus', 'fused'));
+                ALTER TABLE messages ADD COLUMN grades_json TEXT DEFAULT NULL;
+            "#,
+        },
+        // REWORK-MIGRATION: renumber at rebase (W8 — docs/rework/MIGRATIONS-LEDGER.md)
+        Migration {
+            version: 150,
+            description: "add wiki_index table (derived vault index cache, rebuildable)",
+            kind: MigrationKind::Up,
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS wiki_index (
+                    vault_path TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    folder TEXT NOT NULL,
+                    frontmatter_json TEXT NOT NULL DEFAULT '{}',
+                    links_json TEXT NOT NULL DEFAULT '[]',
+                    body_cache TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    indexed_at TEXT NOT NULL,
+                    PRIMARY KEY (vault_path, path)
+                );
+                CREATE INDEX IF NOT EXISTS idx_wiki_index_vault_path ON wiki_index(vault_path);
+            "#,
+        },
     ];
 }
 

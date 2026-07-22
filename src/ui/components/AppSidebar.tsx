@@ -88,6 +88,15 @@ import { ProviderLogo } from "@ui/components/ui/provider-logo";
 import { Message } from "@core/chorus/ChatState";
 import * as Models from "@core/chorus/Models";
 import { useToolsDisabledStore } from "@core/infra/ToolsDisabledStore";
+// REWORK-W7: Fleet sidebar "Sessions" cluster — see the single render block
+// below (search "REWORK-W7") for the only other line this workstream
+// touches in this file. All logic lives in the imported component, kept
+// under this workstream's own ownership (src/ui/components/fleet/**).
+import { FleetSessionsCluster } from "@ui/components/fleet/FleetSessionsCluster";
+// REWORK-W8: Wiki sidebar nav entry — a single, self-contained render line
+// below (search "REWORK-W8"), separate from and not overlapping W7's block
+// above. All logic lives in the imported component (src/ui/components/wiki/**).
+import { WikiNavEntry } from "@ui/components/wiki/WikiNavEntry";
 
 function isToday(date: Date) {
     const today = new Date();
@@ -797,6 +806,12 @@ export function AppSidebarInner() {
                                     </span>
                                 </button>
 
+                                {/* REWORK-W8: Wiki nav entry — single, self-contained render
+                                    line (own navigate/active-state logic lives in the imported
+                                    component). Placed at the top-level nav, distinct from and
+                                    not overlapping W7's Sessions cluster below. */}
+                                <WikiNavEntry />
+
                                 {/* Minimized models panel */}
                                 {minimizedEntries.length > 0 && (
                                     <div className="mb-2">
@@ -832,6 +847,13 @@ export function AppSidebarInner() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* REWORK-W7: Fleet sidebar "Sessions" cluster — self-contained,
+                                    renders nothing when there are no live sessions (empty-state
+                                    discipline; see FleetSessionsCluster.tsx). W8 adds its own
+                                    Wiki nav entry elsewhere in this file — this block is kept
+                                    single and tightly bounded so that later merge stays trivial. */}
+                                <FleetSessionsCluster />
 
                                 {/* add new project */}
                                 {hasNonQuickChats && (
@@ -1009,8 +1031,12 @@ function QuickChats({ chats }: { chats: Chat[] }) {
                                         <button
                                             onClick={(e) => {
                                                 e.preventDefault();
+                                                // REWORK-W3: "general" (the
+                                                // old first tab) repointed to
+                                                // "accounts" (the new first
+                                                // section).
                                                 void emit("open_settings", {
-                                                    tab: "general",
+                                                    tab: "accounts",
                                                 });
                                             }}
                                             className="h-full text-muted-foreground/75 hover:text-foreground p-2 rounded-full flex items-center gap-2 group-data-[state=open]/collapsible:hidden"

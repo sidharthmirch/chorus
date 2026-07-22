@@ -2,7 +2,7 @@
     "$schema": "../gen/schemas/desktop-schema.json",
     "identifier": "default",
     "description": "Capability for the main window",
-    "windows": ["main", "quick-chat"],
+    "windows": ["main", "quick-chat", "artifact-*"],
     "permissions": [
         "core:default",
         "shell:allow-open",
@@ -88,6 +88,11 @@
                 {
                     "name": "binaries/mcp-github",
                     "sidecar": true,
+                    "args": true
+                },
+                {
+                    "name": "orca",
+                    "cmd": "orca",
                     "args": true
                 }
             ]

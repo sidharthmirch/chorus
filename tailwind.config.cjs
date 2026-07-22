@@ -73,6 +73,9 @@ export default {
                     DEFAULT: "hsl(var(--destructive))",
                     foreground: "hsl(var(--destructive-foreground))",
                 },
+                // REWORK-W1: status colors for quota meters etc. (both themes)
+                success: "hsl(var(--success))",
+                warning: "hsl(var(--warning))",
                 muted: {
                     DEFAULT: "hsl(var(--muted))",
                     foreground: "hsl(var(--muted-foreground))",
